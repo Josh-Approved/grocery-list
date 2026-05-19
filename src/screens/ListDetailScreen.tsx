@@ -23,6 +23,7 @@ import {
   Pressable,
   TextInput,
   FlatList,
+  ScrollView,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -37,10 +38,12 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { useListsStore } from '../store/lists';
+import { useAccountStore } from '../store/account';
 import {
   checkedItems,
   groupUnchecked,
   listStats,
+  visibleItems,
   type GroceryItem,
 } from '../data/list';
 import { DEFAULT_CATEGORY_ORDER, type Category } from '../data/categories';
@@ -81,6 +84,13 @@ export default function ListDetailScreen({ route, navigation }: Props) {
   const deleteList = useListsStore((st) => st.deleteList);
   const finishShop = useListsStore((st) => st.finishShop);
   const restoreItems = useListsStore((st) => st.restoreItems);
+
+  const recordUse = useAccountStore((st) => st.recordUse);
+  const suggest = useAccountStore((st) => st.suggest);
+  const isStaple = useAccountStore((st) => st.isStaple);
+  const addStaple = useAccountStore((st) => st.addStaple);
+  const removeStaple = useAccountStore((st) => st.removeStaple);
+  const staples = useAccountStore((st) => st.staples);
 
   const menu = useActionMenu();
   const prompt = usePrompt();
@@ -130,14 +140,46 @@ export default function ListDetailScreen({ route, navigation }: Props) {
     return out;
   }, [list, checkedOpen]);
 
+  const activeNames = useMemo(
+    () => (list ? visibleItems(list).map((it) => it.name) : []),
+    [list]
+  );
+
+  const suggestions = useMemo(
+    () => (draft.trim() ? suggest(draft, activeNames, 5) : []),
+    [draft, activeNames, suggest]
+  );
+
+  const addOne = useCallback(
+    (name: string, keepFocus: boolean) => {
+      const n = name.trim();
+      if (!n) return;
+      addItem(listId, n);
+      recordUse(n);
+      if (keepFocus) {
+        setDraft('');
+        requestAnimationFrame(() => inputRef.current?.focus());
+      }
+    },
+    [addItem, recordUse, listId]
+  );
+
   const submitDraft = useCallback(() => {
-    const name = draft.trim();
-    if (!name) return;
-    addItem(listId, name);
-    setDraft('');
-    // Keep focus so the user can rattle off a whole list.
-    requestAnimationFrame(() => inputRef.current?.focus());
-  }, [draft, addItem, listId]);
+    addOne(draft, true);
+  }, [addOne, draft]);
+
+  const addUsuals = useCallback(() => {
+    if (!list) return;
+    const active = new Set(
+      visibleItems(list).map((it) => it.name.toLowerCase())
+    );
+    for (const name of staples) {
+      if (!active.has(name)) {
+        addItem(listId, name);
+        recordUse(name);
+      }
+    }
+  }, [list, staples, addItem, recordUse, listId]);
 
   const removeWithUndo = useCallback(
     (item: GroceryItem) => {
@@ -189,6 +231,15 @@ export default function ListDetailScreen({ route, navigation }: Props) {
               }),
           },
           {
+            label: isStaple(item.name)
+              ? 'Remove from usuals'
+              : 'Save as a usual',
+            onPress: () =>
+              isStaple(item.name)
+                ? removeStaple(item.name)
+                : addStaple(item.name),
+          },
+          {
             label: 'Remove',
             destructive: true,
             onPress: () => removeWithUndo(item),
@@ -196,7 +247,17 @@ export default function ListDetailScreen({ route, navigation }: Props) {
         ],
       });
     },
-    [menu, prompt, setNote, recategorize, removeWithUndo, listId]
+    [
+      menu,
+      prompt,
+      setNote,
+      recategorize,
+      removeWithUndo,
+      listId,
+      isStaple,
+      addStaple,
+      removeStaple,
+    ]
   );
 
   const openListMenu = useCallback(() => {
@@ -215,6 +276,13 @@ export default function ListDetailScreen({ route, navigation }: Props) {
               onSubmit: (name) => renameList(listId, name),
             }),
         },
+        {
+          label: 'Reorder aisles',
+          onPress: () => navigation.navigate('ReorderAisles', { listId }),
+        },
+        ...(staples.length > 0
+          ? [{ label: 'Add usuals', onPress: addUsuals }]
+          : []),
         ...(stats.checked > 0
           ? [
               {
@@ -238,6 +306,8 @@ export default function ListDetailScreen({ route, navigation }: Props) {
     prompt,
     list,
     stats.checked,
+    staples.length,
+    addUsuals,
     doFinishShop,
     renameList,
     deleteList,
@@ -405,6 +475,30 @@ export default function ListDetailScreen({ route, navigation }: Props) {
         </Pressable>
       </View>
 
+      {suggestions.length > 0 ? (
+        <ScrollView
+          horizontal
+          keyboardShouldPersistTaps="handled"
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.suggestRow}
+        >
+          {suggestions.map((name) => (
+            <Pressable
+              key={name}
+              onPress={() => addOne(name, true)}
+              accessibilityRole="button"
+              accessibilityLabel={`Add ${name}`}
+              style={({ pressed }) => [s.chip, pressed && s.pressed]}
+            >
+              <Plus size={14} color={c.fgMuted} strokeWidth={1.5} />
+              <Text style={s.chipText} numberOfLines={1}>
+                {name}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      ) : null}
+
       <FlatList
         data={rows}
         keyExtractor={(r) => r.key}
@@ -509,6 +603,29 @@ function makeStyles(c: Colors) {
       borderRadius: radius.md,
     },
     addBtnDisabled: { opacity: 0.4 },
+
+    suggestRow: {
+      paddingHorizontal: space.s6,
+      paddingBottom: space.s4,
+      gap: space.s3,
+    },
+    chip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.s2,
+      minHeight: 36,
+      paddingHorizontal: space.s4,
+      borderRadius: radius.pill,
+      borderWidth: hairline,
+      borderColor: c.hairlineStrong,
+      backgroundColor: c.bgElevated,
+    },
+    chipText: {
+      ...t.sm,
+      fontFamily: fontFamily.sans,
+      color: c.fg,
+      maxWidth: 180,
+    },
 
     listContent: {
       paddingHorizontal: space.s6,

@@ -86,6 +86,8 @@ interface ListsState {
   setQuantity: (listId: string, itemId: string, qty: number) => void;
   setNote: (listId: string, itemId: string, note: string) => void;
   recategorize: (listId: string, itemId: string, category: Category) => void;
+  /** Replace this list's aisle order (build step 3, user-reorderable). */
+  reorderAisles: (listId: string, order: Category[]) => void;
   /** Soft-delete (tombstone) an item. */
   deleteItem: (listId: string, itemId: string) => void;
 
@@ -247,6 +249,10 @@ export const useListsStore = create<ListsState>()((set, get) => {
 
     recategorize: (listId, itemId, category) => {
       mutateItem(listId, itemId, (it) => ({ ...it, category }));
+    },
+
+    reorderAisles: (listId, order) => {
+      mutate(listId, (l) => ({ ...l, categoryOrder: order }));
     },
 
     deleteItem: (listId, itemId) => {

@@ -47,8 +47,37 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
       k TEXT PRIMARY KEY NOT NULL,
       v TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS item_history (
+      name     TEXT PRIMARY KEY NOT NULL,
+      count    INTEGER NOT NULL,
+      lastUsed INTEGER NOT NULL
+    );
   `);
   return _db;
+}
+
+// ---------- Item history (local autocomplete; never synced, never external) --
+
+export interface HistoryRow {
+  name: string;
+  count: number;
+  lastUsed: number;
+}
+
+export async function loadHistory(): Promise<HistoryRow[]> {
+  const db = await getDb();
+  return db.getAllAsync<HistoryRow>(
+    'SELECT name, count, lastUsed FROM item_history ORDER BY count DESC, lastUsed DESC'
+  );
+}
+
+export async function recordHistory(name: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT INTO item_history (name, count, lastUsed) VALUES (?, 1, ?)
+     ON CONFLICT(name) DO UPDATE SET count = count + 1, lastUsed = excluded.lastUsed`,
+    [name, Date.now()]
+  );
 }
 
 interface ListRow {

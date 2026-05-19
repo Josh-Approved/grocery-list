@@ -25,12 +25,15 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAppFonts, lightColors, darkColors, typography } from './src/theme';
 import { useListsStore } from './src/store/lists';
+import { useAccountStore } from './src/store/account';
 import ListsHomeScreen from './src/screens/ListsHomeScreen';
 import ListDetailScreen from './src/screens/ListDetailScreen';
+import ReorderAislesScreen from './src/screens/ReorderAislesScreen';
 
 export type RootStackParamList = {
   ListsHome: undefined;
   ListDetail: { listId: string };
+  ReorderAisles: { listId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -62,12 +65,15 @@ export default function App() {
   const [fontsLoaded] = useAppFonts();
   const hydrated = useListsStore((s) => s.hydrated);
   const hydrate = useListsStore((s) => s.hydrate);
+  const accountHydrated = useAccountStore((s) => s.hydrated);
+  const hydrateAccount = useAccountStore((s) => s.hydrate);
 
   useEffect(() => {
     hydrate();
-  }, [hydrate]);
+    hydrateAccount();
+  }, [hydrate, hydrateAccount]);
 
-  if (!fontsLoaded || !hydrated) return null;
+  if (!fontsLoaded || !hydrated || !accountHydrated) return null;
 
   return (
     <SafeAreaProvider>
@@ -79,6 +85,11 @@ export default function App() {
         >
           <Stack.Screen name="ListsHome" component={ListsHomeScreen} />
           <Stack.Screen name="ListDetail" component={ListDetailScreen} />
+          <Stack.Screen
+            name="ReorderAisles"
+            component={ReorderAislesScreen}
+            options={{ presentation: 'modal' }}
+          />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
