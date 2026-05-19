@@ -28,6 +28,10 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "owner": "josh-approved"
+    "owner": "josh-approved",
+    "plugins": [
+      "expo-sqlite",
+      "expo-font"
+    ]
   }
 }
