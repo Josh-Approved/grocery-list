@@ -21,6 +21,8 @@ import {
 } from '../data/list';
 import type { Category } from '../data/categories';
 import { makeId } from '../lib/id';
+import { makeShareIdentity } from '../sync/share';
+import { mergeList } from '../sync/merge';
 import {
   loadAllLists,
   saveList,
@@ -78,6 +80,10 @@ interface ListsState {
   renameList: (id: string, name: string) => void;
   duplicateList: (id: string) => string | null;
   deleteList: (id: string) => void;
+  /** Additive import (canon Layer 3). Lists arrive with fresh ids already
+   *  (see lib/transfer), so this never clobbers existing data. Returns the
+   *  number added. */
+  importLists: (incoming: GroceryList[]) => number;
 
   /** Add an item. If an active item with the same name exists, bump its
    *  quantity instead of stacking a duplicate row. */
@@ -98,9 +104,18 @@ interface ListsState {
    *  tombstone, restores checked state). Used by delete + finish-shop undo. */
   restoreItems: (listId: string, items: GroceryItem[]) => void;
 
-  /** Reserved for the shared-sync module (build step 4). Remote is
-   *  authoritative for what it carries; upserts keep their incoming
-   *  updatedAt so per-record last-writer-wins stays stable. */
+  /** Mint (or return the existing) share secret for a list. Sharing is
+   *  permanent once minted — the secret never rotates. */
+  shareList: (listId: string) => string | null;
+  /** Create a local list paired to an existing shared secret (tapped link /
+   *  scanned QR). Idempotent: re-joining the same secret returns the list
+   *  already paired to it. Returns the local list id. */
+  joinShared: (secret: string) => string;
+  /** Merge an incoming remote copy, matched by shared secret (NOT id —
+   *  devices have independent local ids). Conflict-free per merge.ts. */
+  mergeRemoteList: (remote: GroceryList) => void;
+
+  /** Reserved generic sync entry (kept for symmetry with other apps). */
   applySync: (changes: { upserts: GroceryList[]; deletes: string[] }) => void;
 }
 
@@ -208,6 +223,13 @@ export const useListsStore = create<ListsState>()((set, get) => {
       );
     },
 
+    importLists: (incoming) => {
+      if (incoming.length === 0) return 0;
+      set((s) => ({ lists: [...incoming, ...s.lists] }));
+      for (const l of incoming) persist(l);
+      return incoming.length;
+    },
+
     addItem: (listId, name) => {
       const trimmed = name.trim();
       if (!trimmed) return;
@@ -292,6 +314,44 @@ export const useListsStore = create<ListsState>()((set, get) => {
             : it
         ),
       }));
+    },
+
+    shareList: (listId) => {
+      const list = get().lists.find((l) => l.id === listId);
+      if (!list) return null;
+      if (list.shareIdentity) return list.shareIdentity.secret;
+      const identity = makeShareIdentity();
+      mutate(listId, (l) => ({ ...l, shareIdentity: identity }));
+      return identity.secret;
+    },
+
+    joinShared: (secret) => {
+      const existing = get().lists.find(
+        (l) => l.shareIdentity?.secret === secret
+      );
+      if (existing) return existing.id;
+      const base = makeList('Shared list');
+      const list: GroceryList = {
+        ...base,
+        shareIdentity: { secret, createdAt: Date.now() },
+      };
+      set((s) => ({ lists: [list, ...s.lists] }));
+      persist(list);
+      return list.id;
+    },
+
+    mergeRemoteList: (remote) => {
+      const secret = remote.shareIdentity?.secret;
+      if (!secret) return;
+      const local = get().lists.find(
+        (l) => l.shareIdentity?.secret === secret
+      );
+      if (!local) return;
+      const merged = mergeList(local, remote);
+      set((s) => ({
+        lists: s.lists.map((l) => (l.id === local.id ? merged : l)),
+      }));
+      persist(merged);
     },
 
     applySync: ({ upserts, deletes }) => {

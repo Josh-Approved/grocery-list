@@ -15,12 +15,13 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, MoreHorizontal, ChevronRight } from 'lucide-react-native';
+import { Plus, MoreHorizontal, ChevronRight, Settings } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { useListsStore } from '../store/lists';
 import { listStats, type GroceryList } from '../data/list';
 import { useActionMenu, usePrompt } from '../components/Dialogs';
+import { FundingFooter } from '../components/FundingFooter';
 import {
   useTheme,
   fontFamily,
@@ -75,6 +76,11 @@ export default function ListsHomeScreen({ navigation }: Props) {
               }),
           },
           {
+            label: list.shareIdentity ? 'Sharing settings' : 'Share',
+            onPress: () =>
+              navigation.navigate('Share', { listId: list.id }),
+          },
+          {
             label: 'Duplicate',
             onPress: () => duplicateList(list.id),
           },
@@ -86,7 +92,7 @@ export default function ListsHomeScreen({ navigation }: Props) {
         ],
       });
     },
-    [menu, prompt, renameList, duplicateList, deleteList]
+    [menu, prompt, renameList, duplicateList, deleteList, navigation]
   );
 
   const renderItem = useCallback(
@@ -146,9 +152,19 @@ export default function ListsHomeScreen({ navigation }: Props) {
           <Plus size={18} color={c.fg} strokeWidth={1.5} />
           <Text style={s.newBtnText}>New list</Text>
         </Pressable>
+        <Pressable
+          onPress={() => navigation.navigate('Settings')}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Settings"
+          style={({ pressed }) => [s.iconBtn, pressed && s.rowPressed]}
+        >
+          <Settings size={20} color={c.fgMuted} strokeWidth={1.5} />
+        </Pressable>
       </View>
 
       <FlatList
+        style={s.flex}
         data={lists}
         keyExtractor={(l) => l.id}
         renderItem={renderItem}
@@ -175,6 +191,8 @@ export default function ListsHomeScreen({ navigation }: Props) {
         }
       />
 
+      <FundingFooter />
+
       {menu.element}
       {prompt.element}
     </SafeAreaView>
@@ -184,6 +202,7 @@ export default function ListsHomeScreen({ navigation }: Props) {
 function makeStyles(c: Colors) {
   return StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.bg },
+    flex: { flex: 1 },
     rowPressed: { opacity: 0.6 },
 
     header: {

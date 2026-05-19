@@ -13,9 +13,10 @@
  */
 
 import React, { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, Linking } from 'react-native';
 import {
   NavigationContainer,
+  createNavigationContainerRef,
   DefaultTheme,
   DarkTheme,
   type Theme,
@@ -29,14 +30,21 @@ import { useAccountStore } from './src/store/account';
 import ListsHomeScreen from './src/screens/ListsHomeScreen';
 import ListDetailScreen from './src/screens/ListDetailScreen';
 import ReorderAislesScreen from './src/screens/ReorderAislesScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
+import ShareScreen from './src/screens/ShareScreen';
+import { startSyncEngine, stopSyncEngine } from './src/sync';
+import { parseShareLink } from './src/sync/share';
 
 export type RootStackParamList = {
   ListsHome: undefined;
   ListDetail: { listId: string };
   ReorderAisles: { listId: string };
+  Settings: undefined;
+  Share: { listId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 function buildNavTheme(isDark: boolean): Theme {
   const c = isDark ? darkColors : lightColors;
@@ -73,11 +81,40 @@ export default function App() {
     hydrateAccount();
   }, [hydrate, hydrateAccount]);
 
+  // Sync engine: start once the local store is ready, stop on teardown.
+  useEffect(() => {
+    if (!hydrated) return;
+    startSyncEngine();
+    return () => stopSyncEngine();
+  }, [hydrated]);
+
+  // Pairing via a tapped share link: join the shared list, open it.
+  useEffect(() => {
+    const handle = (url: string | null) => {
+      const secret = url ? parseShareLink(url) : null;
+      if (!secret) return;
+      const id = useListsStore.getState().joinShared(secret);
+      const go = () => {
+        if (navigationRef.isReady()) {
+          navigationRef.navigate('ListDetail', { listId: id });
+          return true;
+        }
+        return false;
+      };
+      if (!go()) setTimeout(go, 500);
+    };
+    Linking.getInitialURL()
+      .then(handle)
+      .catch(() => {});
+    const sub = Linking.addEventListener('url', (e) => handle(e.url));
+    return () => sub.remove();
+  }, []);
+
   if (!fontsLoaded || !hydrated || !accountHydrated) return null;
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer theme={buildNavTheme(isDark)}>
+      <NavigationContainer ref={navigationRef} theme={buildNavTheme(isDark)}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
         <Stack.Navigator
           initialRouteName="ListsHome"
@@ -88,6 +125,12 @@ export default function App() {
           <Stack.Screen
             name="ReorderAisles"
             component={ReorderAislesScreen}
+            options={{ presentation: 'modal' }}
+          />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen
+            name="Share"
+            component={ShareScreen}
             options={{ presentation: 'modal' }}
           />
         </Stack.Navigator>

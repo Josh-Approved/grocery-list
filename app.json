@@ -3,6 +3,7 @@
     "name": "Grocery List",
     "slug": "grocery-list",
     "version": "1.0.0",
+    "scheme": "grocerylist",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -31,7 +32,13 @@
     "owner": "josh-approved",
     "plugins": [
       "expo-sqlite",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Scan a QR code to join a shared list."
+        }
+      ]
     ]
   }
 }

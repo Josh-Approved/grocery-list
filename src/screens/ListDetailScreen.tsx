@@ -50,6 +50,9 @@ import { DEFAULT_CATEGORY_ORDER, type Category } from '../data/categories';
 import { Stepper } from '../components/Stepper';
 import { Snackbar } from '../components/Snackbar';
 import { useActionMenu, usePrompt } from '../components/Dialogs';
+import ReviewModal from '../components/ReviewModal';
+import { recordSuccessfulCompletion } from '../storage/reviewPrompt';
+import { APP_NAME, IOS_APP_STORE_ID, ANDROID_PACKAGE } from '../lib/links';
 import {
   useTheme,
   fontFamily,
@@ -96,6 +99,7 @@ export default function ListDetailScreen({ route, navigation }: Props) {
   const prompt = usePrompt();
   const [draft, setDraft] = useState('');
   const [checkedOpen, setCheckedOpen] = useState(false);
+  const [reviewVisible, setReviewVisible] = useState(false);
   const [snack, setSnack] = useState<{
     message: string;
     undo: () => void;
@@ -200,6 +204,13 @@ export default function ListDetailScreen({ route, navigation }: Props) {
       message: `Cleared ${snaps.length} item${snaps.length === 1 ? '' : 's'}`,
       undo: () => restoreItems(listId, snaps),
     });
+    // Finishing a shop is this app's genuine "satisfying success" — the
+    // canonical review prompt's only trigger here (never on launch/error).
+    recordSuccessfulCompletion()
+      .then((show) => {
+        if (show) setReviewVisible(true);
+      })
+      .catch(() => {});
   }, [finishShop, restoreItems, listId]);
 
   const openItemMenu = useCallback(
@@ -275,6 +286,10 @@ export default function ListDetailScreen({ route, navigation }: Props) {
               confirmLabel: 'Save',
               onSubmit: (name) => renameList(listId, name),
             }),
+        },
+        {
+          label: list.shareIdentity ? 'Sharing settings' : 'Share this list',
+          onPress: () => navigation.navigate('Share', { listId }),
         },
         {
           label: 'Reorder aisles',
@@ -536,6 +551,14 @@ export default function ListDetailScreen({ route, navigation }: Props) {
         actionLabel="Undo"
         onAction={() => snack?.undo()}
         onDismiss={() => setSnack(null)}
+      />
+
+      <ReviewModal
+        visible={reviewVisible}
+        onDismiss={() => setReviewVisible(false)}
+        appName={APP_NAME}
+        iosAppStoreId={IOS_APP_STORE_ID}
+        androidPackageName={ANDROID_PACKAGE}
       />
 
       {menu.element}

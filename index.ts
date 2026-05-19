@@ -1,3 +1,6 @@
+// Must be first: gives tweetnacl/@noble a CSPRNG (crypto.getRandomValues)
+// on React Native before any sync crypto runs.
+import 'react-native-get-random-values';
 import { registerRootComponent } from 'expo';
 
 import App from './App';
