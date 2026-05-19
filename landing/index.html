@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Grocery List — shop together, off one list</title>
+    <meta
+      name="description"
+      content="A grocery list a household shares. Real-time on both phones. No account, no ads, no tracking. Free and open source."
+    />
+    <style>
+      :root {
+        --ink: #0e0e0f;
+        --paper: #fafaf7;
+        --muted: #6b6b72;
+        --hairline: #e5e5e2;
+        --green: #1f8a4c;
+        /* marketing palette (landing only) */
+        --ochre: #b58d3f;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html { -webkit-text-size-adjust: 100%; }
+      body {
+        background: var(--paper);
+        color: var(--ink);
+        font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont,
+          "Segoe UI", Roboto, sans-serif;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap { max-width: 640px; margin: 0 auto; padding: 80px 24px 64px; }
+      .mark {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        font-size: 15px;
+        color: var(--muted);
+        margin-bottom: 56px;
+      }
+      .mark .check {
+        width: 16px; height: 16px;
+        border: 2.5px solid var(--green);
+        border-right: 0; border-top: 0;
+        transform: rotate(-45deg);
+        margin-top: -4px;
+      }
+      h1 {
+        font-size: 40px;
+        line-height: 1.15;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        margin-bottom: 16px;
+      }
+      .lede { font-size: 19px; color: var(--muted); margin-bottom: 40px; }
+      .lede strong { color: var(--ink); font-weight: 600; }
+      h2 {
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin: 48px 0 12px;
+      }
+      p { margin-bottom: 16px; }
+      .accent { color: var(--ochre); }
+      .cta {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 14px 22px;
+        background: var(--ink);
+        color: var(--paper);
+        text-decoration: none;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 16px;
+      }
+      .note { font-size: 15px; color: var(--muted); margin-top: 14px; }
+      footer {
+        margin-top: 64px;
+        padding-top: 24px;
+        border-top: 1px solid var(--hairline);
+        font-size: 15px;
+        color: var(--muted);
+      }
+      footer a { color: var(--ink); }
+      a { color: var(--ink); text-underline-offset: 3px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="mark"><span class="check"></span> josh approved</div>
+
+      <h1>Shop together, off one list.</h1>
+      <p class="lede">
+        A grocery list your household actually shares. Add milk on the couch;
+        it's on your partner's phone in the aisle. <strong>No account. No
+        ads. No tracking.</strong> Free.
+      </p>
+      <a class="cta" href="#">Coming soon to the App&nbsp;Store &amp; Google&nbsp;Play</a>
+      <p class="note">
+        Until then, the code is open — you can build it yourself.
+      </p>
+
+      <h2>What it does</h2>
+      <p>
+        Type an item and it sorts itself into the right aisle. Share a list
+        with a link or a QR code — the other person taps it once and you're
+        connected for good. Whatever either of you adds or checks off shows up
+        on the other phone. "Finish shop" clears what you bought and keeps the
+        list for next week.
+      </p>
+
+      <h2>How sharing stays private</h2>
+      <p>
+        Your lists live on your phone. When you share one, the two phones pass
+        small <span class="accent">end-to-end-encrypted</span> updates to each
+        other through free public infrastructure I don't run and can't read.
+        There's no server of mine, no account, and nothing collected. It's a
+        courier, not a filing cabinet — your list is always held on the
+        devices.
+      </p>
+
+      <h2>Why I made it</h2>
+      <p>
+        Every shared-list app I tried made my household trade something for
+        the one feature we wanted: an account, our attention to ads, or a
+        subscription. This one doesn't. It does the thing and leaves you
+        alone.
+      </p>
+
+      <footer>
+        Made independently. Open source —
+        <a href="https://github.com/josh-approved/grocery-list">the code</a>
+        and
+        <a href="https://github.com/josh-approved/grocery-list/blob/master/PRIVACY.md"
+          >the privacy page</a
+        >. Questions:
+        <a href="mailto:feedback@joshapproved.com">feedback@joshapproved.com</a>.
+        If it saved your household a subscription, you can
+        <a href="https://buymeacoffee.com/jtysonwilliams">buy me a coffee</a>.
+        More at <a href="https://joshapproved.com">joshapproved.com</a>.
+      </footer>
+    </div>
+  </body>
+</html>
