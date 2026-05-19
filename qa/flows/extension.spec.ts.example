@@ -1,0 +1,59 @@
+/**
+ * qa/flows/extension.spec.ts — Playwright flow for Chrome extension screenshot capture.
+ *
+ * Loads the unpacked extension from the repo root, drives it through key
+ * surfaces, and writes screenshots at named waypoints to qa/captures/chrome/.
+ * The framer (render-screenshots.mjs) then consumes those.
+ *
+ * Conventions:
+ *   - Each `await capture(<id>)` corresponds to a `shot.id` in qa/screenshots.config.json.
+ *   - Build the extension with QA mode if your popup needs deterministic state
+ *     (load fixtures from qa/fixtures/, no live API calls).
+ *
+ * Local run:
+ *   npx playwright test qa/flows/extension.spec.ts
+ *
+ * This file is a starter — replace fixtures and waypoints to match your app.
+ */
+
+import { test, chromium, type BrowserContext, type Page } from '@playwright/test';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const EXTENSION_ROOT = path.resolve(__dirname, '..', '..');
+const CAPTURES_DIR = path.resolve(__dirname, '..', 'captures', 'chrome');
+
+test('capture key surfaces', async () => {
+  const userDataDir = path.join(EXTENSION_ROOT, '.playwright-user-data');
+  const context: BrowserContext = await chromium.launchPersistentContext(userDataDir, {
+    headless: true,
+    args: [
+      `--disable-extensions-except=${EXTENSION_ROOT}`,
+      `--load-extension=${EXTENSION_ROOT}`,
+    ],
+    viewport: { width: 1280, height: 800 },
+  });
+
+  // Find the extension ID from the service worker / extension page.
+  let [bg] = context.serviceWorkers();
+  if (!bg) bg = await context.waitForEvent('serviceworker');
+  const extensionId = bg.url().split('/')[2];
+
+  const capture = async (page: Page, id: string) => {
+    await page.screenshot({ path: path.join(CAPTURES_DIR, `${id}.png`), fullPage: false });
+  };
+
+  // Waypoint 1: popup on a content page.
+  const article = await context.newPage();
+  await article.goto('https://en.wikipedia.org/wiki/Artificial_intelligence');
+
+  const popup = await context.newPage();
+  await popup.goto(`chrome-extension://${extensionId}/popup.html`);
+  await popup.waitForLoadState('networkidle');
+  await capture(popup, 'article-qa');
+
+  // Add more waypoints here — chips, expanded view, error states, etc.
+
+  await context.close();
+});

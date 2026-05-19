@@ -1,0 +1,22 @@
+{
+  "_comment": "Slot pattern (canonical-store-listings.md § Screenshot principles): slot 1 = core value prop + free, slot 2 = Josh Approved card (kind: card, no source), slots 3..N = features in descending priority. JA card stays in slot 2 even with fewer feature shots after.",
+  "stores": {
+    "ios": [
+      { "id": "core",          "source": "ios/01-core.png",      "caption": "Free <function>. <verb phrase showing it in use>." },
+      { "id": "josh-approved", "kind": "card" },
+      { "id": "feature-1",     "source": "ios/03-feature-1.png", "caption": "<top feature in plain words>." },
+      { "id": "feature-2",     "source": "ios/04-feature-2.png", "caption": "<second feature>." }
+    ],
+    "android": [
+      { "id": "core",          "source": "android/01-core.png",      "caption": "Free <function>. <verb phrase showing it in use>." },
+      { "id": "josh-approved", "kind": "card" },
+      { "id": "feature-1",     "source": "android/03-feature-1.png", "caption": "<top feature in plain words>." },
+      { "id": "feature-2",     "source": "android/04-feature-2.png", "caption": "<second feature>." }
+    ],
+    "chrome": [
+      { "id": "core",          "source": "chrome/01-core.png",      "caption": "Free <function>. <verb phrase showing it in use>." },
+      { "id": "josh-approved", "kind": "card" },
+      { "id": "feature-1",     "source": "chrome/03-feature-1.png", "caption": "<top feature in plain words>." }
+    ]
+  }
+}

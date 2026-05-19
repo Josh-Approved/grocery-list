@@ -1,0 +1,57 @@
+######################################################################
+# qa/flows/mobile.yaml — Maestro flow for iOS + Android screenshot capture
+#
+# Single flow body, parameterized per platform via env vars passed by CI:
+#   PLATFORM=ios    (or android)
+#   STORE=ios       (or android — matches a key in qa/screenshots.config.json)
+#
+# Conventions:
+#   - Every screenshot id corresponds to a `shot.id` in qa/screenshots.config.json.
+#     The framer (render-screenshots.mjs) consumes `qa/captures/<STORE>/<id>.png`.
+#   - The app must be built with EXPO_PUBLIC_QA_MODE=1 so deterministic fixtures
+#     load, the clock is frozen, and animations are off.
+#   - Maestro selectors:
+#       text:  matches visible text OR the platform accessibility label (RN
+#              accessibilityLabel → iOS accessibilityLabel / Android contentDescription).
+#       id:    matches the platform identifier (RN testID).
+#     Maestro does NOT have a property called accessibilityLabel — using one
+#     causes "Unknown Property" parse errors on iOS.
+#
+# Local run (Mac only for iOS, any host for Android with an emulator):
+#   maestro test qa/flows/mobile.yaml --env=PLATFORM=ios --env=STORE=ios
+#
+# This file is a starter — replace or add waypoints to match your app's screens.
+######################################################################
+
+appId: REPLACE_WITH_BUNDLE_ID  # e.g. com.jtysonwilliams.freeworkouttimer
+
+# PLATFORM and STORE are supplied per-platform from the workflow via
+# `--env=PLATFORM=ios|android` / `--env=STORE=ios|android`. Do NOT add a
+# flow-level `env:` default here — Maestro's flow-level env block out-ranks
+# the CLI flag, so any default silently wins on the wrong platform and
+# screenshots get written to the other store's directory.
+
+---
+- launchApp:
+    clearState: true
+
+# Waypoint: the timer list (default landing screen).
+- assertVisible: "Free workout timer"
+- takeScreenshot: qa/captures/${STORE}/list
+
+# Waypoint: editor — open a known fixture timer by tapping its visible name.
+- tapOn: "Tabata"
+- assertVisible: "Edit timer"
+- takeScreenshot: qa/captures/${STORE}/editor
+
+# Waypoint: active workout (portrait).
+- tapOn: "Back"
+- tapOn: "Start Tabata"
+- assertVisible: "Work"
+- takeScreenshot: qa/captures/${STORE}/active
+
+# Waypoint: settings.
+- tapOn: "Stop"
+- tapOn: "Settings"
+- assertVisible: "Settings"
+- takeScreenshot: qa/captures/${STORE}/settings

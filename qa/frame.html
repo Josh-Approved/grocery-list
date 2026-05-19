@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Josh Approved — Screenshot Frame</title>
+<style>
+  /* Tokens — kept inline so this file renders standalone via file:// without
+     resolving sibling CSS. Mirrors josh-approved-design-system/colors_and_type.css. */
+  :root {
+    --paper: #FAFAF7;
+    --ink-1000: #0E0E0F;
+    --ink-700: #3D3D42;
+    --ink-500: #6B6B72;
+    --ink-200: #C8C8CC;
+    --ink-100: #E5E5E2;
+    --green-600: #1F8A4C;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow: hidden;
+  }
+
+  body[data-bg="paper"] { --bg: var(--paper); --fg: var(--ink-1000); --bezel: var(--ink-1000); }
+  body[data-bg="ink"]   { --bg: var(--ink-1000); --fg: var(--paper);    --bezel: var(--paper); }
+
+  .stage {
+    width: 100vw;
+    height: 100vh;
+    display: grid;
+    place-items: center;
+    grid-template-rows: auto 1fr;
+    padding: var(--pad-y) var(--pad-x);
+    gap: var(--gap);
+  }
+
+  .caption {
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    text-align: center;
+    line-height: 1.15;
+    max-width: 90%;
+  }
+
+  .device {
+    background: var(--bezel);
+    border-radius: var(--bezel-radius);
+    padding: var(--bezel-thickness);
+    display: grid;
+    place-items: center;
+    height: 100%;
+    aspect-ratio: var(--device-aspect);
+    max-height: 100%;
+    max-width: 100%;
+  }
+  .screen {
+    width: 100%;
+    height: 100%;
+    border-radius: var(--screen-radius);
+    overflow: hidden;
+    background: var(--paper);
+    display: block;
+  }
+  .screen img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  /* Browser-window chrome (Chrome surface only) */
+  .window {
+    background: var(--paper);
+    border: 1px solid var(--ink-100);
+    border-radius: 12px;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: 36px 1fr;
+    width: 100%;
+    aspect-ratio: var(--window-aspect);
+    max-height: 100%;
+  }
+  .window .titlebar {
+    background: var(--ink-100);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 6px;
+  }
+  .window .dot {
+    width: 10px; height: 10px; border-radius: 999px;
+    background: var(--ink-200);
+  }
+  .window .urlbar {
+    flex: 1;
+    margin-left: 12px;
+    height: 22px;
+    background: var(--paper);
+    border: 1px solid var(--ink-200);
+    border-radius: 6px;
+  }
+  .window .body {
+    background: var(--paper);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+  }
+  .window .body img {
+    max-width: 90%;
+    max-height: 90%;
+    object-fit: contain;
+    display: block;
+  }
+
+  /* ---------- Surface-specific layout ---------- */
+
+  body[data-surface="iphone"] {
+    --pad-x: 96px; --pad-y: 96px; --gap: 64px;
+    --bezel-thickness: 14px;
+    --bezel-radius: 96px;
+    --screen-radius: 84px;
+    --device-aspect: 1290 / 2532; /* viewport area inside frame, approx 19.5:9 */
+  }
+  body[data-surface="iphone"] .caption {
+    font-size: 88px;
+  }
+
+  body[data-surface="ipad"] {
+    --pad-x: 144px; --pad-y: 144px; --gap: 80px;
+    --bezel-thickness: 18px;
+    --bezel-radius: 56px;
+    --screen-radius: 40px;
+    --device-aspect: 2064 / 2400;
+  }
+  body[data-surface="ipad"] .caption {
+    font-size: 96px;
+  }
+
+  body[data-surface="android"] {
+    --pad-x: 72px; --pad-y: 72px; --gap: 48px;
+    --bezel-thickness: 12px;
+    --bezel-radius: 64px;
+    --screen-radius: 52px;
+    --device-aspect: 1080 / 2010;
+  }
+  body[data-surface="android"] .caption {
+    font-size: 72px;
+  }
+
+  body[data-surface="chrome"] {
+    --pad-x: 80px; --pad-y: 64px; --gap: 32px;
+    --window-aspect: 1280 / 600;
+  }
+  body[data-surface="chrome"] .caption {
+    font-size: 36px;
+  }
+
+  /* ---------- Josh Approved card (slot 2 of every listing) ----------
+     Generated card, identical across every app. No app screen, no device chrome —
+     a Paper-background card explaining what a Josh Approved app is. Type sizes use
+     vmin so the layout adapts to whichever store dimensions are rendering it
+     (iPhone portrait, Android portrait, iPad portrait, Chrome landscape). */
+  body[data-surface="josh-card"] .stage { display: block; padding: 0; }
+  body[data-surface="josh-card"] .caption { display: none; }
+  .josh-card {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 6vmin 6vmin;
+  }
+  .josh-card__main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7vmin;
+    width: 100%;
+  }
+  .josh-card__title {
+    font-weight: 600;
+    font-size: 8.5vmin;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    text-align: center;
+    color: var(--fg);
+  }
+  .josh-card__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 4.5vmin;
+    font-weight: 500;
+    font-size: 7vmin;
+    letter-spacing: -0.01em;
+    color: var(--fg);
+  }
+  .josh-card__item {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 3.5vmin;
+  }
+  .josh-card__check {
+    color: var(--green-600);
+    font-weight: 700;
+    font-size: 7.5vmin;
+    line-height: 1;
+  }
+  /* Brand lockup — matches FWT's <Wordmark/> on the settings screen.
+     Lucide-style outline check (stroke 3, rounded), lowercase "josh approved"
+     in IBM Plex Sans SemiBold with tight tracking (mirrors tokens.ts: tracking.mark = -0.6 at base 16). */
+  .josh-card__wordmark {
+    display: flex;
+    align-items: center;
+    gap: 1.4vmin;
+    font-weight: 600;
+    font-size: 3.2vmin;
+    letter-spacing: -0.0375em;
+    color: var(--fg);
+  }
+  .josh-card__wordmark-check {
+    width: 3vmin;
+    height: 3vmin;
+    color: var(--green-600);
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="caption" id="caption"></div>
+    <div id="frame"></div>
+  </div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const surface = params.get('surface') || 'iphone';
+  const screen  = params.get('screen')  || '';
+  const caption = params.get('caption') || '';
+  const bg      = params.get('bg')      || 'paper';
+
+  document.body.dataset.surface = surface;
+  document.body.dataset.bg = bg;
+  document.getElementById('caption').textContent = caption;
+
+  const frame = document.getElementById('frame');
+  if (surface === 'chrome') {
+    frame.innerHTML = `
+      <div class="window">
+        <div class="titlebar">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span class="urlbar"></span>
+        </div>
+        <div class="body"><img src="${screen}" alt=""></div>
+      </div>`;
+  } else if (surface === 'josh-card') {
+    // Slot 2 of every Josh Approved listing. Identical across every app —
+    // edit the wording here and re-render every app to propagate.
+    frame.innerHTML = `
+      <div class="josh-card">
+        <div class="josh-card__main">
+          <div class="josh-card__title">What's a<br>Josh Approved app?</div>
+          <ul class="josh-card__list">
+            <li class="josh-card__item"><span class="josh-card__check">&#10003;</span><span>No ads, ever</span></li>
+            <li class="josh-card__item"><span class="josh-card__check">&#10003;</span><span>No tracking</span></li>
+            <li class="josh-card__item"><span class="josh-card__check">&#10003;</span><span>Open source</span></li>
+            <li class="josh-card__item"><span class="josh-card__check">&#10003;</span><span>Pay what you want</span></li>
+          </ul>
+        </div>
+        <div class="josh-card__wordmark">
+          <svg class="josh-card__wordmark-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          <span>josh approved</span>
+        </div>
+      </div>`;
+  } else {
+    frame.innerHTML = `
+      <div class="device">
+        <div class="screen"><img src="${screen}" alt=""></div>
+      </div>`;
+  }
+
+  // Signal readiness for the renderer.
+  Promise.all([
+    document.fonts.ready,
+    new Promise(res => {
+      const img = document.querySelector('img');
+      if (!img) return res();
+      if (img.complete) return res();
+      img.addEventListener('load', res);
+      img.addEventListener('error', res);
+    }),
+  ]).then(() => { document.body.dataset.ready = '1'; });
+</script>
+</body>
+</html>

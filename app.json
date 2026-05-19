@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Grocery List",
+    "slug": "grocery-list",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FAFAF7"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.joshapproved.grocerylist"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FAFAF7"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.joshapproved.grocerylist"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "owner": "josh-approved"
+  }
+}

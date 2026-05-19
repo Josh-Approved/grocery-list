@@ -1,0 +1,341 @@
+name: QA e2e
+
+# Layer 2 — drives the app through scripted flows on cloud sims/emulators,
+# captures screenshots at named waypoints, frames them via the vendored
+# render-screenshots.mjs, and uploads framed store assets as workflow artifacts.
+# Free for public repos (unlimited Linux + macOS minutes).
+#
+# Gated to pull_request + workflow_dispatch only. Do NOT add `push: main` here —
+# every push would burn 15+ minutes per platform.
+#
+# Build is performed by `eas build --local`, NOT raw xcodebuild / gradlew. The
+# Expo build pipeline runs prebuild + pod install + Metro bundling itself, with
+# the asset registry in place — bypassing it (e.g. via manual `expo
+# export:embed`) breaks `expo-font` at runtime so the app boots blank. See
+# stack/eas-build.md for the canonical reasoning.
+#
+# Surface gating runs in the `detect` job (NOT job-level `if: hashFiles(...)`,
+# which fails because the workspace isn't checked out at job-eligibility time
+# and causes GitHub to reject the entire workflow at registration).
+#
+# Each platform job runs the framer at the end, so framed PNGs are produced
+# inside the job and uploaded as a single per-surface artifact. No cross-job
+# choreography, no cross-repo access required.
+#
+# Required repo secret: EXPO_TOKEN. Used by `expo/expo-github-action@v8` for
+# `eas build --local` project-identity validation.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      is-rn: ${{ steps.check.outputs.is-rn }}
+      is-extension: ${{ steps.check.outputs.is-extension }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: check
+        run: |
+          [ -f app.json ] && echo "is-rn=true" >> "$GITHUB_OUTPUT" || echo "is-rn=false" >> "$GITHUB_OUTPUT"
+          [ -f manifest.json ] && echo "is-extension=true" >> "$GITHUB_OUTPUT" || echo "is-extension=false" >> "$GITHUB_OUTPUT"
+
+  ios:
+    needs: detect
+    if: needs.detect.outputs.is-rn == 'true'
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      # EXPO_PUBLIC_* env is inlined into the JS bundle by Metro at bundle
+      # time. eas build --local invokes Metro through the standard Expo
+      # pipeline, which honours runner-shell env. No eas.json change needed.
+      EXPO_PUBLIC_QA_MODE: '1'
+      # Maestro's XCTest driver occasionally takes >2 min to start on macos-15
+      # (the runner's first XCTest launch warms multiple subsystems). The
+      # default startup timeout fails the run on those cold starts; bump to
+      # 5 min so the driver gets a fair shot before we declare the run dead.
+      MAESTRO_DRIVER_STARTUP_TIMEOUT: '300000'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install Maestro
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> $GITHUB_PATH
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          # macos-15 runners are Apple Silicon (arm64). Xcode 26.2 ships SDK
+          # iOS 26.2, matching the iOS 26.2 simulator runtime pre-installed on
+          # the image. Pinning Xcode is on us — eas.json's `image` field is
+          # IGNORED for --local builds. If macos-15's image changes:
+          # - re-check via setup-xcode failure output (lists installed Xcodes)
+          # - cross-check with `xcrun simctl list runtimes` (installed runtimes)
+          # - update both pins together.
+          xcode-version: '26.2.0'
+      - name: npm ci
+        run: npm ci
+      - name: Setup Expo + EAS CLI
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: EAS local build (iOS simulator)
+        # Profile: preview, with `ios.simulator: true` in eas.json so the
+        # output is a simulator-installable .app archive. Output is a tarball
+        # containing the .app bundle (per Expo docs + eas-cli #1959).
+        # --output requires a FILE PATH (not directory) with extension.
+        run: |
+          set -o pipefail
+          eas build \
+            --platform ios \
+            --profile preview \
+            --local \
+            --non-interactive \
+            --output "$GITHUB_WORKSPACE/ios-build.tar.gz" 2>&1 | tee eas-build-ios.log
+      - name: Upload eas build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-eas-build-log
+          path: eas-build-ios.log
+      - name: Extract simulator .app
+        id: extract
+        run: |
+          mkdir -p extracted-ios
+          tar -xzf "$GITHUB_WORKSPACE/ios-build.tar.gz" -C extracted-ios
+          APP_PATH=$(find extracted-ios -maxdepth 3 -name "*.app" -type d -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::no .app bundle found in ios-build.tar.gz"
+            ls -laR extracted-ios | head -80
+            exit 1
+          fi
+          echo "App path: $APP_PATH"
+          echo "app-path=$APP_PATH" >> "$GITHUB_OUTPUT"
+      - name: Verify .app architecture (arm64 sim required)
+        # eas-cli #3281: --local can produce an x86_64-only .app on Apple
+        # Silicon, which fails to install on macos-15 sims. Fail fast with a
+        # clear message instead of silently breaking the install step.
+        run: |
+          BIN_PATH="${{ steps.extract.outputs.app-path }}"
+          BINARY=$(find "$BIN_PATH" -maxdepth 2 -type f -perm +111 ! -name "*.dylib" | head -1)
+          echo "Binary: $BINARY"
+          ARCHS=$(lipo -archs "$BINARY" 2>/dev/null || echo "unknown")
+          echo "Architectures: $ARCHS"
+          if ! echo "$ARCHS" | grep -q "arm64"; then
+            echo "::error::Built .app missing arm64 slice; will not install on Apple Silicon sim. See eas-cli #3281."
+            exit 1
+          fi
+      - name: Boot iPhone 16 Pro Max (iOS 26.2) + normalize status bar
+        id: sim
+        run: |
+          # Multiple sims with the same name exist (one per installed
+          # runtime), so we pin via UDID created against the iOS 26.2 runtime.
+          UDID=$(xcrun simctl create "qa-iphone" "iPhone 16 Pro Max" "com.apple.CoreSimulator.SimRuntime.iOS-26-2")
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override \
+            --time "9:41" \
+            --batteryState charged --batteryLevel 100 \
+            --cellularBars 4 --wifiBars 3
+      - name: Install app on simulator
+        run: xcrun simctl install ${{ steps.sim.outputs.udid }} "${{ steps.extract.outputs.app-path }}"
+      - name: Run Maestro flow
+        run: |
+          mkdir -p qa/captures/ios
+          maestro test qa/flows/mobile.yaml --env=PLATFORM=ios --env=STORE=ios --debug-output maestro-debug-ios
+      - name: Show Maestro debug on failure
+        if: failure()
+        run: |
+          echo "=== maestro-debug-ios tree ==="
+          find maestro-debug-ios -type f 2>/dev/null | head -40 || true
+          echo ""
+          echo "=== maestro.log (full) ==="
+          for f in $(find maestro-debug-ios -name "maestro.log" 2>/dev/null | sort | tail -1); do
+            cat "$f"
+          done
+          echo ""
+          echo "=== commands json (head 200) ==="
+          for f in $(find maestro-debug-ios -name "commands-*.json" 2>/dev/null | sort | tail -1); do
+            head -200 "$f"
+          done
+          echo ""
+          echo "=== app UI hierarchy now ==="
+          maestro hierarchy 2>&1 | head -200 || true
+      - name: Frame screenshots
+        if: success()
+        run: node scripts/render-screenshots.mjs --store ios
+      - name: Upload iOS artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: store-assets-ios
+          # Maestro writes debug to `maestro-debug-ios/.maestro/...`;
+          # upload-artifact excludes hidden paths by default, so the debug
+          # bundle silently disappears without this flag.
+          include-hidden-files: true
+          path: |
+            store-assets/screenshots/ios/
+            qa/captures/ios/
+            maestro-debug-ios/
+
+  android:
+    needs: detect
+    if: needs.detect.outputs.is-rn == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPO_PUBLIC_QA_MODE: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Maestro
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> $GITHUB_PATH
+      - name: Install Chrome (for framer)
+        run: sudo apt-get update && sudo apt-get install -y google-chrome-stable
+      - name: npm ci
+        run: npm ci
+      - name: Setup Expo + EAS CLI
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: EAS local build (Android APK)
+        # Profile: preview, with `android.buildType: "apk"` in eas.json so the
+        # output is an emulator-installable APK directly (no .aab, no tarball).
+        # GRADLE_OPTS is a belt-and-suspenders for non-daemon Gradle calls; the
+        # load-bearing override of org.gradle.jvmargs lives in the
+        # `with-gradle-jvm-args` config plugin (project gradle.properties wins
+        # over GRADLE_OPTS for the daemon JVM that does the heavy lifting).
+        env:
+          GRADLE_OPTS: '-Xmx4g -XX:MaxMetaspaceSize=1g'
+        run: |
+          set -o pipefail
+          eas build \
+            --platform android \
+            --profile preview \
+            --local \
+            --non-interactive \
+            --output "$GITHUB_WORKSPACE/build.apk" 2>&1 | tee eas-build-android.log
+      - name: Upload eas build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-eas-build-log
+          path: eas-build-android.log
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Write Android e2e script to file
+        run: |
+          # android-emulator-runner@v2 runs each line of `script:` in its own
+          # `sh -c`, so cross-line variables don't propagate. Workaround: write
+          # the whole script to a file here and have `script:` call it.
+          cat > /tmp/run-android-e2e.sh <<'SCRIPT_EOF'
+          #!/usr/bin/env bash
+          set -e
+          adb install -r "$GITHUB_WORKSPACE/build.apk"
+          adb shell pm list packages | head -5
+          mkdir -p qa/captures/android maestro-debug-android
+          adb logcat -c
+          adb logcat > maestro-debug-android/logcat.txt &
+          LOGCAT_PID=$!
+          set +e
+          maestro test qa/flows/mobile.yaml --env=PLATFORM=android --env=STORE=android --debug-output maestro-debug-android
+          MAESTRO_RC=$?
+          kill $LOGCAT_PID || true
+          if [ $MAESTRO_RC -ne 0 ]; then
+            echo "=== maestro-debug-android tree ==="
+            find maestro-debug-android -type f 2>/dev/null | head -40 || true
+            echo ""
+            echo "=== maestro.log (full) ==="
+            for f in $(find maestro-debug-android -name "maestro.log" 2>/dev/null | sort | tail -1); do
+              cat "$f"
+            done
+            echo ""
+            echo "=== app UI hierarchy now ==="
+            maestro hierarchy 2>&1 | head -200 || true
+            echo ""
+            echo "=== logcat (tail 150) ==="
+            tail -150 maestro-debug-android/logcat.txt 2>/dev/null || true
+          fi
+          exit $MAESTRO_RC
+          SCRIPT_EOF
+          chmod +x /tmp/run-android-e2e.sh
+      - name: Run Maestro on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none
+          disable-animations: true
+          script: /tmp/run-android-e2e.sh
+      - name: Frame screenshots
+        if: success()
+        env:
+          CHROME_PATH: /usr/bin/google-chrome-stable
+        run: node scripts/render-screenshots.mjs --store android
+      - name: Upload Android artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: store-assets-android
+          include-hidden-files: true
+          path: |
+            store-assets/screenshots/android/
+            qa/captures/android/
+            maestro-debug-android/
+
+  extension-chrome:
+    needs: detect
+    if: needs.detect.outputs.is-extension == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: |
+          if [ -f package.json ]; then npm ci; fi
+          npm install --no-save playwright @playwright/test
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Install system Chrome (for framer)
+        run: sudo apt-get update && sudo apt-get install -y google-chrome-stable
+      - name: Run Playwright e2e
+        run: |
+          mkdir -p qa/captures/chrome
+          npx playwright test qa/flows/extension.spec.ts --reporter=list
+      - name: Frame screenshots
+        env:
+          CHROME_PATH: /usr/bin/google-chrome-stable
+        run: node scripts/render-screenshots.mjs --store chrome
+      - name: Upload Chrome framed store assets
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: store-assets-chrome
+          path: |
+            store-assets/screenshots/chrome/
+            qa/captures/chrome/
