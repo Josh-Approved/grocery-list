@@ -13,15 +13,18 @@
  * already end-to-end encrypted (see crypto.ts) so a relay only ever sees
  * ciphertext under a random channel tag.
  *
- * NOT DEVICE-VERIFIED: structurally complete and type-clean, but the live
- * round-trip through real relays has not been exercised on a device. This is
- * the documented, committed Layer-2 deferral (canon § Backup & restore);
- * device-verify is gated before public release in the app CLAUDE.md.
+ * Round-trip verified 2026-05-21 against real public relays via
+ * `scripts/test-relay.mjs` (Bob publishes encrypted, Alice receives +
+ * decrypts in <1s through nostr.mom; nos.lol also reached). Two peers, same
+ * crypto + signing the app uses, on the same relay list. In-app integration
+ * — engine wiring on local changes, share-link/QR flow between two installed
+ * instances — is the remaining verification (canon § Backup & restore Layer
+ * 2: documented, committed deferral pre-public-release).
  */
 
-import { schnorr } from '@noble/curves/secp256k1';
-import { sha256 } from '@noble/hashes/sha2';
-import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
+import { schnorr } from '@noble/curves/secp256k1.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import nacl from 'tweetnacl';
 
 /** Free public relays. Updatable: the swarm is redundant by design, so a
@@ -131,8 +134,9 @@ export class DropBoxTransport {
       tags,
       ciphertext,
     ]);
-    const id = bytesToHex(sha256(utf8ToBytes(serial)));
-    const sig = bytesToHex(schnorr.sign(id, this.priv));
+    const idBytes = sha256(utf8ToBytes(serial));
+    const id = bytesToHex(idBytes);
+    const sig = bytesToHex(schnorr.sign(idBytes, this.priv));
     this.mine.add(id);
     if (this.mine.size > 200) this.mine = new Set([id]);
     const ev: NostrEvent = {
