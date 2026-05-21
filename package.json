@@ -5,7 +5,7 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
-    "ios": "LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 expo start --ios",
+    "ios": "LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 expo run:ios",
     "web": "expo start --web"
   },
   "dependencies": {
@@ -35,7 +35,6 @@
     "react-native-svg": "15.12.1",
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1",
-    "yjs": "^13.6.30",
     "zustand": "^5.0.13"
   },
   "devDependencies": {

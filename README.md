@@ -27,7 +27,7 @@ Requires Node and the Expo tooling (plus Xcode for the iOS simulator, or Android
 
 ## Privacy
 
-Your lists stay on your device. When you share a list, changes pass between the two phones end-to-end encrypted, through free public infrastructure that we don't run and can't read. No servers of ours, no accounts, no analytics. See [PRIVACY.md](PRIVACY.md).
+Your data stays with you. When you share a list, changes pass between your phones end-to-end encrypted, through free public infrastructure we don't run and can't read. No accounts, no tracking, no analytics. See [PRIVACY.md](PRIVACY.md).
 
 ## License
 
