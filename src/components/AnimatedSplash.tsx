@@ -1,78 +1,73 @@
 /**
  * Cold-start splash that bridges the native launch screen into the app.
  *
- * The native launch screen shows the app icon (`splash-icon.png`) contained on
- * paper. This component renders that *same* asset the same way, so when the
- * native splash hands off to JS there is no visible cut — then the Josh Approved
- * approval-green check lands over the icon and the whole layer fades into the app.
+ * Canonical across the catalogue — synced into each app at
+ * src/components/AnimatedSplash.tsx by
+ *   node josh-approved-factory/scripts/sync.mjs splash <app>
+ * Edit HERE (the factory template), never the per-app copy.
+ *
+ * The native launch screen shows the app icon glyph (`splash-icon.png`)
+ * contained on paper. This component renders that *same* asset the same way, so
+ * the native -> JS handoff has no visible cut. Then the "josh approved" wordmark
+ * (the same mark that sits at the bottom of every Settings screen) pops in
+ * toward the bottom of the screen, and the whole layer crossfades into the app.
  *
  * Always paper/light, on purpose: the native launch screen is locked light
  * (app.json `splash.backgroundColor`), so matching it is what makes the handoff
  * seamless. The exit crossfade absorbs the paper -> app (incl. dark) transition.
  *
- * Two variants for comparison — flip SPLASH_VARIANT and the dev app hot-reloads:
- *   'calm'   — static check fades + gently scales to rest (on-brand default).
- *   'drawOn' — the check draws itself stroke-by-stroke (a deliberate exception
- *              to the design system, which lists draw-on checkmarks under
- *              "things to refuse"; kept here only so Josh can compare).
+ * Motion is the system's single ease-out curve, no bounce — a crisp pop, not a
+ * bounce. Reduce-motion collapses every duration to 0 (the mark is just there).
+ * Total intro is ~1s — a deliberate launch beat, longer than the 150/250ms UI
+ * interaction tokens.
  *
- * Motion is the system's single ease-out curve, no bounce. Reduce-motion
- * collapses every duration to 0 — the check is simply present.
+ * Wiring (per app, in App.tsx — see the design-system skill / sync nextSteps):
+ *   import * as SplashScreen from 'expo-splash-screen';
+ *   SplashScreen.preventAutoHideAsync().catch(() => {});   // module scope
+ *   const ready = <app's existing first-paint gate (fonts + any store hydration)>;
+ *   const [splashDone, setSplashDone] = useState(false);
+ *   // render app content when `ready`; overlay until splashDone:
+ *   {!splashDone && <AnimatedSplash ready={ready} onFinish={() => setSplashDone(true)} />}
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Dimensions, Image, StyleSheet, View } from 'react-native';
+import { Dimensions, Image, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import { Check } from 'lucide-react-native';
 import Animated, {
   Easing,
   runOnJS,
-  useAnimatedProps,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withDelay,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Rect, Polyline } from 'react-native-svg';
-import { lightColors } from '../theme';
-
-/** Flip to compare on-device. See file header. */
-export const SPLASH_VARIANT: 'calm' | 'drawOn' = 'calm';
+import { lightColors, fontFamily, tracking } from '../theme';
 
 const PAPER = lightColors.bg; // #FAFAF7 — matches the native launch screen
-const GREEN = lightColors.accent; // #1F8A4C — the approval green
+const GREEN = lightColors.accent; // #1F8A4C — the approval green (the check)
+const INK = lightColors.fg; // wordmark text
 
 // Single ease-out curve (design-system `motion.easingStandard`). No bounce.
 const EASE = Easing.bezier(0.2, 0, 0, 1);
 
-// Timeline (ms). Kept short — the icon-only beat overlaps real cold-start work,
-// so the check reads as "arriving" without padding launch.
+// Timeline (ms) — ~1s total, deliberately unhurried but crisp.
 const T = {
-  holdBefore: 140, // icon alone, so it registers before the check
-  badgeIn: 240, // calm: fade+scale of the whole check; drawOn: the plate appears
-  drawDelay: 110, // drawOn: pause after the plate before the stroke draws
-  draw: 300, // drawOn: stroke draw
-  holdAfter: 220, // let the finished check sit a beat
+  holdBefore: 260, // icon alone, so it registers before the mark
+  wordIn: 380, // the wordmark pops in (fade + rise + scale-settle)
+  holdAfter: 160, // let the finished mark sit a beat
   fadeOut: 240, // crossfade the whole layer into the app
 };
 
-// Polyline path length (two segments of the check) + slack for round caps.
-const CHECK_DASH = 24;
-
-// The native launch screen shows the icon contained full-screen. For a square
-// asset that's a centered square the size of the screen's shorter edge — render
-// it explicitly so the result is identical on iOS/Android and deterministic on
-// web. The approval check is a corner stamp on the lower-right of that icon
-// (matching the corner-check convention used elsewhere in the catalogue).
 const { width: WIN_W, height: WIN_H } = Dimensions.get('window');
+// The native launch screen shows the glyph contained full-screen; render it the
+// same way (centred square the size of the shorter edge) so the handoff matches.
 const ICON = Math.round(Math.min(WIN_W, WIN_H));
-const BADGE = Math.round(ICON * 0.24);
-// Offset of the badge centre from the icon centre, toward the lower-right
-// corner. Keeps the badge on the icon, clear of its rounded corner.
-const CORNER_OFFSET = Math.round(ICON * 0.21);
-
-const AnimatedPolyline = Animated.createAnimatedComponent(Polyline);
+// The wordmark sits in the lower portion of the screen, beneath the icon.
+const WORDMARK_BOTTOM = Math.round(WIN_H * 0.16);
+const CHECK_SIZE = 22;
 
 type Props = {
   /** App content is mounted and ready (fonts + stores hydrated). */
@@ -84,12 +79,9 @@ type Props = {
 export default function AnimatedSplash({ ready, onFinish }: Props) {
   const reduceMotion = useReducedMotion();
 
-  const badgeOpacity = useSharedValue(reduceMotion ? 1 : 0);
-  const badgeScale = useSharedValue(reduceMotion ? 1 : 0.8);
-  // Normalized stroke offset: 1 = undrawn, 0 = fully drawn.
-  const checkDraw = useSharedValue(
-    reduceMotion || SPLASH_VARIANT === 'calm' ? 0 : 1,
-  );
+  const wordOpacity = useSharedValue(reduceMotion ? 1 : 0);
+  const wordScale = useSharedValue(reduceMotion ? 1 : 0.85);
+  const wordY = useSharedValue(reduceMotion ? 0 : 14);
   const layerOpacity = useSharedValue(1);
 
   const [introDone, setIntroDone] = useState(false);
@@ -109,25 +101,12 @@ export default function AnimatedSplash({ ready, onFinish }: Props) {
       return;
     }
 
-    badgeOpacity.value = withDelay(
-      T.holdBefore,
-      withTiming(1, { duration: SPLASH_VARIANT === 'calm' ? T.badgeIn : 150, easing: EASE }),
-    );
-    badgeScale.value = withDelay(
-      T.holdBefore,
-      withTiming(1, { duration: SPLASH_VARIANT === 'calm' ? T.badgeIn : 150, easing: EASE }),
-    );
+    const opts = { duration: T.wordIn, easing: EASE };
+    wordOpacity.value = withDelay(T.holdBefore, withTiming(1, opts));
+    wordScale.value = withDelay(T.holdBefore, withTiming(1, opts));
+    wordY.value = withDelay(T.holdBefore, withTiming(0, opts));
 
-    let introMs = T.holdBefore;
-    if (SPLASH_VARIANT === 'calm') {
-      introMs += T.badgeIn + T.holdAfter;
-    } else {
-      checkDraw.value = withDelay(
-        T.holdBefore + T.drawDelay,
-        withTiming(0, { duration: T.draw, easing: EASE }),
-      );
-      introMs += T.drawDelay + T.draw + T.holdAfter;
-    }
+    const introMs = T.holdBefore + T.wordIn + T.holdAfter;
     const id = setTimeout(() => setIntroDone(true), introMs);
     timers.current.push(id);
   };
@@ -145,12 +124,9 @@ export default function AnimatedSplash({ ready, onFinish }: Props) {
   }, [introDone, ready, reduceMotion, layerOpacity, onFinish]);
 
   const layerStyle = useAnimatedStyle(() => ({ opacity: layerOpacity.value }));
-  const badgeStyle = useAnimatedStyle(() => ({
-    opacity: badgeOpacity.value,
-    transform: [{ scale: badgeScale.value }],
-  }));
-  const checkProps = useAnimatedProps(() => ({
-    strokeDashoffset: CHECK_DASH * checkDraw.value,
+  const wordStyle = useAnimatedStyle(() => ({
+    opacity: wordOpacity.value,
+    transform: [{ translateY: wordY.value }, { scale: wordScale.value }],
   }));
 
   return (
@@ -164,40 +140,20 @@ export default function AnimatedSplash({ ready, onFinish }: Props) {
           fadeDuration={0}
         />
       </View>
-      <Badge style={badgeStyle} checkProps={checkProps} />
-    </Animated.View>
-  );
-}
-
-function Badge({
-  style,
-  checkProps,
-}: {
-  style: ReturnType<typeof useAnimatedStyle>;
-  checkProps: ReturnType<typeof useAnimatedProps>;
-}) {
-  return (
-    <View style={styles.badgeWrap}>
-      <View style={styles.badgeCorner}>
-        <Animated.View style={style}>
-          <Svg width={BADGE} height={BADGE} viewBox="0 0 36 36">
-          {/* Paper plate so the green check reads as a stamp on the icon. */}
-          <Rect x={0} y={0} width={36} height={36} rx={9} fill={PAPER} />
-          <Rect x={4} y={4} width={28} height={28} rx={6} fill={GREEN} />
-          <AnimatedPolyline
-            points="11,19 16,24 25,13"
-            fill="none"
-            stroke={PAPER}
-            strokeWidth={3}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeDasharray={CHECK_DASH}
-            animatedProps={checkProps}
-          />
-          </Svg>
+      <View style={styles.wordmarkWrap}>
+        <Animated.View
+          style={[styles.row, wordStyle]}
+          accessible
+          accessibilityRole="text"
+          accessibilityLabel="josh approved"
+        >
+          <Check size={CHECK_SIZE} color={GREEN} strokeWidth={3} />
+          <Text style={styles.text} importantForAccessibility="no">
+            josh approved
+          </Text>
         </Animated.View>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -215,18 +171,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     pointerEvents: 'none',
   },
-  badgeWrap: {
+  wordmarkWrap: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: WORDMARK_BOTTOM,
     pointerEvents: 'none',
   },
-  // Shift the badge from the icon centre toward the lower-right corner. Scale
-  // animates on the inner Animated.View, so it stays anchored at the badge.
-  badgeCorner: {
-    transform: [
-      { translateX: CORNER_OFFSET },
-      { translateY: CORNER_OFFSET },
-    ],
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  text: {
+    color: INK,
+    fontFamily: fontFamily.sansSemibold,
+    fontSize: 19,
+    letterSpacing: tracking.mark,
   },
 });
