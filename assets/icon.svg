@@ -8,31 +8,16 @@
     <!-- Background: market-kraft brown (the grocery-list per-app accent) -->
     <rect id="bg" x="0" y="0" width="1024" height="1024" fill="#8A6A45"></rect>
 
-    <!-- Glyph: a grocery paper bag with produce poking out the top. Paper-white
-         line-art, vertically centred. The rim is drawn last with an accent fill
-         so the produce reads as tucked into the bag. The build script extracts
-         this #glyph group, recolours #FAFAF7 -> accent, and renders it alone on
-         paper for the cold-start splash. -->
-    <g id="glyph" stroke="#FAFAF7" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" fill="none">
-      <!-- Produce (drawn first; the bag rim overlaps their bases) -->
-      <!-- Leafy greens, left -->
-      <path d="M 432 452 C 412 372 400 320 386 256"></path>
-      <path d="M 452 452 C 452 360 456 308 454 250"></path>
-      <path d="M 472 452 C 492 374 516 326 544 282"></path>
-      <!-- Round fruit, right, with a small leaf (tucked behind the rim) -->
-      <circle cx="600" cy="384" r="70"></circle>
-      <path d="M 600 318 C 612 300 632 298 650 308"></path>
-
-      <!-- Bag body: vertical sides, flat bottom, open top -->
-      <path d="M 350 452 L 350 750 Q 350 776 376 776 L 648 776 Q 674 776 674 750 L 674 452"></path>
-
-      <!-- Folded top rim (wider than the body) — accent fill occludes the produce bases -->
-      <rect x="324" y="436" width="376" height="54" rx="14" fill="#8A6A45"></rect>
-      <!-- Fold line across the cuff -->
-      <line x1="342" y1="465" x2="682" y2="465"></line>
-
-      <!-- Center crease -->
-      <line x1="512" y1="502" x2="512" y2="752"></line>
+    <!-- Glyph: a shopping cart — push handle, forward-slanted basket, two wheels.
+         Paper-white line-art, vertically centred. The build script extracts this
+         #glyph group, recolours #FAFAF7 -> accent, and renders it alone on paper
+         for the cold-start splash. -->
+    <g id="glyph" transform="translate(0 -18)" stroke="#FAFAF7" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <!-- Handle grip -> push bar -> basket bottom -> front -> flat top rim -->
+      <path d="M 250 322 L 316 322 L 380 600 Q 384 624 410 624 L 690 624 Q 716 624 724 602 L 786 392 L 356 392"></path>
+      <!-- Wheels -->
+      <circle cx="452" cy="702" r="38"></circle>
+      <circle cx="672" cy="702" r="38"></circle>
     </g>
   </g>
 </svg>
