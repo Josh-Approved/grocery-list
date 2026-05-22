@@ -33,6 +33,7 @@ import ListDetailScreen from './src/screens/ListDetailScreen';
 import ReorderAislesScreen from './src/screens/ReorderAislesScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import ShareScreen from './src/screens/ShareScreen';
+import Credits from './src/components/Credits';
 import { startSyncEngine, stopSyncEngine } from './src/sync';
 import { parseShareLink } from './src/sync/share';
 import AnimatedSplash from './src/components/AnimatedSplash';
@@ -46,6 +47,7 @@ export type RootStackParamList = {
   ReorderAisles: { listId: string };
   Settings: undefined;
   Share: { listId: string };
+  Acknowledgements: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -143,6 +145,9 @@ export default function App() {
               component={ShareScreen}
               options={{ presentation: 'modal' }}
             />
+            <Stack.Screen name="Acknowledgements">
+              {(props) => <Credits onBack={() => props.navigation.goBack()} />}
+            </Stack.Screen>
           </Stack.Navigator>
         </NavigationContainer>
       )}

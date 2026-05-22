@@ -1,0 +1,25 @@
+{
+  "intro": "Grocery List is built on the work of these open-source projects.",
+  "include": [
+    { "package": "react-native", "displayName": "React Native" },
+    { "package": "expo", "displayName": "Expo" },
+    { "package": "@react-navigation/native", "displayName": "React Navigation" },
+    { "package": "zustand", "displayName": "Zustand" },
+    { "package": "expo-sqlite", "displayName": "Expo SQLite" },
+    { "package": "react-native-reanimated", "displayName": "Reanimated" },
+    { "package": "react-native-svg", "displayName": "react-native-svg" },
+    { "package": "react-native-qrcode-svg", "displayName": "react-native-qrcode-svg" },
+    { "package": "expo-camera", "displayName": "Expo Camera" },
+    { "package": "@noble/curves", "displayName": "Noble Curves" },
+    { "package": "@noble/hashes", "displayName": "Noble Hashes" },
+    { "package": "tweetnacl", "displayName": "TweetNaCl.js" },
+    { "package": "lucide-react-native", "displayName": "Lucide" }
+  ],
+  "extra": [
+    {
+      "name": "IBM Plex",
+      "license": "OFL 1.1",
+      "url": "https://www.ibm.com/plex/"
+    }
+  ]
+}

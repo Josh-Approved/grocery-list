@@ -21,6 +21,7 @@ import {
   Star,
   Shield,
   Code2,
+  Library,
   Upload,
   Download,
 } from 'lucide-react-native';
@@ -105,6 +106,7 @@ export default function SettingsScreen({ navigation }: Props) {
         <AboutRow label="Leave a review" icon={Star} onPress={openReview} />
         <AboutRow label="Privacy" icon={Shield} onPress={() => openUrl(PRIVACY_URL)} />
         <AboutRow label="Source code" icon={Code2} onPress={() => openUrl(REPO_URL)} />
+        <AboutRow label="Acknowledgements" icon={Library} onPress={() => navigation.navigate('Acknowledgements')} />
         <AboutRow label="Version" value={versionLabel()} />
 
         <View style={s.stamp}>
