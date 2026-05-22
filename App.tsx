@@ -12,8 +12,9 @@
  * Settings + the shared-sync entry points land at build steps 6 and 4.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useColorScheme, Linking } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
 import {
   NavigationContainer,
   createNavigationContainerRef,
@@ -34,6 +35,10 @@ import SettingsScreen from './src/screens/SettingsScreen';
 import ShareScreen from './src/screens/ShareScreen';
 import { startSyncEngine, stopSyncEngine } from './src/sync';
 import { parseShareLink } from './src/sync/share';
+import AnimatedSplash from './src/components/AnimatedSplash';
+
+// Hold the native launch screen until the JS splash takes over (no icon blink).
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export type RootStackParamList = {
   ListsHome: undefined;
@@ -110,31 +115,40 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
-  if (!fontsLoaded || !hydrated || !accountHydrated) return null;
+  // Content is ready once fonts AND both stores have hydrated. The animated
+  // splash overlays until its intro has played and content is ready, then
+  // crossfades out.
+  const ready = fontsLoaded && hydrated && accountHydrated;
+  const [splashDone, setSplashDone] = useState(false);
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer ref={navigationRef} theme={buildNavTheme(isDark)}>
-        <StatusBar style={isDark ? 'light' : 'dark'} />
-        <Stack.Navigator
-          initialRouteName="ListsHome"
-          screenOptions={{ headerShown: false }}
-        >
-          <Stack.Screen name="ListsHome" component={ListsHomeScreen} />
-          <Stack.Screen name="ListDetail" component={ListDetailScreen} />
-          <Stack.Screen
-            name="ReorderAisles"
-            component={ReorderAislesScreen}
-            options={{ presentation: 'modal' }}
-          />
-          <Stack.Screen name="Settings" component={SettingsScreen} />
-          <Stack.Screen
-            name="Share"
-            component={ShareScreen}
-            options={{ presentation: 'modal' }}
-          />
-        </Stack.Navigator>
-      </NavigationContainer>
+      {ready && (
+        <NavigationContainer ref={navigationRef} theme={buildNavTheme(isDark)}>
+          <StatusBar style={isDark ? 'light' : 'dark'} />
+          <Stack.Navigator
+            initialRouteName="ListsHome"
+            screenOptions={{ headerShown: false }}
+          >
+            <Stack.Screen name="ListsHome" component={ListsHomeScreen} />
+            <Stack.Screen name="ListDetail" component={ListDetailScreen} />
+            <Stack.Screen
+              name="ReorderAisles"
+              component={ReorderAislesScreen}
+              options={{ presentation: 'modal' }}
+            />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen
+              name="Share"
+              component={ShareScreen}
+              options={{ presentation: 'modal' }}
+            />
+          </Stack.Navigator>
+        </NavigationContainer>
+      )}
+      {!splashDone && (
+        <AnimatedSplash ready={ready} onFinish={() => setSplashDone(true)} />
+      )}
     </SafeAreaProvider>
   );
 }
