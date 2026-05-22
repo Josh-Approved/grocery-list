@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ChevronLeft,
-  Coffee,
+  HandHeart,
   Mail,
   Star,
   Shield,
@@ -100,7 +100,7 @@ export default function SettingsScreen({ navigation }: Props) {
         {status ? <Text style={s.status}>{status}</Text> : null}
 
         <Text style={s.sectionLabel}>About</Text>
-        <AboutRow label="Buy me a coffee?" icon={Coffee} onPress={() => openUrl(BMAC_URL)} />
+        <AboutRow label="Support this app" icon={HandHeart} onPress={() => openUrl(BMAC_URL)} />
         <AboutRow label="Send feedback" icon={Mail} onPress={openFeedbackMail} />
         <AboutRow label="Leave a review" icon={Star} onPress={openReview} />
         <AboutRow label="Privacy" icon={Shield} onPress={() => openUrl(PRIVACY_URL)} />

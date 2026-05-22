@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { Coffee, Mail } from 'lucide-react-native';
+import { HandHeart, Mail } from 'lucide-react-native';
 import { BMAC_URL, openUrl, openFeedbackMail } from '../lib/links';
 import {
   useTheme,
@@ -26,10 +26,10 @@ export function FundingFooter() {
         style={({ pressed }) => [s.link, pressed && s.pressed]}
         onPress={() => openUrl(BMAC_URL)}
         accessibilityRole="button"
-        accessibilityLabel="Buy me a coffee"
+        accessibilityLabel="Support this app"
       >
-        <Coffee size={14} color={c.fgMuted} strokeWidth={1.5} />
-        <Text style={s.text}>Buy me a coffee?</Text>
+        <HandHeart size={14} color={c.fgMuted} strokeWidth={1.5} />
+        <Text style={s.text}>Support this app</Text>
       </Pressable>
       <Pressable
         style={({ pressed }) => [s.link, pressed && s.pressed]}
