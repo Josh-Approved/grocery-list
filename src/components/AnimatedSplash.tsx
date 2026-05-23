@@ -12,6 +12,14 @@
  * (the same mark that sits at the bottom of every Settings screen) pops in
  * toward the bottom of the screen, and the whole layer crossfades into the app.
  *
+ * The wordmark's font (IBM Plex Sans SemiBold) is loaded BY THIS COMPONENT and
+ * the mark is held back until it's ready, so the wordmark always renders in
+ * IBM Plex — identically on every app. Otherwise the mark races the app's own
+ * font load, which finishes at a different moment per app (a font-only gate vs.
+ * a fonts+store-hydration gate), so the mark would show the system fallback on
+ * one app and IBM Plex on another. A short fallback timer guarantees the splash
+ * still proceeds even if the bundled font somehow never resolves (never hangs).
+ *
  * Always paper/light, on purpose: the native launch screen is locked light
  * (app.json `splash.backgroundColor`), so matching it is what makes the handoff
  * seamless. The exit crossfade absorbs the paper -> app (incl. dark) transition.
@@ -34,6 +42,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Dimensions, Image, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import { useFonts } from 'expo-font';
 import { Check } from 'lucide-react-native';
 import Animated, {
   Easing,
@@ -55,11 +64,13 @@ const EASE = Easing.bezier(0.2, 0, 0, 1);
 
 // Timeline (ms) — ~1s total, deliberately unhurried but crisp.
 const T = {
-  holdBefore: 260, // icon alone, so it registers before the mark
+  holdBefore: 240, // icon alone (after its font is ready) before the mark
   wordIn: 380, // the wordmark pops in (fade + rise + scale-settle)
   holdAfter: 160, // let the finished mark sit a beat
   fadeOut: 240, // crossfade the whole layer into the app
 };
+// Don't wait on the (bundled, fast) wordmark font forever — proceed after this.
+const FONT_FALLBACK_MS = 900;
 
 const { width: WIN_W, height: WIN_H } = Dimensions.get('window');
 // The native launch screen shows the glyph contained full-screen; render it the
@@ -78,6 +89,11 @@ type Props = {
 
 export default function AnimatedSplash({ ready, onFinish }: Props) {
   const reduceMotion = useReducedMotion();
+  // Load the wordmark's font here so the mark renders in IBM Plex from the
+  // first frame it appears — identical on every app (see file header).
+  const [markFontLoaded] = useFonts({
+    'IBMPlexSans-SemiBold': require('../../assets/fonts/IBMPlexSans-SemiBold.otf'),
+  });
 
   const wordOpacity = useSharedValue(reduceMotion ? 1 : 0);
   const wordScale = useSharedValue(reduceMotion ? 1 : 0.85);
@@ -85,33 +101,53 @@ export default function AnimatedSplash({ ready, onFinish }: Props) {
   const layerOpacity = useSharedValue(1);
 
   const [introDone, setIntroDone] = useState(false);
+  const [laidOut, setLaidOut] = useState(false);
+  const [fontTimedOut, setFontTimedOut] = useState(false);
   const began = useRef(false);
+  const hid = useRef(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
-  // Start the intro the moment the JS layer is on screen, and hand the native
-  // launch screen over to it (the two frames are identical, so no flicker).
-  const begin = () => {
-    if (began.current) return;
-    began.current = true;
+  // Fallback so the wordmark — and therefore the splash exit — never waits
+  // forever on the bundled font.
+  useEffect(() => {
+    const id = setTimeout(() => setFontTimedOut(true), FONT_FALLBACK_MS);
+    return () => clearTimeout(id);
+  }, []);
+
+  // Hand the native launch screen over to the JS layer the moment it's on
+  // screen (the two frames are identical, so no flicker).
+  const onLayout = () => {
+    if (hid.current) return;
+    hid.current = true;
     SplashScreen.hideAsync().catch(() => {});
+    setLaidOut(true);
+  };
+
+  // Start the intro once the layer is up AND the wordmark font is ready (or the
+  // fallback fired). Gating on font-readiness is what makes the mark identical
+  // across apps. introDone is time-based from here, so the splash always exits.
+  useEffect(() => {
+    if (began.current || !laidOut) return;
+    if (!markFontLoaded && !fontTimedOut) return;
+    began.current = true;
 
     if (reduceMotion) {
       setIntroDone(true);
       return;
     }
-
     const opts = { duration: T.wordIn, easing: EASE };
     wordOpacity.value = withDelay(T.holdBefore, withTiming(1, opts));
     wordScale.value = withDelay(T.holdBefore, withTiming(1, opts));
     wordY.value = withDelay(T.holdBefore, withTiming(0, opts));
-
-    const introMs = T.holdBefore + T.wordIn + T.holdAfter;
-    const id = setTimeout(() => setIntroDone(true), introMs);
+    const id = setTimeout(
+      () => setIntroDone(true),
+      T.holdBefore + T.wordIn + T.holdAfter,
+    );
     timers.current.push(id);
-  };
+  }, [laidOut, markFontLoaded, fontTimedOut, reduceMotion, wordOpacity, wordScale, wordY]);
 
-  // Exit only once the intro has played AND the app behind us is ready.
+  // Exit once the intro has played AND the app behind us is ready.
   useEffect(() => {
     if (!introDone || !ready) return;
     layerOpacity.value = withTiming(
@@ -130,7 +166,7 @@ export default function AnimatedSplash({ ready, onFinish }: Props) {
   }));
 
   return (
-    <Animated.View style={[styles.layer, layerStyle]} onLayout={begin}>
+    <Animated.View style={[styles.layer, layerStyle]} onLayout={onLayout}>
       <StatusBar style="dark" />
       <View style={styles.center}>
         <Image
