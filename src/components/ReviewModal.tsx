@@ -61,7 +61,7 @@ export default function ReviewModal({
     await markReviewOpened(storageKey);
     const url =
       Platform.OS === 'ios'
-        ? `itms-apps://itunes.apple.com/app/id${iosAppStoreId}?action=write-review`
+        ? `itms-apps://apps.apple.com/app/id${iosAppStoreId}?action=write-review`
         : `https://play.google.com/store/apps/details?id=${androidPackageName}&showAllReviews=true`;
     await Linking.openURL(url).catch(() => {});
     onDismiss();
