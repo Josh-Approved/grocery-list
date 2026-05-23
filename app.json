@@ -38,7 +38,8 @@
         {
           "cameraPermission": "Scan a QR code to join a shared list."
         }
-      ]
+      ],
+      "./plugins/withGradleJvmArgs"
     ]
   }
 }

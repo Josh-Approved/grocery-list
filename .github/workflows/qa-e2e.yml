@@ -217,10 +217,13 @@ jobs:
       - name: EAS local build (Android APK)
         # Profile: preview, with `android.buildType: "apk"` in eas.json so the
         # output is an emulator-installable APK directly (no .aab, no tarball).
-        # GRADLE_OPTS is a belt-and-suspenders for non-daemon Gradle calls; the
-        # load-bearing override of org.gradle.jvmargs lives in the
-        # `with-gradle-jvm-args` config plugin (project gradle.properties wins
-        # over GRADLE_OPTS for the daemon JVM that does the heavy lifting).
+        # The load-bearing override of org.gradle.jvmargs lives in the
+        # `./plugins/withGradleJvmArgs` config plugin (wired in app.json): it
+        # rewrites android/gradle.properties at prebuild, which the Gradle
+        # daemon reads and which wins over GRADLE_OPTS for the daemon JVM that
+        # does the heavy lifting (KSP / lint). GRADLE_OPTS below is just a
+        # belt-and-suspenders for any non-daemon Gradle calls. Without the
+        # plugin a local build OOMs on Metaspace (default 512m).
         env:
           GRADLE_OPTS: '-Xmx4g -XX:MaxMetaspaceSize=1g'
         run: |

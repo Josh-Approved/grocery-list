@@ -19,7 +19,7 @@
  *       { "commits/fingerprint": "<sha>" }  — only commits AFTER this SHA are checked
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve, relative } from 'node:path';
 import { execSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -258,6 +258,185 @@ const rulePackageJsonNoAnalytics = () => {
   return pass('telemetry/no-analytics-deps', 'No analytics SDKs in dependencies');
 };
 
+// ---------- rules: cross-platform functional parity (RN src) ----------
+//
+// Enforces canonical-requirements.md § Cross-platform functional parity: a
+// user-facing action that exists on only one platform is an unshipped feature,
+// not a scoped one. These rules catch the mechanical tells of that defect in an
+// app's src/. Surfaced by packing-list shipping trip delete/rename/duplicate
+// reachable only on iOS (ActionSheetIOS + Alert.prompt + `Platform.OS !== 'ios'
+// return` guards) because nothing mechanical caught the pattern.
+
+const SRC_EXTENSIONS = /\.(jsx?|tsx?)$/i;
+
+// Walk <app>/src for source files. Plain fs walk (not git) so it works on a
+// fresh checkout / pre-commit; src/ is always tracked in our apps anyway.
+const srcSourceFiles = () => {
+  const root = join(appDir, 'src');
+  if (!exists(root)) return [];
+  const out = [];
+  const walk = (dir) => {
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name === 'node_modules' || e.name === '.git') continue;
+        walk(p);
+      } else if (SRC_EXTENSIONS.test(e.name)) {
+        out.push(p);
+      }
+    }
+  };
+  walk(root);
+  return out;
+};
+
+// Strip line + block comments so a banned name mentioned in a doc comment
+// (e.g. packing-list's Dialogs.tsx documenting that it "replaces ActionSheetIOS
+// and Alert.prompt") never false-positives. String/template literals are KEPT —
+// the import-source rule needs the 'react-native' specifier and the Platform.OS
+// rule needs the 'ios'/'android' literals to match. We stay string-aware only so
+// a `//` or `/*` *inside* a string isn't mistaken for a comment. Newlines are
+// preserved so reported line numbers stay accurate. Crude but sufficient: the
+// goal is to avoid matching prose, not to parse JS.
+const stripComments = (text) => {
+  let out = '';
+  let i = 0;
+  const n = text.length;
+  let state = 'code'; // code | line | block | sq | dq | tpl
+  while (i < n) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (state === 'code') {
+      if (ch === '/' && next === '/') { state = 'line'; i += 2; continue; }
+      if (ch === '/' && next === '*') { state = 'block'; i += 2; continue; }
+      if (ch === "'") { state = 'sq'; out += ch; i += 1; continue; }
+      if (ch === '"') { state = 'dq'; out += ch; i += 1; continue; }
+      if (ch === '`') { state = 'tpl'; out += ch; i += 1; continue; }
+      out += ch; i += 1; continue;
+    }
+    if (state === 'line') {
+      if (ch === '\n') { state = 'code'; out += ch; }
+      i += 1; continue;
+    }
+    if (state === 'block') {
+      if (ch === '*' && next === '/') { state = 'code'; i += 2; continue; }
+      if (ch === '\n') out += ch; // keep line count stable
+      i += 1; continue;
+    }
+    // inside a string / template literal: keep the content verbatim
+    if (ch === '\\') { out += ch + (next ?? ''); i += 2; continue; } // keep escaped char
+    if (state === 'sq' && ch === "'") { state = 'code'; out += ch; i += 1; continue; }
+    if (state === 'dq' && ch === '"') { state = 'code'; out += ch; i += 1; continue; }
+    if (state === 'tpl' && ch === '`') { state = 'code'; out += ch; i += 1; continue; }
+    out += ch; i += 1;
+  }
+  return out;
+};
+
+const BANNED_IMPORT_NAMES = ['ActionSheetIOS', 'PushNotificationIOS', 'Settings'];
+
+// Match named imports from 'react-native' and pull out the bound names. Catches
+//   import { Settings, X } from 'react-native'
+//   import RN, { ActionSheetIOS } from 'react-native'
+// across multiple lines. We only flag the banned names when the source module
+// is literally 'react-native' (RN's built-in Settings is the trap; an app's own
+// ./Settings screen import is fine).
+const RN_NAMED_IMPORT_RE = /import\s+(?:[A-Za-z0-9_$]+\s*,\s*)?\{([^}]*)\}\s*from\s*['"]react-native['"]/g;
+
+const ruleNoIosOnlyImports = () => {
+  if (surface !== 'rn') return skip('parity/no-ios-only-imports', 'Not an RN app');
+  const files = srcSourceFiles();
+  if (!files.length) return skip('parity/no-ios-only-imports', 'No src/ source files');
+  const hits = [];
+  for (const f of files) {
+    const raw = readText(f);
+    if (!raw) continue;
+    const code = stripComments(raw);
+    const rel = relative(appDir, f);
+    let m;
+    RN_NAMED_IMPORT_RE.lastIndex = 0;
+    while ((m = RN_NAMED_IMPORT_RE.exec(code)) !== null) {
+      const named = m[1]
+        .split(',')
+        .map((s) => s.trim().split(/\s+as\s+/)[0].trim())
+        .filter(Boolean);
+      for (const name of named) {
+        if (BANNED_IMPORT_NAMES.includes(name)) {
+          hits.push(`${rel}: imports { ${name} } from 'react-native'`);
+        }
+      }
+    }
+  }
+  if (hits.length) {
+    return fail('parity/no-ios-only-imports',
+      "iOS-only RN APIs imported in src/ — break a feature on Android (use a cross-platform primitive)", hits);
+  }
+  return pass('parity/no-ios-only-imports', "No ActionSheetIOS / PushNotificationIOS / RN built-in Settings imports in src/");
+};
+
+const ruleNoAlertPrompt = () => {
+  if (surface !== 'rn') return skip('parity/no-alert-prompt', 'Not an RN app');
+  const files = srcSourceFiles();
+  if (!files.length) return skip('parity/no-alert-prompt', 'No src/ source files');
+  // Alert.prompt( — does not exist on Android (silently undefined), so any text
+  // input it gathers is simply unreachable there. Optional whitespace before
+  // the paren; comments/strings already stripped.
+  const ALERT_PROMPT_RE = /\bAlert\s*\.\s*prompt\s*\(/;
+  const hits = [];
+  for (const f of files) {
+    const raw = readText(f);
+    if (!raw) continue;
+    const code = stripComments(raw);
+    if (ALERT_PROMPT_RE.test(code)) hits.push(`${relative(appDir, f)}: Alert.prompt(...)`);
+  }
+  if (hits.length) {
+    return fail('parity/no-alert-prompt',
+      'Alert.prompt() in src/ — does not exist on Android (silently undefined); use a cross-platform prompt', hits);
+  }
+  return pass('parity/no-alert-prompt', 'No Alert.prompt() calls in src/');
+};
+
+// Early-return guards that gate WHETHER a feature exists, e.g.
+//   if (Platform.OS !== 'ios') return            (or === 'ios' / android, symmetric)
+//   if (Platform.OS === 'android') { return; }
+// These short-circuit logic per platform. A `Platform.OS === 'ios'` used as a
+// ternary or to pick a value/style (presentation) is FINE and must NOT match —
+// hence we anchor on `if (` immediately followed by the comparison and an
+// immediate `return`, never a bare `Platform.OS === 'ios'` expression.
+const PLATFORM_GUARD_RE =
+  /\bif\s*\(\s*Platform\s*\.\s*OS\s*[=!]==\s*['"](?:ios|android)['"]\s*\)\s*\{?\s*return\b/;
+
+const ruleNoPlatformEarlyReturn = () => {
+  if (surface !== 'rn') return skip('parity/no-platform-early-return', 'Not an RN app');
+  const files = srcSourceFiles();
+  if (!files.length) return skip('parity/no-platform-early-return', 'No src/ source files');
+  const hits = [];
+  for (const f of files) {
+    const raw = readText(f);
+    if (!raw) continue;
+    const code = stripComments(raw);
+    const rel = relative(appDir, f);
+    const lines = code.split(/\r?\n/);
+    for (let idx = 0; idx < lines.length; idx++) {
+      // Anchor on the line that actually opens the guard, so the reported line
+      // is the `if (...)` itself even when the `return` wraps to the next line.
+      if (!/\bif\s*\(\s*Platform\s*\.\s*OS\b/.test(lines[idx])) continue;
+      // Join with the next line so a guard whose brace/return wraps still matches.
+      const window = `${lines[idx]} ${lines[idx + 1] ?? ''}`;
+      if (PLATFORM_GUARD_RE.test(window)) {
+        hits.push(`${rel}:${idx + 1}: ${lines[idx].trim()}`);
+      }
+    }
+  }
+  if (hits.length) {
+    return fail('parity/no-platform-early-return',
+      "Platform.OS early-return guard in src/ — gates whether a feature exists, not how it looks (presentation-only Platform.OS branches are fine)", hits);
+  }
+  return pass('parity/no-platform-early-return', 'No Platform.OS early-return guards in src/');
+};
+
 // ---------- rules: RN-specific (eas.json shape) ----------
 
 const ruleEasJsonShape = () => {
@@ -316,6 +495,9 @@ const CANONICAL_RULES = [
   ruleBmacLink,
   ruleFeedbackMailto,
   rulePackageJsonNoAnalytics,
+  ruleNoIosOnlyImports,
+  ruleNoAlertPrompt,
+  ruleNoPlatformEarlyReturn,
   ruleEasJsonShape,
   ruleManifestMv3,
   ruleManifestPermissionsTight,
