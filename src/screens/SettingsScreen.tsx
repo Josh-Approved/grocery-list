@@ -50,6 +50,7 @@ import {
   type as t,
   type Colors,
 } from '../theme';
+import { boundedContent } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
@@ -134,6 +135,7 @@ function makeStyles(c: Colors) {
     safe: { flex: 1, backgroundColor: c.bg },
     pressed: { opacity: 0.6 },
     header: {
+      ...boundedContent,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -151,7 +153,7 @@ function makeStyles(c: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    content: { paddingBottom: space.s9 },
+    content: { ...boundedContent, paddingBottom: space.s9 },
     sectionLabel: {
       ...t.xs,
       fontFamily: fontFamily.sansSemibold,

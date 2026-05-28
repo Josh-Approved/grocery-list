@@ -24,7 +24,11 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.joshapproved.grocerylist"
+      "package": "com.joshapproved.grocerylist",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -40,6 +44,11 @@
         }
       ],
       "./plugins/withGradleJvmArgs"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "8950346f-e35b-434a-92a5-a808461f2a2b"
+      }
+    }
   }
 }

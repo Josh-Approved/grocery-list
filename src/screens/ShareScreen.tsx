@@ -32,6 +32,7 @@ import {
   hairline,
   type Colors,
 } from '../theme';
+import { boundedContent } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Share'>;
 
@@ -145,6 +146,7 @@ function makeStyles(c: Colors) {
     safe: { flex: 1, backgroundColor: c.bg },
     pressed: { opacity: 0.6 },
     header: {
+      ...boundedContent,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -158,7 +160,7 @@ function makeStyles(c: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    body: { flex: 1, alignItems: 'center', paddingHorizontal: space.s7, gap: space.s6 },
+    body: { ...boundedContent, flex: 1, alignItems: 'center', paddingHorizontal: space.s7, gap: space.s6 },
     lead: {
       ...t.base,
       fontFamily: fontFamily.sans,

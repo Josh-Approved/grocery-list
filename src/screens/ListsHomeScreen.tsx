@@ -32,6 +32,7 @@ import {
   hairline,
   type Colors,
 } from '../theme';
+import { boundedContent } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ListsHome'>;
 
@@ -206,6 +207,7 @@ function makeStyles(c: Colors) {
     rowPressed: { opacity: 0.6 },
 
     header: {
+      ...boundedContent,
       flexDirection: 'row',
       alignItems: 'flex-end',
       justifyContent: 'space-between',
@@ -239,7 +241,7 @@ function makeStyles(c: Colors) {
       color: c.fg,
     },
 
-    listContent: { paddingHorizontal: space.s6, paddingBottom: space.s8 },
+    listContent: { ...boundedContent, paddingHorizontal: space.s6, paddingBottom: space.s8 },
     sep: { height: space.s4 },
     row: {
       flexDirection: 'row',
@@ -284,7 +286,7 @@ function makeStyles(c: Colors) {
       justifyContent: 'center',
     },
 
-    emptyWrap: { flexGrow: 1, justifyContent: 'center' },
+    emptyWrap: { ...boundedContent, flexGrow: 1, justifyContent: 'center' },
     empty: { paddingHorizontal: space.s7, alignItems: 'center' },
     emptyTitle: {
       ...t.md,

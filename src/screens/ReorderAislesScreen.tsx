@@ -26,6 +26,7 @@ import {
   hairline,
   type Colors,
 } from '../theme';
+import { boundedContent } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ReorderAisles'>;
 
@@ -126,6 +127,7 @@ function makeStyles(c: Colors) {
     safe: { flex: 1, backgroundColor: c.bg },
     pressed: { opacity: 0.6 },
     header: {
+      ...boundedContent,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -150,7 +152,7 @@ function makeStyles(c: Colors) {
       paddingHorizontal: space.s6,
       paddingBottom: space.s4,
     },
-    listContent: { paddingHorizontal: space.s6, paddingBottom: space.s8 },
+    listContent: { ...boundedContent, paddingHorizontal: space.s6, paddingBottom: space.s8 },
     sep: { height: space.s3 },
     row: {
       flexDirection: 'row',

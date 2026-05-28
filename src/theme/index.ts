@@ -23,3 +23,5 @@ export {
 export type { Colors } from './colors';
 
 export { space, radius, target, motion, hairline } from './tokens';
+
+export { CONTENT_MAX_WIDTH, boundedContent } from './layout';
