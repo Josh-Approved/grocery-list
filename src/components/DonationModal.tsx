@@ -40,7 +40,7 @@ interface Props {
 }
 
 const defaultBody = (appName: string) =>
-  `${appName} is free and open-source. If it's earned a place in your day, your support keeps it going.`;
+  `${appName} has no ads and no subscriptions — it's supported by the people who use it. If it's earned a place in your day, your support keeps it going.`;
 
 export default function DonationModal({
   visible,

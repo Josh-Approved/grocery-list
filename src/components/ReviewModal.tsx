@@ -6,7 +6,7 @@
 // tokens synced into src/theme/. Don't reimplement styling here; the modal
 // inherits from the design system so all apps look like siblings.
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Modal,
   View,
@@ -15,8 +15,13 @@ import {
   StyleSheet,
   Linking,
   Platform,
+  AccessibilityInfo,
 } from 'react-native';
-import { markReviewOpened, dismissReviewPrompt } from '../storage/reviewPrompt';
+import {
+  markReviewOpened,
+  markReviewPromptShown,
+  dismissReviewPrompt,
+} from '../storage/reviewPrompt';
 import {
   useTheme,
   fontFamily,
@@ -42,8 +47,7 @@ interface Props {
   storageKey?: string;
 }
 
-const DEFAULT_BODY =
-  'A quick rating helps more people find this free, ad-free app.';
+const DEFAULT_BODY = 'A quick rating helps more people find this app.';
 
 export default function ReviewModal({
   visible,
@@ -57,8 +61,38 @@ export default function ReviewModal({
   const { c } = useTheme();
   const s = makeStyles(c);
 
+  // Reduced-motion: collapse the fade to no animation when the OS
+  // "reduce motion" setting is on (WCAG 2.2 AA — canonical non-negotiable).
+  // AccessibilityInfo.isReduceMotionEnabled() exists on both iOS and Android.
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      if (mounted) setReduceMotion(enabled);
+    });
+    const sub = AccessibilityInfo.addEventListener(
+      'reduceMotionChanged',
+      (enabled) => setReduceMotion(enabled)
+    );
+    return () => {
+      mounted = false;
+      sub.remove();
+    };
+  }, []);
+
+  // Count this prompt as *shown* the moment it becomes visible — so the
+  // maxPrompts ceiling holds even if the user back-dismisses or kills the app
+  // without tapping "Not now".
+  useEffect(() => {
+    if (visible) {
+      markReviewPromptShown(storageKey);
+    }
+  }, [visible, storageKey]);
+
   const handleReview = async () => {
     await markReviewOpened(storageKey);
+    // Canonical write-review host is apps.apple.com (modern; itunes.apple.com
+    // is legacy). ReviewModal is the authoritative source for this link.
     const url =
       Platform.OS === 'ios'
         ? `itms-apps://apps.apple.com/app/id${iosAppStoreId}?action=write-review`
@@ -73,7 +107,12 @@ export default function ReviewModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+    <Modal
+      visible={visible}
+      transparent
+      animationType={reduceMotion ? 'none' : 'fade'}
+      statusBarTranslucent
+    >
       <View style={s.overlay}>
         <View style={s.card}>
           <Text style={s.title}>{`Enjoying ${appName}?`}</Text>
@@ -118,10 +157,14 @@ function makeStyles(c: Colors) {
       borderColor: c.hairline,
       padding: space.s7,
       alignItems: 'center',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.18,
-      shadowRadius: 16,
+      // Design-system --shadow-2 (modals/sheets elevation):
+      // 0 4px 12px rgba(14,14,15,.10), 0 12px 32px rgba(14,14,15,.08).
+      // RN shadows are single-layer, so map to the dominant outer layer
+      // (color = ink #0E0E0F). elevation approximates --shadow-2 on Android.
+      shadowColor: '#0E0E0F',
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.08,
+      shadowRadius: 32,
       elevation: 10,
     },
     title: {
