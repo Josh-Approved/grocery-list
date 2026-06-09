@@ -34,8 +34,13 @@
     width: 100vw;
     height: 100vh;
     display: grid;
-    place-items: center;
     grid-template-rows: auto 1fr;
+    /* Caption centered in its auto row; the frame row STRETCHES so #frame gets a
+       definite height to bound the device against. Without the stretch the device
+       (now as tall as the capture) overflows and its bottom bezel bleeds off the
+       canvas — what cropped the cut-off FABs we're fixing. */
+    justify-items: center;
+    align-items: stretch;
     padding: var(--pad-y) var(--pad-x);
     gap: var(--gap);
   }
@@ -46,6 +51,17 @@
     text-align: center;
     line-height: 1.15;
     max-width: 90%;
+    align-self: center;
+  }
+
+  /* The frame row's stretched cell — centers the device/window/card and gives it
+     a definite box to shrink-to-fit within (height + width). */
+  #frame {
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+    display: grid;
+    place-items: center;
   }
 
   .device {
@@ -54,7 +70,13 @@
     padding: var(--bezel-thickness);
     display: grid;
     place-items: center;
-    height: 100%;
+    /* Shrink-to-fit BOTH axes (mirrors .window): width:100% + height:auto sizes
+       height from the aspect ratio; when that would exceed the cell, max-height
+       clamps and aspect-ratio pulls width back in. Using height:100% instead
+       forces full cell height and fights the aspect ratio, overflowing the
+       bottom bezel off the canvas. */
+    width: 100%;
+    height: auto;
     aspect-ratio: var(--device-aspect);
     max-height: 100%;
     max-width: 100%;
@@ -70,7 +92,13 @@
   .screen img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    /* contain, never cover — the WHOLE capture must show. A cover-crop silently
+       eats whatever sits at the screen edges, and bottom-anchored CTAs (the "+"
+       FAB, a sticky Save bar) are exactly what gets lost. The device aperture's
+       aspect ratio is set from the capture's own pixels at load time (see the
+       script below), so a matched contain has no visible letterbox — and an
+       unexpectedly-shaped capture letterboxes onto Paper rather than losing UI. */
+    object-fit: contain;
     display: block;
   }
 
@@ -125,7 +153,7 @@
     --bezel-thickness: 14px;
     --bezel-radius: 96px;
     --screen-radius: 84px;
-    --device-aspect: 1290 / 2532; /* viewport area inside frame, approx 19.5:9 */
+    --device-aspect: 1320 / 2868; /* pre-load fallback; overridden by the capture's own aspect at load */
   }
   body[data-surface="iphone"] .caption {
     font-size: 88px;
@@ -136,7 +164,7 @@
     --bezel-thickness: 18px;
     --bezel-radius: 56px;
     --screen-radius: 40px;
-    --device-aspect: 2064 / 2400;
+    --device-aspect: 2064 / 2752; /* pre-load fallback; overridden by the capture's own aspect at load */
   }
   body[data-surface="ipad"] .caption {
     font-size: 96px;
@@ -147,10 +175,21 @@
     --bezel-thickness: 12px;
     --bezel-radius: 64px;
     --screen-radius: 52px;
-    --device-aspect: 1080 / 2010;
+    --device-aspect: 1080 / 2400; /* pre-load fallback; overridden by the capture's own aspect at load */
   }
   body[data-surface="android"] .caption {
     font-size: 72px;
+  }
+
+  body[data-surface="android-tablet"] {
+    --pad-x: 120px; --pad-y: 120px; --gap: 64px;
+    --bezel-thickness: 16px;
+    --bezel-radius: 48px;
+    --screen-radius: 32px;
+    --device-aspect: 1600 / 2560; /* pre-load fallback; overridden by the capture's own aspect at load. Shared by both the 7" and 10" Play tablet render sizes. */
+  }
+  body[data-surface="android-tablet"] .caption {
+    font-size: 84px;
   }
 
   body[data-surface="chrome"] {
@@ -289,14 +328,45 @@
       </div>`;
   }
 
+  // Shape the device aperture to the capture itself, then size it in pixels to
+  // fit the available frame box on BOTH axes. The per-surface --device-aspect
+  // above is only a pre-load fallback; the real aspect is the capture's own
+  // width/height. Matching them means the whole captured screen (status bar to
+  // bottom FAB) always shows — never cropped — and a contain-fit lands edge to
+  // edge with no visible letterbox.
+  //
+  // Why size in JS instead of CSS max-height:100%? The frame's grid cell height
+  // isn't treated as definite for percentage resolution in headless Chrome, so
+  // max-height:100% silently fails to clamp and a tall (capture-shaped) device
+  // overflows — its bottom bezel bleeds off the canvas. Measuring the cell and
+  // doing the fit math here is deterministic.
+  function fitDeviceToImage(img) {
+    if (!img.naturalWidth || !img.naturalHeight) return;
+    const device = document.querySelector('.device');
+    const frame = document.getElementById('frame');
+    if (!device || !frame) return;
+    const r = img.naturalWidth / img.naturalHeight;        // capture aspect
+    const availW = frame.clientWidth;
+    const availH = frame.clientHeight;
+    let w, h;
+    if (availW / availH > r) { h = availH; w = h * r; }    // height-bound
+    else { w = availW; h = w / r; }                        // width-bound
+    device.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
+    device.style.width = `${w}px`;
+    device.style.height = `${h}px`;
+    device.style.maxWidth = 'none';
+    device.style.maxHeight = 'none';
+  }
+
   // Signal readiness for the renderer.
   Promise.all([
     document.fonts.ready,
     new Promise(res => {
       const img = document.querySelector('img');
       if (!img) return res();
-      if (img.complete) return res();
-      img.addEventListener('load', res);
+      const done = () => { fitDeviceToImage(img); res(); };
+      if (img.complete) return done();
+      img.addEventListener('load', done);
       img.addEventListener('error', res);
     }),
   ]).then(() => { document.body.dataset.ready = '1'; });

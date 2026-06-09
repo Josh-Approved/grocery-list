@@ -1,0 +1,33 @@
+{
+  "$comment": [
+    "The screenshot traversal, copy-free. Each step is one action whose target",
+    "is an @anchor key (resolved via qa/selectors.json) or, for `type`, a literal.",
+    "This is the real source of truth — qa/flows/mobile.yaml is GENERATED from it",
+    "by compile-flow.mjs and must never be hand-edited.",
+    "",
+    "Step verbs: waitFor | assert | tap | tapPoint | type | pressKey | hideKeyboard",
+    "            | swipe | wait | screenshot.  `screenshot` names map to shot ids in",
+    "            qa/screenshots.config.json (the framer's source: <store>/<name>.png).",
+    "launchApp (clearState) is implicit and always first."
+  ],
+  "appId": "REPLACE_WITH_BUNDLE_ID",
+  "clearState": true,
+  "diagnosticLaunchShot": true,
+  "settleMs": 8000,
+  "steps": [
+    { "waitFor": "@home-title", "timeout": 30000 },
+    { "screenshot": "list" },
+
+    { "tap": "@first-item" },
+    { "waitFor": "@detail-heading" },
+    { "screenshot": "detail" },
+
+    { "tap": "@add-action" },
+    { "type": "Sam" },
+    { "pressKey": "Enter" },
+    { "screenshot": "populated" },
+
+    { "tap": "@back" },
+    { "assert": "@home-title" }
+  ]
+}

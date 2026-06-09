@@ -1,0 +1,19 @@
+{
+  "$comment": "grocery-list screenshot traversal, copy-free. Generates qa/flows/mobile.yaml (run scripts/qa/compile-flow.mjs). Screenshot names match qa/screenshots.config.json sources. The 'share' shot is modal-heavy (options menu → share); left for a follow-up once the seed run is proven.",
+  "appId": "com.joshapproved.grocerylist",
+  "clearState": true,
+  "diagnosticLaunchShot": true,
+  "settleMs": 8000,
+  "steps": [
+    { "waitFor": "@home-title", "timeout": 30000 },
+    { "waitFor": "@weekly-list", "timeout": 15000 },
+
+    { "tap": "@weekly-list" },
+    { "waitFor": "@first-item", "timeout": 10000 },
+    { "screenshot": "list" },
+
+    { "tap": "@add-item" },
+    { "type": "To" },
+    { "screenshot": "autocomplete" }
+  ]
+}

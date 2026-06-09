@@ -482,6 +482,24 @@ const ruleManifestPermissionsTight = () => {
   return pass('ext/permissions-tight', `Permissions are tight (${perms.join(', ') || 'none'})`);
 };
 
+// Flow-drift — fold the Layer-1 traversal linter (scripts/qa/lint-flows.mjs)
+// into the one canonical command, so `node scripts/qa-canonical.mjs` also
+// catches a Maestro flow that has drifted from the app's current copy/screens
+// BEFORE a 20-minute e2e finds out. Runs the app's own synced linter against
+// itself; severities already match this file's PASS/WARN/FAIL/SKIP strings.
+const ruleFlowDrift = async ({ appDir }) => {
+  const linter = join(appDir, 'scripts', 'qa', 'lint-flows.mjs');
+  if (!exists(linter) || !exists(join(appDir, 'qa', 'journey.json'))) {
+    return skip('flows/lint', 'No qa/journey.json — traversal pipeline not adopted here');
+  }
+  try {
+    const mod = await import(pathToFileURL(linter).href);
+    return mod.lintFlows(appDir);
+  } catch (e) {
+    return warn('flows/lint', `Flow linter could not run: ${e.message}`);
+  }
+};
+
 // ---------- runner ----------
 
 const CANONICAL_RULES = [
@@ -501,6 +519,7 @@ const CANONICAL_RULES = [
   ruleEasJsonShape,
   ruleManifestMv3,
   ruleManifestPermissionsTight,
+  ruleFlowDrift,
 ];
 
 async function loadAppRules() {

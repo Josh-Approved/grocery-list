@@ -30,6 +30,8 @@ import {
   putTombstone,
   removeTombstone,
 } from './db';
+import { QA_MODE } from '../qa/qaMode';
+import { qaLists } from '../qa/fixtures';
 
 /** Heal duplicate ids in loaded data (legacy/edge collisions corrupt React
  *  keys and would let two devices share an id once sync lands). */
@@ -160,6 +162,13 @@ export const useListsStore = create<ListsState>()((set, get) => {
     hydrate: async () => {
       try {
         const loaded = await loadAllLists();
+        // QA capture boots cleared (clearState:true); seed deterministic data so
+        // every screen is screenshot-ready without typing live. Compile-time
+        // false in production (EXPO_PUBLIC_QA_MODE unset) → tree-shaken out.
+        if (QA_MODE && loaded.length === 0) {
+          set({ lists: qaLists(), hydrated: true });
+          return;
+        }
         const { lists, changed } = repairIds(loaded);
         set({ lists, hydrated: true });
         for (const l of changed) persist(l);

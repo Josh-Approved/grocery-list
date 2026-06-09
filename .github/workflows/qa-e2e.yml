@@ -145,11 +145,23 @@ jobs:
             --cellularBars 4 --wifiBars 3
       - name: Install app on simulator
         run: xcrun simctl install ${{ steps.sim.outputs.udid }} "${{ steps.extract.outputs.app-path }}"
+      - name: Compile + lint flow (fail fast on drift)
+        # The flow is GENERATED from qa/journey.json + qa/selectors.json. Compile
+        # it, then lint: if a selector no longer grounds against src/**, or the
+        # committed yaml is stale, fail HERE (seconds) instead of 20+ minutes into
+        # the run with a blank screenshot. Skips cleanly for apps not yet adopted.
+        run: |
+          if [ -f qa/journey.json ]; then
+            node scripts/qa/compile-flow.mjs
+            node scripts/qa/lint-flows.mjs
+          else
+            echo "no qa/journey.json — using committed qa/flows/mobile.yaml as-is"
+          fi
       - name: Run Maestro flow
         run: |
           mkdir -p qa/captures/ios
           maestro test qa/flows/mobile.yaml --env=PLATFORM=ios --env=STORE=ios --debug-output maestro-debug-ios
-      - name: Show Maestro debug on failure
+      - name: Show Maestro debug + heal proposal on failure
         if: failure()
         run: |
           echo "=== maestro-debug-ios tree ==="
@@ -167,6 +179,11 @@ jobs:
           echo ""
           echo "=== app UI hierarchy now ==="
           maestro hierarchy 2>&1 | head -200 || true
+          echo ""
+          echo "=== self-heal proposal (advisory — read qa/heal-report.json artifact) ==="
+          # The sim is still booted in this job, so heal can read the live screen
+          # and suggest the repair. Propose only (no --apply) — CI never commits.
+          if [ -f qa/journey.json ]; then node scripts/qa/heal.mjs --from-device || true; fi
       - name: Frame screenshots
         if: success()
         run: node scripts/render-screenshots.mjs --store ios
@@ -182,6 +199,7 @@ jobs:
           path: |
             store-assets/screenshots/ios/
             qa/captures/ios/
+            qa/heal-report.json
             maestro-debug-ios/
 
   android:
@@ -209,6 +227,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y google-chrome-stable
       - name: npm ci
         run: npm ci
+      - name: Compile + lint flow (fail fast on drift)
+        # Generated-flow freshness + selector grounding, on the host before the
+        # emulator even boots. Catches drift in seconds. Skips if not adopted.
+        run: |
+          if [ -f qa/journey.json ]; then
+            node scripts/qa/compile-flow.mjs
+            node scripts/qa/lint-flows.mjs
+          else
+            echo "no qa/journey.json — using committed qa/flows/mobile.yaml as-is"
+          fi
       - name: Setup Expo + EAS CLI
         uses: expo/expo-github-action@v8
         with:
@@ -275,6 +303,9 @@ jobs:
             echo "=== app UI hierarchy now ==="
             maestro hierarchy 2>&1 | head -200 || true
             echo ""
+            echo "=== self-heal proposal (advisory — read qa/heal-report.json artifact) ==="
+            if [ -f qa/journey.json ]; then node scripts/qa/heal.mjs --from-device || true; fi
+            echo ""
             echo "=== logcat (tail 150) ==="
             tail -150 maestro-debug-android/logcat.txt 2>/dev/null || true
           fi
@@ -305,6 +336,7 @@ jobs:
           path: |
             store-assets/screenshots/android/
             qa/captures/android/
+            qa/heal-report.json
             maestro-debug-android/
 
   extension-chrome:

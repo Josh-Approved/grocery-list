@@ -1,0 +1,21 @@
+{
+  "$comment": [
+    "Selector registry — the ONE place brittle UI strings live. Flows never",
+    "reference raw copy; they reference these @anchor keys (see qa/journey.json).",
+    "Each anchor resolves to a Maestro selector, testID preferred:",
+    "  { \"testID\": \"fab-add\" }        copy-proof — survives any wording change.",
+    "  { \"text\": \"Add packer\" }       Maestro regex; matches visible text OR a11y label.",
+    "  { \"testID\": \"x\", \"text\": \"y\" } both — testID wins, text is the healer's hint.",
+    "When copy moves, fix the anchor here (one line), re-run compile-flow.mjs.",
+    "When you don't know what moved, run heal.mjs — it rewrites these from the",
+    "live screen. Add a testID to any anchor that churns often to stop the churn."
+  ],
+  "anchors": {
+    "home-title":    { "text": "My trips" },
+    "first-item":    { "text": "Greece.*", "note": "the seeded demo trip" },
+    "detail-heading":{ "text": "Packers" },
+    "add-action":    { "text": "Add packer" },
+    "back":          { "text": "Back to trips" },
+    "new-action":    { "text": "New trip" }
+  }
+}

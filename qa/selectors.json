@@ -1,0 +1,9 @@
+{
+  "$comment": "Selector registry for grocery-list. Flows reference @keys, never raw copy. Anchors target the seeded 'Weekly shop' list (src/qa/fixtures.ts). text = Maestro regex (matches visible text OR a11y label).",
+  "anchors": {
+    "home-title":  { "text": "Grocery List" },
+    "weekly-list": { "text": "Weekly shop", "note": "the seeded QA list" },
+    "first-item":  { "text": "Bananas", "note": "first seeded item, confirms the list opened" },
+    "add-item":    { "text": "Add item" }
+  }
+}
