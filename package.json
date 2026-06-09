@@ -6,7 +6,8 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "jest"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -44,8 +45,17 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.1.0",
+    "jest": "^29.7.0",
+    "jest-expo": "~54.0.0",
     "typescript": "~5.9.2"
   },
-  "private": true
+  "private": true,
+  "jest": {
+    "preset": "jest-expo",
+    "transformIgnorePatterns": [
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg))"
+    ]
+  }
 }

@@ -4,6 +4,7 @@
     "home-title":  { "text": "Grocery List" },
     "weekly-list": { "text": "Weekly shop", "note": "the seeded QA list" },
     "first-item":  { "text": "Bananas", "note": "first seeded item, confirms the list opened" },
-    "add-item":    { "text": "Add item" }
+    "add-item":    { "text": "Add item" },
+    "added-item":  { "text": "Avocado", "note": "an item NOT in the seed; typed + submitted by the core add action. Its row uses accessibilityLabel={it.name} (ListDetailScreen), and 'avocado' is a real keyword in src/data/categories.ts, so the anchor is grounded. assertNot before / assert after = the add actually landed." }
   }
 }

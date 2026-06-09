@@ -1,8 +1,23 @@
 name: QA e2e
 
-# Layer 2 — drives the app through scripted flows on cloud sims/emulators,
-# captures screenshots at named waypoints, frames them via the vendored
-# render-screenshots.mjs, and uploads framed store assets as workflow artifacts.
+# Three QA tiers (canon § QA & testing):
+#   • Tier 1 — `unit` job: fast headless logic tests (jest-expo). Runs ONCE,
+#     platform-agnostic, and GATES the sim jobs — a cheap unit failure must
+#     never cost 15+ min of sim time (token/minute discipline).
+#   • Tier 2 — the iOS/Android jobs assert OUTCOMES (assert/assertNot waypoints
+#     in qa/journey.json), on BOTH platforms — so a feature that only works on
+#     one platform fails the other's job (cross-platform parity, enforced).
+#   • Tier 3 — the same runs capture + frame store screenshots.
+#
+# GATE POLICY (canon § QA & testing — enforcement lands in the shipgate phase):
+#   • TestFlight / internal beta = FAST: Tier 1 always; Tier 2 sometimes / smoke.
+#   • Production / public release  = ALWAYS full Tier 2, both platforms.
+#   This workflow is the PR gate (full set on every PR). The build-time gate that
+#   distinguishes TestFlight-fast from prod-full is wired at submit time, not here.
+#
+# Tier 2/3 drive the app through scripted flows on cloud sims/emulators, capture
+# screenshots at named waypoints, frame them via the vendored
+# render-screenshots.mjs, and upload framed store assets as workflow artifacts.
 # Free for public repos (unlimited Linux + macOS minutes).
 #
 # Gated to pull_request + workflow_dispatch only. Do NOT add `push: main` here —
@@ -42,8 +57,30 @@ jobs:
           [ -f app.json ] && echo "is-rn=true" >> "$GITHUB_OUTPUT" || echo "is-rn=false" >> "$GITHUB_OUTPUT"
           [ -f manifest.json ] && echo "is-extension=true" >> "$GITHUB_OUTPUT" || echo "is-extension=false" >> "$GITHUB_OUTPUT"
 
-  ios:
+  unit:
+    # Tier 1 — fast, headless logic tests (jest-expo). Runs once (platform-
+    # agnostic JS, ~30s) and GATES the expensive sim jobs below via `needs`.
+    # `--if-present` keeps apps that haven't adopted Tier 1 green; trailing
+    # `--passWithNoTests` keeps an app green in the window between "test script
+    # wired by sync" and "tests written" — the qa-canonical linter is what
+    # enforces that tests EXIST; this job enforces that the ones that exist PASS.
     needs: detect
+    if: needs.detect.outputs.is-rn == 'true' || needs.detect.outputs.is-extension == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - name: npm ci
+        run: npm ci
+      - name: Tier 1 — unit tests (jest)
+        run: npm test --if-present -- --passWithNoTests
+
+  ios:
+    needs: [detect, unit]
     if: needs.detect.outputs.is-rn == 'true'
     runs-on: macos-15
     timeout-minutes: 60
@@ -203,7 +240,7 @@ jobs:
             maestro-debug-ios/
 
   android:
-    needs: detect
+    needs: [detect, unit]
     if: needs.detect.outputs.is-rn == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -340,7 +377,7 @@ jobs:
             maestro-debug-android/
 
   extension-chrome:
-    needs: detect
+    needs: [detect, unit]
     if: needs.detect.outputs.is-extension == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20

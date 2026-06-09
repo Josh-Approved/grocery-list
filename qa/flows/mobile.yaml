@@ -28,3 +28,8 @@ appId: com.joshapproved.grocerylist
 - tapOn: { text: "Add item" }
 - inputText: "To"
 - takeScreenshot: qa/captures/${STORE}/autocomplete
+- assertNotVisible: { text: "Avocado" }
+- tapOn: { text: "Add item" }
+- inputText: "Avocado"
+- pressKey: Enter
+- assertVisible: { text: "Avocado" }
