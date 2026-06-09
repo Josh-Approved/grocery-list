@@ -158,7 +158,12 @@ function getHierarchy(appDir, flags, valueOf) {
     return j;
   }
   if (flags.has('--from-device')) {
-    const r = spawnSync('maestro', ['hierarchy'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    // Pass --device through: with more than one sim/emulator booted, a bare
+    // `maestro hierarchy` can't choose and fails (the capture orchestrator
+    // already knows the target udid, so it threads it here).
+    const dev = valueOf('--device');
+    const argv = dev ? ['--device', dev, 'hierarchy'] : ['hierarchy'];
+    const r = spawnSync('maestro', argv, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
     if (r.status !== 0) { console.error('maestro hierarchy failed:\n' + (r.stderr || '')); process.exit(1); }
     // maestro prints some log lines before the JSON; slice from the first brace.
     const i = r.stdout.indexOf('{');
@@ -178,7 +183,12 @@ function main() {
     const i = args.indexOf(name);
     return i >= 0 ? args[i + 1] : null;
   };
-  const appDir = path.resolve(args.find((a) => !a.startsWith('--')) || process.cwd());
+  // The optional positional is the app dir. Skip the VALUES of value-taking
+  // flags so e.g. `--device <udid>` doesn't get mistaken for the app dir.
+  const VALUE_FLAGS = new Set(['--device', '--anchor', '--hierarchy']);
+  const appDir = path.resolve(
+    args.find((a, i) => !a.startsWith('--') && !VALUE_FLAGS.has(args[i - 1])) || process.cwd()
+  );
 
   const selectorsPath = path.join(appDir, 'qa', 'selectors.json');
   const journeyPath = path.join(appDir, 'qa', 'journey.json');

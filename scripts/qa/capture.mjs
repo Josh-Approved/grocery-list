@@ -150,9 +150,14 @@ function iosPrepare(artifact) {
   const appPath = dry ? '<app>' : (findApp.stdout || '').trim();
 
   // Boot a sim of the right device type (create if missing), normalize status bar.
-  run('device — boot simulator', 'bash', ['-lc',
+  // ISOLATE to a single sim first: Maestro's iOS (XCTest) driver flakes badly
+  // when several sims are booted — launchApp lands on the wrong one and every
+  // screenshot is the springboard. So we shut down all OTHER booted sims before
+  // the run (hard-won; this exact failure ate a capture on 2026-06-08).
+  run('device — boot simulator (isolated)', 'bash', ['-lc',
     `UDID=$(xcrun simctl list devices | grep -m1 ${JSON.stringify(device)} | grep -oE '[0-9A-F-]{36}' | head -1); ` +
     `[ -z "$UDID" ] && UDID=$(xcrun simctl create qa-${storeKey} ${JSON.stringify(device)}); ` +
+    `for u in $(xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}'); do [ "$u" != "$UDID" ] && xcrun simctl shutdown "$u" 2>/dev/null; done; ` +
     `xcrun simctl boot "$UDID" 2>/dev/null; xcrun simctl bootstatus "$UDID" -b; ` +
     `xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3; ` +
     `echo "$UDID" > ${JSON.stringify(path.join(appDir, 'qa', 'captures', `.udid-${storeKey}`))}`]);
@@ -213,7 +218,7 @@ function healAndRetry() {
   if (!flags.has('--heal')) return false;
   console.log('\n› heal — traverse failed; reading live screen and repairing confident anchors');
   run('heal — repair from device', 'node', [
-    path.join('scripts', 'qa', 'heal.mjs'), '--from-device', '--apply',
+    path.join('scripts', 'qa', 'heal.mjs'), '--from-device', ...deviceArg(), '--apply',
   ], { allowFail: true });
   compileFlow();
   return traverse();
@@ -230,7 +235,7 @@ function frame() {
 
 function learn() {
   run('learn — record green hierarchy as healer baseline', 'node', [
-    path.join('scripts', 'qa', 'heal.mjs'), '--from-device', '--record',
+    path.join('scripts', 'qa', 'heal.mjs'), '--from-device', ...deviceArg(), '--record',
   ], { allowFail: true });
 }
 
