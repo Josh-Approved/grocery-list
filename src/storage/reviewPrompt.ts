@@ -68,10 +68,25 @@ export async function recordSuccessfulCompletion(
   return shouldPrompt;
 }
 
-/** Called by the modal when the user taps "Not now." */
-export async function dismissReviewPrompt(storageKey?: string): Promise<void> {
+/**
+ * Called by the modal when it becomes visible. Counts the prompt as *shown* so
+ * the maxPrompts ceiling holds even if the user back-dismisses or kills the app
+ * without tapping "Not now" — those paths never call dismissReviewPrompt, so
+ * the counter must advance on show, not only on explicit dismissal.
+ */
+export async function markReviewPromptShown(storageKey?: string): Promise<void> {
   const state = await load(storageKey);
   state.promptsShown += 1;
+  await save(state, storageKey);
+}
+
+/**
+ * Called by the modal when the user taps "Not now." The shown-count is already
+ * advanced by markReviewPromptShown (on display); this only schedules the next
+ * eligible completion so we don't double-count a single prompt.
+ */
+export async function dismissReviewPrompt(storageKey?: string): Promise<void> {
+  const state = await load(storageKey);
   state.nextPromptAt =
     state.successfulCompletions + REVIEW_CONFIG.remindAfterCompletions;
   await save(state, storageKey);
