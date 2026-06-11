@@ -2,7 +2,7 @@
   "$comment": "Selector registry for grocery-list. Flows reference @keys, never raw copy. Anchors target the seeded 'Weekly shop' list (src/qa/fixtures.ts). text = Maestro regex (matches visible text OR a11y label).",
   "anchors": {
     "home-title":  { "text": "Grocery List" },
-    "weekly-list": { "text": "Weekly shop", "note": "the seeded QA list" },
+    "weekly-list": { "text": "Weekly shop.*", "note": "the seeded QA list. Wrapped with .* because the list card merges title+subtitle into one a11y label ('Weekly shop, 2 of 12 checked') on iOS; Maestro full-matches the regex, so bare 'Weekly shop' never matched a screen where the card is plainly visible." },
     "first-item":  { "text": "Bananas", "note": "first seeded item, confirms the list opened" },
     "add-item":    { "text": "Add item" },
     "added-item":  { "text": "Avocado", "note": "an item NOT in the seed; typed + submitted by the core add action. Its row uses accessibilityLabel={it.name} (ListDetailScreen), and 'avocado' is a real keyword in src/data/categories.ts, so the anchor is grounded. assertNot before / assert after = the add actually landed." }

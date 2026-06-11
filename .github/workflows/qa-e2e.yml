@@ -325,6 +325,15 @@ jobs:
           cat > /tmp/run-android-e2e.sh <<'SCRIPT_EOF'
           #!/usr/bin/env bash
           set -e
+          # Suppress the system ANR / "isn't responding" dialogs. On the 2-core,
+          # software-GPU (swiftshader) CI emulator the Pixel Launcher itself
+          # intermittently ANRs during a run; its system dialog renders OVER the
+          # app under test, so Maestro's hierarchy query returns aerr_wait /
+          # aerr_close and every assertion fails against a screen that is, in
+          # fact, fine (the app rendered correctly behind the dialog). Diagnosed
+          # P0 2026-06-10 from the failure screenshot ("Pixel Launcher isn't
+          # responding" over a fully-rendered app). Synced from templates/qa.
+          adb shell settings put global hide_error_dialogs 1
           adb install -r "$GITHUB_WORKSPACE/build.apk"
           adb shell pm list packages | head -5
           mkdir -p qa/captures/android maestro-debug-android

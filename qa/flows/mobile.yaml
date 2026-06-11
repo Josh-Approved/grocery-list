@@ -18,9 +18,9 @@ appId: com.joshapproved.grocerylist
     visible: { text: "Grocery List" }
     timeout: 30000
 - extendedWaitUntil:
-    visible: { text: "Weekly shop" }
+    visible: { text: "Weekly shop.*" }
     timeout: 15000
-- tapOn: { text: "Weekly shop" }
+- tapOn: { text: "Weekly shop.*" }
 - extendedWaitUntil:
     visible: { text: "Bananas" }
     timeout: 10000
