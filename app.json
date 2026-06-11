@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.joshapproved.grocerylist"
+      "bundleIdentifier": "com.joshapproved.grocerylist",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -26,6 +29,8 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.joshapproved.grocerylist",
       "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
       ]
@@ -49,6 +54,12 @@
       "eas": {
         "projectId": "8950346f-e35b-434a-92a5-a808461f2a2b"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/8950346f-e35b-434a-92a5-a808461f2a2b"
     }
   }
 }
