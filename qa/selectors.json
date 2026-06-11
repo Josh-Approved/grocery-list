@@ -4,7 +4,7 @@
     "home-title":  { "text": "Grocery List" },
     "weekly-list": { "text": "Weekly shop.*", "note": "the seeded QA list. Wrapped with .* because the list card merges title+subtitle into one a11y label ('Weekly shop, 2 of 12 checked') on iOS; Maestro full-matches the regex, so bare 'Weekly shop' never matched a screen where the card is plainly visible." },
     "first-item":  { "text": "Bananas", "note": "first seeded item, confirms the list opened" },
-    "add-item":    { "text": "Add item" },
+    "add-input":   { "text": "Add an item", "note": "the add-item TextInput (placeholder + a11y label 'Add an item'). Tap it to FOCUS before typing — the 'Add item' Plus button is disabled while the field is empty, so tapping the button first is a no-op and the typed text lands nowhere (the original CI red: nothing got added, final assert failed on both platforms). Distinct from 'Add item' under Maestro's full-match regex." },
     "added-item":  { "text": "Avocado", "note": "an item NOT in the seed; typed + submitted by the core add action. Its row uses accessibilityLabel={it.name} (ListDetailScreen), and 'avocado' is a real keyword in src/data/categories.ts, so the anchor is grounded. assertNot before / assert after = the add actually landed." }
   }
 }

@@ -12,13 +12,10 @@
     { "waitFor": "@first-item", "timeout": 10000 },
     { "screenshot": "list" },
 
-    { "tap": "@add-item" },
-    { "type": "To" },
-    { "screenshot": "autocomplete" },
-
     { "assertNot": "@added-item" },
-    { "tap": "@add-item" },
+    { "tap": "@add-input" },
     { "type": "Avocado" },
+    { "screenshot": "autocomplete" },
     { "pressKey": "Enter" },
     { "assert": "@added-item" }
   ]
