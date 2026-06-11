@@ -1,5 +1,5 @@
 {
-  "$comment": "grocery-list screenshot traversal, copy-free. Generates qa/flows/mobile.yaml (run scripts/qa/compile-flow.mjs). Screenshot names match qa/screenshots.config.json sources. The 'share' shot is modal-heavy (options menu → share); left for a follow-up once the seed run is proven.",
+  "$comment": "grocery-list screenshot traversal + Tier-2 outcome assertion. Generates qa/flows/mobile.yaml (run scripts/qa/compile-flow.mjs). Screenshot names match qa/screenshots.config.json sources. The 'share' shot is modal-heavy (options menu -> share); left for a follow-up once the seed run is proven. The add-item assertion pins the core action: a typed item that was absent before the add is visible (by its row accessibilityLabel) after it.",
   "appId": "com.joshapproved.grocerylist",
   "clearState": true,
   "diagnosticLaunchShot": true,
@@ -12,8 +12,11 @@
     { "waitFor": "@first-item", "timeout": 10000 },
     { "screenshot": "list" },
 
-    { "tap": "@add-item" },
-    { "type": "To" },
-    { "screenshot": "autocomplete" }
+    { "assertNot": "@added-item" },
+    { "tap": "@add-input" },
+    { "type": "Avocado" },
+    { "screenshot": "autocomplete" },
+    { "pressKey": "Enter" },
+    { "assert": "@added-item" }
   ]
 }

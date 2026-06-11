@@ -18,13 +18,16 @@ appId: com.joshapproved.grocerylist
     visible: { text: "Grocery List" }
     timeout: 30000
 - extendedWaitUntil:
-    visible: { text: "Weekly shop" }
+    visible: { text: "Weekly shop.*" }
     timeout: 15000
-- tapOn: { text: "Weekly shop" }
+- tapOn: { text: "Weekly shop.*" }
 - extendedWaitUntil:
     visible: { text: "Bananas" }
     timeout: 10000
 - takeScreenshot: qa/captures/${STORE}/list
-- tapOn: { text: "Add item" }
-- inputText: "To"
+- assertNotVisible: { text: "Avocado" }
+- tapOn: { text: "Add an item" }
+- inputText: "Avocado"
 - takeScreenshot: qa/captures/${STORE}/autocomplete
+- pressKey: Enter
+- assertVisible: { text: "Avocado" }

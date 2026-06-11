@@ -73,6 +73,16 @@ const gitTrackedFiles = (() => {
 
 const baseline = readJson(join(appDir, 'qa', 'baseline.json')) || {};
 
+// Shipgate opt-in (canon § QA & testing, rollout = codify -> backfill -> shipgate).
+// The three testing-tier rules are WARN during codify/backfill so surfacing a
+// gap never reds an app's CI before its tests exist. Once an app is backfilled
+// green, set `"testing/enforce": true` in its qa/baseline.json to PROMOTE those
+// rules to FAIL (the ship-gate) — per-app, so a backfilled app can't regress
+// while a not-yet-backfilled app stays advisory. `testWarn` is the chosen
+// severity for those rules.
+const enforceTesting = baseline['testing/enforce'] === true;
+const testWarn = (id, message, detail) => (enforceTesting ? fail : warn)(id, message, detail);
+
 const COMMIT_DELIM = '----QA-COMMIT-END----';
 const gitLogCommits = (range) => {
   if (!isGitRepo) return null;
@@ -482,6 +492,64 @@ const ruleManifestPermissionsTight = () => {
   return pass('ext/permissions-tight', `Permissions are tight (${perms.join(', ') || 'none'})`);
 };
 
+// ---------- rules: testing tiers (Tier 1 logic + Tier 2 flow assertions) ----------
+//
+// Canon § QA & testing (extends § Store screenshots & QA capture). These three
+// are WARN, not FAIL, on purpose: the studio is in the CODIFY phase of the
+// rollout (codify -> backfill -> shipgate). Surfacing the gap must not red an
+// app's CI before its tests are backfilled. Promote to FAIL at the shipgate
+// phase, per-app, via qa/baseline.json grandfathering once green.
+
+// Tier 1 — does the app have a real `npm test`? The trust core (the one module
+// where a bug is silent and expensive — split math, merge/tombstone
+// reconciliation, interval sequencing) must be unit-tested. First gate: a test
+// script that isn't npm's placeholder.
+const ruleTestScriptPresent = () => {
+  const pkg = readJson(join(appDir, 'package.json'));
+  if (!pkg) return skip('test/script-present', 'No package.json');
+  const t = pkg.scripts && pkg.scripts.test;
+  if (!t || /no test specified/i.test(t)) {
+    return testWarn('test/script-present',
+      'No real `test` script in package.json — Tier 1 logic tests are required (jest-expo); add `"test": "jest"` and cover the trust core');
+  }
+  return pass('test/script-present', `test script present ("${t}")`);
+};
+
+// Tier 1 — is anything actually tested? At least one *.test/*.spec file (or a
+// __tests__ dir) under src/. Deliberately a presence check, not coverage %:
+// the bar is "the trust core is covered", which a human/reviewer judges; this
+// only catches the all-too-common "test script wired, zero tests written".
+const TEST_FILE_RE = /(?:\.(?:test|spec)\.[jt]sx?$)|(?:[\\/]__tests__[\\/])/;
+const ruleTrustCoreCovered = () => {
+  const root = join(appDir, 'src');
+  if (!exists(root)) return skip('test/trust-core-covered', 'No src/ directory');
+  const files = srcSourceFiles().filter((f) => TEST_FILE_RE.test(f));
+  if (!files.length) {
+    return testWarn('test/trust-core-covered',
+      'No *.test / *.spec / __tests__ files under src/ — the trust core (the module a bug silently corrupts) must have unit tests');
+  }
+  return pass('test/trust-core-covered', `${files.length} test file(s) under src/`);
+};
+
+// Tier 2 — does the traversal prove a RESULT, not just navigate? A journey that
+// only waitFor/tap/screenshot proves the app booted and anchors were tappable,
+// never that a flow produced the right outcome. Require >=1 assert/assertNot
+// step (the outcome verbs). Only meaningful once the capture pipeline is
+// adopted, so skip when there's no journey.json.
+const ruleFlowHasAssertions = () => {
+  const journeyPath = join(appDir, 'qa', 'journey.json');
+  if (!exists(journeyPath)) return skip('flows/has-outcome-assertions', 'No qa/journey.json — capture pipeline not adopted here');
+  const journey = readJson(journeyPath);
+  if (!journey) return testWarn('flows/has-outcome-assertions', 'qa/journey.json is unreadable JSON');
+  const steps = Array.isArray(journey.steps) ? journey.steps : [];
+  const assertions = steps.filter((s) => s && (('assert' in s) || ('assertNot' in s))).length;
+  if (assertions === 0) {
+    return testWarn('flows/has-outcome-assertions',
+      'qa/journey.json has no assert/assertNot steps — the flow navigates and screenshots but proves no outcome; add an outcome assertion per core action (add/edit/delete)');
+  }
+  return pass('flows/has-outcome-assertions', `${assertions} assert/assertNot step(s) in journey`);
+};
+
 // Flow-drift — fold the Layer-1 traversal linter (scripts/qa/lint-flows.mjs)
 // into the one canonical command, so `node scripts/qa-canonical.mjs` also
 // catches a Maestro flow that has drifted from the app's current copy/screens
@@ -519,6 +587,9 @@ const CANONICAL_RULES = [
   ruleEasJsonShape,
   ruleManifestMv3,
   ruleManifestPermissionsTight,
+  ruleTestScriptPresent,
+  ruleTrustCoreCovered,
+  ruleFlowHasAssertions,
   ruleFlowDrift,
 ];
 

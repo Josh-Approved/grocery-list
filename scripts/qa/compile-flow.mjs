@@ -120,6 +120,14 @@ export function compileJourney(journey, selectors, appDir = '.') {
     } else if ('assert' in step) {
       const sel = resolveSelector(step.assert, anchors, ctx);
       out.push(`- assertVisible: ${selInline(sel)}`);
+    } else if ('assertNot' in step) {
+      // Tier 2 OUTCOME assertion: prove an element is GONE after an action —
+      // the seeded item after a delete, an error banner that must not appear,
+      // a cleared field. `assert` proves a screen rendered (navigation sanity);
+      // `assertNot` proves the flow produced the right result. This is the
+      // verb that turns the screenshot traversal into a behavioral e2e test.
+      const sel = resolveSelector(step.assertNot, anchors, ctx);
+      out.push(`- assertNotVisible: ${selInline(sel)}`);
     } else if ('tap' in step) {
       const sel = resolveSelector(step.tap, anchors, ctx);
       out.push(`- tapOn: ${selInline(sel)}`);
