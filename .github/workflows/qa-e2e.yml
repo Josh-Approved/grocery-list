@@ -50,12 +50,19 @@ jobs:
     outputs:
       is-rn: ${{ steps.check.outputs.is-rn }}
       is-extension: ${{ steps.check.outputs.is-extension }}
+      has-flow: ${{ steps.check.outputs.has-flow }}
     steps:
       - uses: actions/checkout@v6
       - id: check
         run: |
           [ -f app.json ] && echo "is-rn=true" >> "$GITHUB_OUTPUT" || echo "is-rn=false" >> "$GITHUB_OUTPUT"
           [ -f manifest.json ] && echo "is-extension=true" >> "$GITHUB_OUTPUT" || echo "is-extension=false" >> "$GITHUB_OUTPUT"
+          # has-flow gates the sim jobs: an RN app with no journey.json AND no
+          # committed flow has nothing for Maestro to drive, so its sim jobs are
+          # N-A (Tier 1 unit green is the documented gate for those apps). The
+          # flow is GENERATED from journey.json at CI time, so journey.json
+          # presence counts even though qa/flows/mobile.yaml isn't committed.
+          if [ -f qa/journey.json ] || [ -f qa/flows/mobile.yaml ]; then echo "has-flow=true" >> "$GITHUB_OUTPUT"; else echo "has-flow=false" >> "$GITHUB_OUTPUT"; fi
 
   unit:
     # Tier 1 — fast, headless logic tests (jest-expo). Runs once (platform-
@@ -81,7 +88,7 @@ jobs:
 
   ios:
     needs: [detect, unit]
-    if: needs.detect.outputs.is-rn == 'true'
+    if: needs.detect.outputs.is-rn == 'true' && needs.detect.outputs.has-flow == 'true'
     runs-on: macos-15
     timeout-minutes: 60
     env:
@@ -241,7 +248,7 @@ jobs:
 
   android:
     needs: [detect, unit]
-    if: needs.detect.outputs.is-rn == 'true'
+    if: needs.detect.outputs.is-rn == 'true' && needs.detect.outputs.has-flow == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
