@@ -26,6 +26,9 @@
   },
   "submit": {
     "production": {
+      "ios": {
+        "ascAppId": "REPLACE_WITH_NUMERIC_APP_ID"
+      },
       "android": {
         "track": "internal"
       }
