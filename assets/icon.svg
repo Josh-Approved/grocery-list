@@ -5,17 +5,9 @@
     </clipPath>
   </defs>
   <g clip-path="url(#appIconClip)">
-    <!-- Background: market-kraft brown (the grocery-list per-app accent) -->
-    <rect id="bg" x="0" y="0" width="1024" height="1024" fill="#8A6A45"></rect>
-
-    <!-- Glyph: a shopping cart — push handle, forward-slanted basket, two wheels.
-         Paper-white line-art, vertically centred. The build script extracts this
-         #glyph group, recolours #FAFAF7 -> accent, and renders it alone on paper
-         for the cold-start splash. -->
+    <rect id="bg" x="0" y="0" width="1024" height="1024" fill="#6E4A63"></rect>
     <g id="glyph" transform="translate(0 -18)" stroke="#FAFAF7" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" fill="none">
-      <!-- Handle grip -> push bar -> basket bottom -> front -> flat top rim -->
       <path d="M 250 322 L 316 322 L 380 600 Q 384 624 410 624 L 690 624 Q 716 624 724 602 L 786 392 L 356 392"></path>
-      <!-- Wheels -->
       <circle cx="452" cy="702" r="38"></circle>
       <circle cx="672" cy="702" r="38"></circle>
     </g>
