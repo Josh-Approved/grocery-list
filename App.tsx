@@ -37,9 +37,13 @@ import Credits from './src/components/Credits';
 import { startSyncEngine, stopSyncEngine } from './src/sync';
 import { parseShareLink } from './src/sync/share';
 import AnimatedSplash from './src/components/AnimatedSplash';
+import { QA_MODE } from './src/qa/qaMode';
 
 // Hold the native launch screen until the JS splash takes over (no icon blink).
-SplashScreen.preventAutoHideAsync().catch(() => {});
+// Skipped under QA_MODE so the e2e screenshot harness sees deterministic frames.
+if (!QA_MODE) {
+  SplashScreen.preventAutoHideAsync().catch(() => {});
+}
 
 export type RootStackParamList = {
   ListsHome: undefined;
@@ -130,7 +134,7 @@ export default function App() {
           <StatusBar style={isDark ? 'light' : 'dark'} />
           <Stack.Navigator
             initialRouteName="ListsHome"
-            screenOptions={{ headerShown: false }}
+            screenOptions={{ headerShown: false, animation: QA_MODE ? 'none' : undefined }}
           >
             <Stack.Screen name="ListsHome" component={ListsHomeScreen} />
             <Stack.Screen name="ListDetail" component={ListDetailScreen} />
@@ -151,7 +155,7 @@ export default function App() {
           </Stack.Navigator>
         </NavigationContainer>
       )}
-      {!splashDone && (
+      {!QA_MODE && !splashDone && (
         <AnimatedSplash ready={ready} onFinish={() => setSplashDone(true)} />
       )}
     </SafeAreaProvider>

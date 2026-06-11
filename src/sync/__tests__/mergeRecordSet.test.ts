@@ -351,7 +351,7 @@ describe('qa fixtures — the seed is internally consistent', () => {
   });
 
   it('checked items carry a checkedAt, and the seed reads as a real mid-shop list', () => {
-    const list = qaLists()[0];
+    const list: GroceryList = qaLists()[0];
     const checked = list.items.filter((i) => i.checked);
     expect(checked.length).toBeGreaterThan(0); // some progress, per the fixture comment
     expect(checked.length).toBeLessThan(list.items.length); // but not all
