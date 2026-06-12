@@ -47,9 +47,15 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 
 // store → how to build, what device, how to normalize.
+// NOTE: iOS device names are Xcode-version-specific — the boot step greps
+// `simctl list devices` for an exact match (and creates one if absent, which
+// needs a valid devicetype). Keep these to the current Xcode's 6.9" phone +
+// 13" iPad; pass `--device "<name>"` to override on a machine with different
+// sims installed. Updated 2026-06-11 (Xcode 26.5 ships iPhone 17 / iPad M5;
+// the old "iPhone 16 Pro Max" / "iPad Pro 13-inch (M4)" no longer exist).
 const STORES = {
-  ios:           { platform: 'ios',     device: 'iPhone 16 Pro Max', kind: 'phone'  },
-  ipad:          { platform: 'ios',     device: 'iPad Pro 13-inch (M4)', kind: 'tablet' },
+  ios:           { platform: 'ios',     device: 'iPhone 17 Pro Max', kind: 'phone'  },
+  ipad:          { platform: 'ios',     device: 'iPad Pro 13-inch (M5)', kind: 'tablet' },
   android:       { platform: 'android', device: null, kind: 'phone'  },
   androidTablet: { platform: 'android', device: null, kind: 'tablet' },
 };
@@ -57,7 +63,7 @@ const STORES = {
 const args = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith('--')));
 const valueOf = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
-const VALUE_FLAGS = new Set(['--platform', '--store', '--device']);
+const VALUE_FLAGS = new Set(['--platform', '--store', '--device', '--appearance', '--font-scale', '--orientation', '--cell']);
 const positional = args.filter((a, i) => !a.startsWith('--') && !VALUE_FLAGS.has(args[i - 1]));
 const appDir = path.resolve(positional[0] || process.cwd());
 
@@ -70,6 +76,17 @@ const store = STORES[storeKey];
 const platform = valueOf('--platform') || store.platform;
 const device = valueOf('--device') || store.device;
 const dry = flags.has('--dry-run');
+
+// Device-matrix axes (P10): set the device's appearance + font scale before the
+// traverse; orientation is injected into the generated flow (compile-flow handles
+// it deterministically on both platforms). `--cell <label>` namespaces captures
+// to qa/captures/matrix/<label>/ (for visual-reg) and skips store framing/learn.
+const appearance = valueOf('--appearance') || null;     // light | dark
+const fontScale = valueOf('--font-scale') || null;       // e.g. 1.0 | 1.3
+const orientation = valueOf('--orientation') || 'portrait';
+const cell = valueOf('--cell') || null;
+const captureKey = cell ? `matrix/${cell}` : storeKey;   // STORE env + captures subdir
+const tag = cell || storeKey;                            // debug-output namespacing
 
 // ---------- shell helper ----------
 
@@ -126,12 +143,18 @@ function buildArtifact() {
 
   // EAS_LOCAL_BUILD_WORKINGDIR avoids the /tmp symlink Metro-entry bug (factory
   // stack/eas-build.md § Gotchas). QA_MODE bakes deterministic fixtures in.
+  // Clear the workingdir first: eas-build-local-plugin aborts with "Workingdir
+  // is not empty" if a prior interrupted build left scratch behind (hard-won —
+  // it silently kills a capture run). Done in-process (not a shell `rm`) so it
+  // can't be gated and is always cleaned.
+  const workingdir = path.join(os.homedir(), '.eas-build', path.basename(appDir));
+  if (!dry) { try { fs.rmSync(workingdir, { recursive: true, force: true }); } catch {} }
   run(`build — eas build --local (${platform}, QA_MODE)`, 'eas', [
     'build', '--platform', platform, '--profile', 'preview', '--local',
     '--non-interactive', '--output', outPath,
   ], { env: {
     EXPO_PUBLIC_QA_MODE: '1',
-    EAS_LOCAL_BUILD_WORKINGDIR: path.join(os.homedir(), '.eas-build', path.basename(appDir)),
+    EAS_LOCAL_BUILD_WORKINGDIR: workingdir,
     GRADLE_OPTS: '-Xmx4g -XX:MaxMetaspaceSize=1g',
   } });
   if (!dry) fs.writeFileSync(hashPath, hash + '\n');
@@ -164,6 +187,34 @@ function iosPrepare(artifact) {
   run('install — app on simulator', 'bash', ['-lc',
     `UDID=$(cat ${JSON.stringify(path.join(appDir, 'qa', 'captures', `.udid-${storeKey}`))}); ` +
     `xcrun simctl install "$UDID" ${JSON.stringify(appPath)}`]);
+  applyIosAxes();
+}
+
+// Apply the appearance + font-scale axes to a booted iOS sim (best-effort —
+// some sims/runtimes don't honour content_size; never fail the capture on it).
+function applyIosAxes() {
+  if (!appearance && !fontScale) return;
+  const udidFile = path.join(appDir, 'qa', 'captures', `.udid-${storeKey}`);
+  const cmds = [`UDID=$(cat ${JSON.stringify(udidFile)})`];
+  if (appearance) cmds.push(`xcrun simctl ui "$UDID" appearance ${appearance === 'dark' ? 'dark' : 'light'}`);
+  if (fontScale) {
+    // iOS Dynamic Type is categorical, not a multiplier; map our scale onto the
+    // nearest simctl content_size (1.0 -> default L, 1.3 -> a large step). NB the
+    // subcommand is `content_size` (underscore); `content-size` is silently
+    // rejected with a usage dump, making the axis a no-op.
+    const size = Number(fontScale) >= 1.3 ? 'extra-extra-extra-large' : 'large';
+    cmds.push(`xcrun simctl ui "$UDID" content_size ${size}`);
+  }
+  run(`device — apply axes (appearance=${appearance || '-'} font=${fontScale || '-'})`, 'bash', ['-lc', cmds.join('; ')], { allowFail: true });
+}
+
+// Apply the appearance + font-scale axes to a booted Android device/emulator.
+function applyAndroidAxes(adb) {
+  if (!appearance && !fontScale) return;
+  const cmds = [];
+  if (appearance) cmds.push(`adb ${adb} shell "cmd uimode night ${appearance === 'dark' ? 'yes' : 'no'}"`);
+  if (fontScale) cmds.push(`adb ${adb} shell settings put system font_scale ${Number(fontScale).toFixed(2)}`);
+  run(`device — apply axes (appearance=${appearance || '-'} font=${fontScale || '-'})`, 'bash', ['-lc', cmds.join('; ')], { allowFail: true });
 }
 
 function androidPrepare(artifact) {
@@ -174,7 +225,7 @@ function androidPrepare(artifact) {
     // The Pixel-tablet AVD boots LANDSCAPE; the app then renders a letterboxed
     // portrait column and Maestro taps miss. Force portrait first.
     run('device — force portrait (tablet)', ...adb(
-      'shell settings put system accelerometer_rotation 0 && adb shell settings put system user_rotation 1'));
+      `shell settings put system accelerometer_rotation 0 && adb ${dev.join(' ')} shell settings put system user_rotation 1`));
   }
   // Demo-mode status bar (clean 9:41-style bar). Best-effort; ignore failures.
   run('device — status bar demo mode', 'bash', ['-lc',
@@ -183,15 +234,21 @@ function androidPrepare(artifact) {
     `adb ${dev.join(' ')} shell am broadcast -a com.android.systemui.demo -e command clock -e hhmm 0941; ` +
     `adb ${dev.join(' ')} shell am broadcast -a com.android.systemui.demo -e command battery -e level 100 -e plugged false`],
     { allowFail: true });
-  // NOTE (TODO §5): the Pixel-tablet system taskbar can't be hidden via adb and
-  // overlaps a corner FAB. If a tablet capture shows the dock over the "+",
-  // apply the paper-recomposite stopgap — see runbooks/qa-capture.md.
+  applyAndroidAxes(dev.join(' '));
+  // NOTE: the Pixel-tablet system taskbar can't be hidden via adb and overlaps a
+  // corner FAB. capture.mjs runs the recomposite (scripts/qa/recomposite-tablet.mjs)
+  // after framing for tablet stores — see runbooks/device-quality-net.md § Tablet dock.
 }
 
 // ---------- 5. traverse (+ optional heal/retry) ----------
 
 function compileFlow() {
-  run('compile — journey → mobile.yaml', 'node', [path.join('scripts', 'qa', 'compile-flow.mjs')]);
+  const argv = [path.join('scripts', 'qa', 'compile-flow.mjs')];
+  // Cell-level orientation is injected into the generated flow (Maestro
+  // setOrientation), so landscape cells rotate deterministically on both
+  // platforms. Portrait => no flag => identical to the canonical artifact.
+  if (orientation && String(orientation).toLowerCase() !== 'portrait') argv.push('--orientation', orientation);
+  run('compile — journey → mobile.yaml', 'node', argv);
 }
 
 function deviceArg() {
@@ -204,12 +261,14 @@ function deviceArg() {
 }
 
 function traverse() {
-  const capturesDir = path.join(appDir, 'qa', 'captures', storeKey);
+  // captureKey routes screenshots: store dir for a normal run, matrix/<cell> for
+  // a matrix cell (the flow writes to qa/captures/${STORE}/<id>).
+  const capturesDir = path.join(appDir, 'qa', 'captures', ...captureKey.split('/'));
   if (!dry) fs.mkdirSync(capturesDir, { recursive: true });
-  const debugDir = `maestro-debug-${storeKey}`;
+  const debugDir = `maestro-debug-${tag}`;
   const r = run('traverse — maestro test', 'maestro', [
     ...deviceArg(), 'test', path.join('qa', 'flows', 'mobile.yaml'),
-    `--env=STORE=${storeKey}`, '--debug-output', debugDir,
+    `--env=STORE=${captureKey}`, '--debug-output', debugDir,
   ], { allowFail: true });
   return r.status === 0;
 }
@@ -262,7 +321,15 @@ if (!ok) {
   process.exit(1);
 }
 
-frame();
-learn();
-console.log(`\n✓ capture: ${storeKey} done. Framed assets in store-assets/screenshots/. ` +
-  (flags.has('--contact-sheet') ? `Glance: store-assets/contact-sheet-*.png` : `Add --contact-sheet for a one-image check.`));
+if (cell) {
+  // A matrix cell: captures feed visual-reg, NOT the store listing. Skip framing
+  // store assets + recording the healer baseline (the canonical store-key run
+  // owns those, so a 1.3-font dark-mode cell can't poison them).
+  learn();
+  console.log(`\n✓ capture: cell ${cell} done → qa/captures/${captureKey}/. (visual-reg consumes these)`);
+} else {
+  frame();
+  learn();
+  console.log(`\n✓ capture: ${storeKey} done. Framed assets in store-assets/screenshots/. ` +
+    (flags.has('--contact-sheet') ? `Glance: store-assets/contact-sheet-*.png` : `Add --contact-sheet for a one-image check.`));
+}

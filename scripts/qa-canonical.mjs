@@ -568,6 +568,73 @@ const ruleFlowDrift = async ({ appDir }) => {
   }
 };
 
+// ---------- rule: translation-readiness (canon § Translations) ----------
+//
+// Every v1 ships translation-READY: no user-facing copy hardcoded in
+// components — it lives in the externalized strings module (src/i18n) and is
+// read via t('…'). This rule flags raw JSX text and raw user-facing string
+// props in src/screens + src/components. WARN during rollout (same
+// codify→backfill→shipgate doctrine as the testing tiers); promote to FAIL
+// per-app with `"i18n/enforce": true` in qa/baseline.json once the app is
+// externalized clean. New app-shell apps start clean and can enforce.
+const enforceI18n = baseline['i18n/enforce'] === true;
+const i18nWarn = (id, message, detail) => (enforceI18n ? fail : warn)(id, message, detail);
+
+// Factory-synced / brand-locked components: copy is already externalized or is
+// a locked brand string — never flag these (skip by basename).
+const I18N_SKIP_FILES = new Set([
+  'AboutRow.tsx', 'FundingFooter.tsx', 'SettingsAbout.tsx', 'Wordmark.tsx',
+  'ErrorBoundary.tsx', 'ScreenHeader.tsx', 'EmptyState.tsx', 'Credits.tsx',
+  'ReviewModal.tsx', 'DonationModal.tsx', 'AnimatedSplash.tsx',
+]);
+// Words that are valid bare JSX text but never user copy to translate.
+const I18N_TEXT_OK = /^(?:[\s\d.,:;!?%$€£¥+\-/×·•|()[\]]+|[A-Za-z]{1})$/;
+// Code-like spans wrongly captured by the >…< scan: a stray `>` from an arrow
+// (`=>`), a TS generic, or a comparison, followed later by a JSX `<`, swallows a
+// run of source between them. User-facing copy never contains these tokens, so
+// reject the match when any appears. (Found 2026-06-11: `(it) => it.done).length;
+// return (` flagged as copy.)
+const I18N_CODE_LIKE = /[;=]|=>|\)\.|\]\(|\b(?:return|const|let|var|function|import|export|null|undefined)\b/;
+
+const ruleNoHardcodedStrings = () => {
+  if (surface !== 'rn') return skip('i18n/no-hardcoded-strings', 'Not a React Native app');
+  if (!exists(join(appDir, 'src', 'i18n'))) {
+    return i18nWarn('i18n/no-hardcoded-strings',
+      'No src/i18n module — every v1 must be translation-ready (externalized strings via the app-shell i18n module)');
+  }
+  const files = srcSourceFiles().filter((f) => {
+    const rel = relative(join(appDir, 'src'), f).replace(/\\/g, '/');
+    if (!/\.tsx$/.test(f)) return false;
+    if (!(rel.startsWith('screens/') || rel.startsWith('components/'))) return false;
+    if (I18N_SKIP_FILES.has(f.split(/[\\/]/).pop())) return false;
+    return true;
+  });
+  const hits = [];
+  for (const f of files) {
+    const raw = readText(f);
+    if (!raw) continue;
+    const text = stripComments(raw);
+    // 1) Raw JSX text content: >copy< (no braces/tags inside).
+    for (const m of text.matchAll(/>([^<>{}]+)</g)) {
+      const inner = m[1].replace(/\s+/g, ' ').trim();
+      if (!inner || I18N_TEXT_OK.test(inner)) continue;
+      if (!/[A-Za-z]{2,}/.test(inner)) continue;
+      if (I18N_CODE_LIKE.test(inner)) continue; // swallowed source, not copy
+      hits.push(`${relative(appDir, f)}: "${inner.slice(0, 40)}"`);
+    }
+    // 2) Raw user-facing string props.
+    for (const m of text.matchAll(/\b(placeholder|accessibilityLabel|accessibilityHint|title)\s*=\s*"([^"]*[A-Za-z]{2,}[^"]*)"/g)) {
+      hits.push(`${relative(appDir, f)}: ${m[1]}="${m[2].slice(0, 30)}"`);
+    }
+  }
+  if (hits.length) {
+    return i18nWarn('i18n/no-hardcoded-strings',
+      `${hits.length} hardcoded user-facing string(s) in screens/components — move to src/i18n/appStrings.ts and read via t()`,
+      hits.slice(0, 12));
+  }
+  return pass('i18n/no-hardcoded-strings', `No hardcoded user-facing strings in ${files.length} screen/component file(s)`);
+};
+
 // ---------- runner ----------
 
 const CANONICAL_RULES = [
@@ -591,6 +658,7 @@ const CANONICAL_RULES = [
   ruleTrustCoreCovered,
   ruleFlowHasAssertions,
   ruleFlowDrift,
+  ruleNoHardcodedStrings,
 ];
 
 async function loadAppRules() {

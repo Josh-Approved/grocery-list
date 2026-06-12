@@ -1,0 +1,63 @@
+{
+  "$comment": "Canonical cross-device QA matrix (P10 — uplevel/10-device-quality-net.md). Synced per app by `sync.mjs qa`. The matrix is capped at <=6 devices FOREVER — coverage breadth beats axis explosion. 'store' maps each device onto render-screenshots.mjs surfaces + capture.mjs store keys. 'sim'/'avd' are best-effort identifiers: capture.mjs greps `simctl` for the sim (creating it if absent) and, for Android, targets the named avd or the first booted emulator. If your installed sims/avds differ, drop a gitignored qa/devices.local.json with the same shape to override — never edit this synced file per-app.",
+  "devices": {
+    "iphone": {
+      "platform": "ios",
+      "kind": "phone",
+      "store": "ios",
+      "sim": "iPhone 17 Pro Max",
+      "label": "iPhone 6.9\""
+    },
+    "iphone-se": {
+      "platform": "ios",
+      "kind": "phone",
+      "store": "ios",
+      "sim": "iPhone SE (3rd generation)",
+      "label": "iPhone SE 4.7\""
+    },
+    "ipad-13": {
+      "platform": "ios",
+      "kind": "tablet",
+      "store": "ipad",
+      "sim": "iPad Pro 13-inch (M5)",
+      "label": "iPad 13\""
+    },
+    "pixel-phone": {
+      "platform": "android",
+      "kind": "phone",
+      "store": "android",
+      "avd": "Pixel_6",
+      "label": "Pixel phone"
+    },
+    "pixel-tablet": {
+      "platform": "android",
+      "kind": "tablet",
+      "store": "androidTablet",
+      "avd": "Pixel_Tablet",
+      "label": "Pixel tablet"
+    }
+  },
+  "axes": {
+    "$comment": "appearance + fontScale are applied at the device level before each traverse (simctl ui / adb settings); orientation is injected into the generated flow as a Maestro setOrientation (compile-flow --orientation), so it drives the OS deterministically on both platforms. Orientation is per-kind: phones portrait-only, tablets portrait + landscape.",
+    "appearance": ["light", "dark"],
+    "fontScale": [1.0, 1.3],
+    "orientation": {
+      "phone": ["portrait"],
+      "tablet": ["portrait", "landscape"]
+    }
+  },
+  "profiles": {
+    "smoke": {
+      "$comment": "Per-PR gate. Identical cost to today's CI: one phone per platform, light appearance, default font, portrait. Adding nothing here keeps the PR gate cheap.",
+      "devices": ["iphone", "pixel-phone"],
+      "appearance": ["light"],
+      "fontScale": [1.0]
+    },
+    "full": {
+      "$comment": "Per-release gate + monthly fleet-health re-run. Every device; appearance x fontScale crossed; landscape added on tablets by the orientation axis. One hash-cached build per platform is reused across every cell — only the (cheap) device reconfigure + traverse repeats.",
+      "devices": ["iphone", "iphone-se", "ipad-13", "pixel-phone", "pixel-tablet"],
+      "appearance": ["light", "dark"],
+      "fontScale": [1.0, 1.3]
+    }
+  }
+}

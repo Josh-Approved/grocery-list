@@ -79,10 +79,29 @@ function selInline(sel) {
 }
 
 /**
+ * Map a friendly orientation token to a Maestro setOrientation value. Maestro
+ * 2.x accepts PORTRAIT / LANDSCAPE_LEFT / LANDSCAPE_RIGHT / UPSIDE_DOWN (it
+ * rejects a bare "LANDSCAPE"). "landscape" -> LANDSCAPE_LEFT by convention.
+ */
+export function maestroOrientation(token) {
+  const t = String(token || '').toLowerCase().replace(/[\s-]+/g, '_');
+  const map = {
+    portrait: 'PORTRAIT',
+    landscape: 'LANDSCAPE_LEFT',
+    landscape_left: 'LANDSCAPE_LEFT',
+    landscape_right: 'LANDSCAPE_RIGHT',
+    upside_down: 'UPSIDE_DOWN',
+  };
+  const v = map[t];
+  if (!v) throw new Error(`unknown orientation "${token}" (use portrait | landscape | landscape_right | upside_down)`);
+  return v;
+}
+
+/**
  * Compile a journey object into Maestro flow YAML text.
  * Pure (no I/O) so lint/tests can call it directly.
  */
-export function compileJourney(journey, selectors, appDir = '.') {
+export function compileJourney(journey, selectors, appDir = '.', opts = {}) {
   const anchors = (selectors && selectors.anchors) || {};
   if (!journey.appId) throw new Error('journey.json: missing "appId"');
   const steps = journey.steps || [];
@@ -97,6 +116,15 @@ export function compileJourney(journey, selectors, appDir = '.') {
   const clear = journey.clearState !== false;
   out.push('- launchApp:');
   out.push(`    clearState: ${clear ? 'true' : 'false'}`);
+
+  // Cell-level orientation (P10 device matrix): capture.mjs passes the cell's
+  // orientation through to here so the rotation drives the OS deterministically
+  // on BOTH platforms (Maestro setOrientation), rather than via brittle
+  // simctl/adb rotation. Injected right after launch, before the journey runs.
+  // Portrait is the default and needs no injection.
+  if (opts.orientation && String(opts.orientation).toLowerCase() !== 'portrait') {
+    out.push(`- setOrientation: ${maestroOrientation(opts.orientation)}`);
+  }
 
   // Optional diagnostic: settle, then snapshot whatever rendered. If a later
   // assertion fails, this artifact shows what the app actually drew (splash,
@@ -150,6 +178,32 @@ export function compileJourney(journey, selectors, appDir = '.') {
     } else if ('wait' in step) {
       out.push('- waitForAnimationToEnd:');
       out.push(`    timeout: ${step.wait}`);
+    } else if ('background' in step) {
+      // Resilience probe (canon § Resilience): send the app to the background.
+      // Pair with a `relaunch` step + an `assert` to prove mid-task state
+      // survives a backgrounding. `background: <ms>` also waits after.
+      out.push('- pressKey: Home');
+      if (typeof step.background === 'number') {
+        out.push('- waitForAnimationToEnd:');
+        out.push(`    timeout: ${step.background}`);
+      }
+    } else if ('stopApp' in step) {
+      // Resilience probe: process kill. Follow with `relaunch` (keepState) +
+      // `assert` to prove persisted state restores after a full termination —
+      // the iOS/Android "OS killed the suspended app" case canon requires.
+      out.push('- stopApp');
+    } else if ('relaunch' in step) {
+      // Relaunch WITHOUT clearing state by default (keepState) — the whole point
+      // of a resilience probe is that data persisted to disk comes back.
+      // `relaunch: "fresh"` clears state (a cold first-run).
+      const keep = step.relaunch !== 'fresh' && step.relaunch?.keepState !== false;
+      out.push('- launchApp:');
+      out.push(`    clearState: ${keep ? 'false' : 'true'}`);
+    } else if ('rotate' in step) {
+      // In-flow rotation round-trip (canon § Resilience: orientation changes
+      // don't lose state). Distinct from the cell-level orientation axis — use
+      // this to rotate mid-journey then assert the user stayed in place.
+      out.push(`- setOrientation: ${maestroOrientation(step.rotate)}`);
     } else if ('screenshot' in step) {
       out.push('- takeScreenshot: qa/captures/${STORE}/' + step.screenshot);
     } else {
@@ -169,7 +223,13 @@ function readJson(p) {
 function main() {
   const args = process.argv.slice(2);
   const flags = new Set(args.filter((a) => a.startsWith('--')));
-  const appDir = path.resolve(args.find((a) => !a.startsWith('--')) || process.cwd());
+  const valueOf = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
+  const VALUE_FLAGS = new Set(['--orientation']);
+  const appDir = path.resolve(args.find((a, i) => !a.startsWith('--') && !VALUE_FLAGS.has(args[i - 1])) || process.cwd());
+  // Cell-level orientation for the device matrix (capture.mjs --orientation).
+  // Default portrait => no injection => identical to the canonical artifact, so
+  // lint/freshness stays stable; only landscape/etc. cells inject a rotation.
+  const orientation = valueOf('--orientation') || 'portrait';
 
   const journeyPath = path.join(appDir, 'qa', 'journey.json');
   const selectorsPath = path.join(appDir, 'qa', 'selectors.json');
@@ -184,7 +244,7 @@ function main() {
 
   let yaml;
   try {
-    yaml = compileJourney(journey, selectors, appDir);
+    yaml = compileJourney(journey, selectors, appDir, { orientation });
   } catch (e) {
     console.error(`compile-flow: ${e.message}`);
     process.exit(1);

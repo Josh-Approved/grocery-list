@@ -114,6 +114,45 @@ async function runFlowStatic() {
   return result;
 }
 
+// ---------- Tier "matrix": cross-device net (P10) ----------
+// Reads the artifacts the deterministic matrix run already wrote — never drives
+// a device here. Gate policy (canon § QA & testing + uplevel/10):
+//   • production = full matrix must be green: no unaccepted visual regression,
+//     no failed cell, no reviewer blocker/major.
+//   • testflight = smoke is enough: only a reviewer BLOCKER or a failed smoke
+//     cell blocks; a missing full matrix does not.
+// Graceful rollout: absent artifacts => 'skip' (a WARN-equivalent), unless the
+// app opts in via qa/baseline.json "device-net/enforce": true, which makes a
+// missing full matrix block production (same doctrine as "testing/enforce").
+function runMatrix(profile) {
+  const visual = readJson(path.join(appDir, 'qa', 'visual-reg.json'));
+  const matrixReport = readJson(path.join(appDir, 'qa', 'matrix-report.json'));
+  const triage = readJson(path.join(appDir, 'qa', 'qa-triage.json'));
+  const baseline = readJson(path.join(appDir, 'qa', 'baseline.json')) || {};
+  const enforce = baseline['device-net/enforce'] === true;
+
+  if (!visual && !matrixReport) {
+    return { status: enforce && profile === 'production' ? 'fail' : 'skip',
+      reason: enforce ? 'device-net enforced but no matrix has run (run scripts/qa/matrix.mjs --profile full)' : 'no matrix run yet (device-net rolling out)' };
+  }
+
+  const regressions = visual && visual.status === 'ok' ? (visual.regressions || 0) : 0;
+  const cellFails = matrixReport ? (matrixReport.cells || []).filter((c) => c.status === 'fail').length : 0;
+  const matrixProfile = matrixReport ? matrixReport.profile : null;
+  const reviewer = (triage && triage.reviewerPass && Array.isArray(triage.reviewerPass.findings)) ? triage.reviewerPass.findings : [];
+  const reviewerBlockers = reviewer.filter((f) => f.severity === 'blocker').length;
+  const reviewerMajors = reviewer.filter((f) => f.severity === 'major').length;
+
+  let status = 'pass';
+  if (profile === 'production') {
+    if (regressions > 0 || cellFails > 0 || reviewerBlockers > 0 || reviewerMajors > 0) status = 'fail';
+    else if (enforce && matrixProfile !== 'full') status = 'fail';
+  } else { // testflight / smoke
+    if (reviewerBlockers > 0 || cellFails > 0) status = 'fail';
+  }
+  return { status, profile: matrixProfile, regressions, cellFails, reviewerBlockers, reviewerMajors };
+}
+
 // ---------- Lint: qa-canonical testing tiers ----------
 function runLintTiers() {
   const canon = path.join(appDir, 'scripts', 'qa-canonical.mjs');
@@ -134,14 +173,16 @@ function runLintTiers() {
 const unit = runUnit();
 const flow = await runFlowStatic();
 const lint = runLintTiers();
+const matrix = runMatrix(profile);
 
 // Gate: a tier that ERRORs or FAILs blocks; SKIP/PASS are fine.
 const unitOk = unit.status === 'pass' || unit.status === 'skip';
 const flowFailed = flow.status === 'fail';
 const lintFailed = lint.status === 'fail';
+const matrixFailed = matrix.status === 'fail';
 const ok = profile === 'testflight'
-  ? unitOk && !lintFailed                       // Tier 1 + lint; Tier 2 is smoke/optional
-  : unitOk && !flowFailed && !lintFailed;        // production: Tier 2 failure blocks
+  ? unitOk && !lintFailed && !matrixFailed       // Tier 1 + lint + device smoke; Tier 2 is smoke/optional
+  : unitOk && !flowFailed && !lintFailed && !matrixFailed;  // production: Tier 2 + full matrix failure blocks
 
 const report = {
   app: path.basename(appDir),
@@ -150,14 +191,15 @@ const report = {
   // NOTE: timestamp intentionally omitted — Date.now() is unavailable in some
   // factory contexts and would make the artifact non-deterministic. CI/commit
   // metadata carries the time.
-  tiers: { unit, flow, lint },
+  tiers: { unit, flow, lint, matrix },
   // The agent's reading guide — what to do, in one line, without opening logs.
   verdict: ok
-    ? `OK for ${profile}: ${unit.status === 'skip' ? 'no unit tests' : unit.passed + ' tests pass'}${flow.status === 'pass' ? ', flow static green' : ''}.`
+    ? `OK for ${profile}: ${unit.status === 'skip' ? 'no unit tests' : unit.passed + ' tests pass'}${flow.status === 'pass' ? ', flow static green' : ''}${matrix.status === 'pass' ? ', device matrix green' : ''}.`
     : `BLOCKED for ${profile}: ${[
         unit.status === 'fail' && `${unit.failed} unit test(s) failing`,
         flow.status === 'fail' && (flow.stale ? 'flow yaml stale (re-run compile-flow)' : 'selector grounding failed (run heal)'),
         lint.status === 'fail' && 'qa-canonical testing rule failing',
+        matrix.status === 'fail' && (matrix.reason || `device matrix: ${matrix.regressions || 0} visual regression(s), ${matrix.cellFails || 0} failed cell(s), ${matrix.reviewerBlockers || 0} reviewer blocker(s)` + ' (accept intended changes via visual-reg --accept)'),
       ].filter(Boolean).join('; ')}`,
 };
 

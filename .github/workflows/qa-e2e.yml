@@ -15,6 +15,14 @@ name: QA e2e
 #   This workflow is the PR gate (full set on every PR). The build-time gate that
 #   distinguishes TestFlight-fast from prod-full is wired at submit time, not here.
 #
+# DEVICE MATRIX (P10 — qa/devices.json, runbooks/device-quality-net.md): this PR
+# job IS the `smoke` profile — one phone per platform (iPhone + Pixel), light
+# appearance, default font, portrait. Cost is deliberately unchanged. The `full`
+# profile (every device × appearance × font-scale, landscape on tablets) +
+# visual-regression baselines + the one bounded reviewer pass run per-RELEASE via
+# `scripts/qa/matrix.mjs --profile full` (and on the monthly fleet-health sweep,
+# P8), NOT on every PR — that's where breadth belongs, off the per-PR critical path.
+#
 # Tier 2/3 drive the app through scripted flows on cloud sims/emulators, capture
 # screenshots at named waypoints, frame them via the vendored
 # render-screenshots.mjs, and upload framed store assets as workflow artifacts.
@@ -330,9 +338,12 @@ jobs:
           # intermittently ANRs during a run; its system dialog renders OVER the
           # app under test, so Maestro's hierarchy query returns aerr_wait /
           # aerr_close and every assertion fails against a screen that is, in
-          # fact, fine (the app rendered correctly behind the dialog). Diagnosed
-          # P0 2026-06-10 from the failure screenshot ("Pixel Launcher isn't
-          # responding" over a fully-rendered app). Synced from templates/qa.
+          # fact, fine (the app rendered correctly behind the dialog). This was
+          # a flaky red — workout-timer passed, packing-list/grocery-list failed
+          # the same week on identical app health. hide_error_dialogs=1 makes the
+          # emulator deterministic by never popping the dialog. (Diagnosed P0,
+          # 2026-06-10, from the failure screenshot: "Pixel Launcher isn't
+          # responding" over a fully-rendered app.)
           adb shell settings put global hide_error_dialogs 1
           adb install -r "$GITHUB_WORKSPACE/build.apk"
           adb shell pm list packages | head -5

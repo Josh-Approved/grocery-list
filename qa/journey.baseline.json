@@ -1,0 +1,24 @@
+{
+  "anchors": {
+    "home-title": {
+      "text": "Grocery List",
+      "id": null
+    },
+    "weekly-list": {
+      "text": "Weekly shop, rename",
+      "id": null
+    },
+    "first-item": {
+      "text": "Bananas",
+      "id": null
+    },
+    "add-input": {
+      "text": "Add an item",
+      "id": null
+    },
+    "added-item": {
+      "text": "Avocado",
+      "id": null
+    }
+  }
+}
