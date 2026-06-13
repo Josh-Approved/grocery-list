@@ -25,6 +25,7 @@ import {
   FlatList,
   ScrollView,
   StyleSheet,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -170,7 +171,15 @@ export default function ListDetailScreen({ route, navigation }: Props) {
   );
 
   const submitDraft = useCallback(() => {
-    addOne(draft, true);
+    // The add box keeps the keyboard up after each add (blurOnSubmit={false})
+    // so you can rapid-fire a whole list. But that means an empty submit has
+    // no on-keyboard way out — tapping "done"/return on an empty box must be
+    // read as "I'm finished" and dismiss the keyboard, not as a no-op.
+    if (draft.trim()) {
+      addOne(draft, true);
+    } else {
+      Keyboard.dismiss();
+    }
   }, [addOne, draft]);
 
   const addUsuals = useCallback(() => {
