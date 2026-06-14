@@ -11,6 +11,8 @@
  * default order + the text→aisle guess for a freshly added item.
  */
 
+import { t } from '../i18n';
+
 export type Category =
   | 'Produce'
   | 'Bakery'
@@ -23,6 +25,28 @@ export type Category =
   | 'Household'
   | 'Personal care'
   | 'Other';
+
+/** The Category union values are stable internal keys (persisted + used for
+ *  inference); their localizable display names live in i18n under `aisles.*`.
+ *  Keys, not resolved strings — `categoryLabel` resolves at render time. */
+const CATEGORY_LABEL_KEY: Record<Category, string> = {
+  Produce: 'aisles.produce',
+  Bakery: 'aisles.bakery',
+  'Meat & seafood': 'aisles.meatSeafood',
+  'Dairy & eggs': 'aisles.dairyEggs',
+  Frozen: 'aisles.frozen',
+  Pantry: 'aisles.pantry',
+  Snacks: 'aisles.snacks',
+  Beverages: 'aisles.beverages',
+  Household: 'aisles.household',
+  'Personal care': 'aisles.personalCare',
+  Other: 'aisles.other',
+};
+
+/** Localized display name for an aisle. Call at render time (never module-level). */
+export function categoryLabel(category: Category): string {
+  return t(CATEGORY_LABEL_KEY[category]);
+}
 
 /** Canonical default aisle order. A list copies this at creation and may then
  *  reorder its own copy (build step 3) without affecting other lists. */

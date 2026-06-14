@@ -15,14 +15,15 @@ import { ChevronUp, ChevronDown, X } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { useListsStore } from '../store/lists';
-import type { Category } from '../data/categories';
+import { categoryLabel, type Category } from '../data/categories';
+import { t } from '../i18n';
 import {
   useTheme,
   fontFamily,
   space,
   radius,
   target,
-  type as t,
+  type as ty,
   hairline,
   type Colors,
 } from '../theme';
@@ -56,21 +57,18 @@ export default function ReorderAislesScreen({ route, navigation }: Props) {
   return (
     <SafeAreaView style={s.safe} edges={['top', 'left', 'right', 'bottom']}>
       <View style={s.header}>
-        <Text style={s.title}>Reorder aisles</Text>
+        <Text style={s.title}>{t('reorder.title')}</Text>
         <Pressable
           onPress={() => navigation.goBack()}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel="Done"
+          accessibilityLabel={t('common.done')}
           style={({ pressed }) => [s.iconBtn, pressed && s.pressed]}
         >
           <X size={22} color={c.fg} strokeWidth={1.5} />
         </Pressable>
       </View>
-      <Text style={s.hint}>
-        Put these in the order you walk your store. Items sort into this
-        order on the list.
-      </Text>
+      <Text style={s.hint}>{t('reorder.hint')}</Text>
       <FlatList
         data={order}
         keyExtractor={(cat) => cat}
@@ -78,13 +76,15 @@ export default function ReorderAislesScreen({ route, navigation }: Props) {
         ItemSeparatorComponent={() => <View style={s.sep} />}
         renderItem={({ item, index }) => (
           <View style={s.row}>
-            <Text style={s.rowText}>{item}</Text>
+            <Text style={s.rowText}>{categoryLabel(item)}</Text>
             <Pressable
               onPress={() => move(index, -1)}
               disabled={index === 0}
               hitSlop={6}
               accessibilityRole="button"
-              accessibilityLabel={`Move ${item} up`}
+              accessibilityLabel={t('reorder.moveUp', {
+                name: categoryLabel(item),
+              })}
               style={({ pressed }) => [
                 s.moveBtn,
                 index === 0 && s.moveDisabled,
@@ -102,7 +102,9 @@ export default function ReorderAislesScreen({ route, navigation }: Props) {
               disabled={index === order.length - 1}
               hitSlop={6}
               accessibilityRole="button"
-              accessibilityLabel={`Move ${item} down`}
+              accessibilityLabel={t('reorder.moveDown', {
+                name: categoryLabel(item),
+              })}
               style={({ pressed }) => [
                 s.moveBtn,
                 index === order.length - 1 && s.moveDisabled,
@@ -135,7 +137,7 @@ function makeStyles(c: Colors) {
       paddingVertical: space.s4,
     },
     title: {
-      ...t.md,
+      ...ty.md,
       fontFamily: fontFamily.sansSemibold,
       color: c.fg,
     },
@@ -146,7 +148,7 @@ function makeStyles(c: Colors) {
       justifyContent: 'center',
     },
     hint: {
-      ...t.sm,
+      ...ty.sm,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
       paddingHorizontal: space.s6,
@@ -167,7 +169,7 @@ function makeStyles(c: Colors) {
       gap: space.s3,
     },
     rowText: {
-      ...t.base,
+      ...ty.base,
       flex: 1,
       fontFamily: fontFamily.sans,
       color: c.fg,

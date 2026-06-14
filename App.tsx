@@ -25,7 +25,8 @@ import {
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { useAppFonts, lightColors, darkColors, typography } from './src/theme';
+import { useAppFonts, lightColors, darkColors, typography, useApplyThemePreference } from './src/theme';
+import { useApplyLocalePreference, useLocaleVersion } from './src/i18n/localePreference';
 import { useListsStore } from './src/store/lists';
 import { useAccountStore } from './src/store/account';
 import ListsHomeScreen from './src/screens/ListsHomeScreen';
@@ -80,6 +81,14 @@ function buildNavTheme(isDark: boolean): Theme {
 }
 
 export default function App() {
+  // Restore + apply the saved appearance preference (System/Light/Dark) before
+  // first paint; drives useColorScheme() here and in every screen.
+  useApplyThemePreference();
+  // Restore + apply the saved language; the version keys <NavigationContainer>
+  // below so a switch re-renders the whole app in the new language (canon
+  // § Translations).
+  useApplyLocalePreference();
+  const localeVersion = useLocaleVersion();
   const isDark = useColorScheme() === 'dark';
   const [fontsLoaded] = useAppFonts();
   const hydrated = useListsStore((s) => s.hydrated);
@@ -130,7 +139,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       {ready && (
-        <NavigationContainer ref={navigationRef} theme={buildNavTheme(isDark)}>
+        <NavigationContainer key={localeVersion} ref={navigationRef} theme={buildNavTheme(isDark)}>
           <StatusBar style={isDark ? 'light' : 'dark'} />
           <Stack.Navigator
             initialRouteName="ListsHome"

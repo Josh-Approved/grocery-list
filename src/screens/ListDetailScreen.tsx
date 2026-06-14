@@ -47,20 +47,25 @@ import {
   visibleItems,
   type GroceryItem,
 } from '../data/list';
-import { DEFAULT_CATEGORY_ORDER, type Category } from '../data/categories';
+import {
+  DEFAULT_CATEGORY_ORDER,
+  categoryLabel,
+  type Category,
+} from '../data/categories';
 import { Stepper } from '../components/Stepper';
 import { Snackbar } from '../components/Snackbar';
 import { useActionMenu, usePrompt } from '../components/Dialogs';
 import ReviewModal from '../components/ReviewModal';
 import { recordSuccessfulCompletion } from '../storage/reviewPrompt';
 import { APP_NAME, IOS_APP_STORE_ID, ANDROID_PACKAGE } from '../lib/links';
+import { t } from '../i18n';
 import {
   useTheme,
   fontFamily,
   space,
   radius,
   target,
-  type as t,
+  type as ty,
   hairline,
   type Colors,
 } from '../theme';
@@ -200,7 +205,7 @@ export default function ListDetailScreen({ route, navigation }: Props) {
       const snap = { ...item };
       deleteItem(listId, item.id);
       setSnack({
-        message: `Removed ${item.name}`,
+        message: t('detail.removed', { name: item.name }),
         undo: () => restoreItems(listId, [snap]),
       });
     },
@@ -211,7 +216,10 @@ export default function ListDetailScreen({ route, navigation }: Props) {
     const snaps = finishShop(listId);
     if (snaps.length === 0) return;
     setSnack({
-      message: `Cleared ${snaps.length} item${snaps.length === 1 ? '' : 's'}`,
+      message: t(
+        snaps.length === 1 ? 'detail.clearedOne' : 'detail.clearedOther',
+        { count: snaps.length }
+      ),
       undo: () => restoreItems(listId, snaps),
     });
     // Finishing a shop is this app's genuine "satisfying success" — the
@@ -229,39 +237,42 @@ export default function ListDetailScreen({ route, navigation }: Props) {
         title: item.name,
         options: [
           {
-            label: item.note ? 'Edit note' : 'Add a note',
+            label: item.note ? t('detail.editNote') : t('detail.addNote'),
             onPress: () =>
               prompt.open({
-                title: 'Note',
-                message: 'Brand, size, anything useful at the shelf.',
+                title: t('detail.noteTitle'),
+                message: t('detail.noteMessage'),
                 initialValue: item.note ?? '',
                 selectAll: true,
-                placeholder: 'e.g. the big one',
+                placeholder: t('detail.notePlaceholder'),
                 onSubmit: (text) => setNote(listId, item.id, text),
               }),
           },
           {
-            label: 'Move to aisle',
+            label: t('detail.moveToAisle'),
             onPress: () =>
               menu.open({
-                title: 'Move to aisle',
+                title: t('detail.moveToAisle'),
                 options: DEFAULT_CATEGORY_ORDER.map((cat) => ({
-                  label: cat === item.category ? `${cat} ✓` : cat,
+                  label:
+                    cat === item.category
+                      ? `${categoryLabel(cat)} ✓`
+                      : categoryLabel(cat),
                   onPress: () => recategorize(listId, item.id, cat),
                 })),
               }),
           },
           {
             label: isStaple(item.name)
-              ? 'Remove from usuals'
-              : 'Save as a usual',
+              ? t('detail.removeFromUsuals')
+              : t('detail.saveAsUsual'),
             onPress: () =>
               isStaple(item.name)
                 ? removeStaple(item.name)
                 : addStaple(item.name),
           },
           {
-            label: 'Remove',
+            label: t('detail.remove'),
             destructive: true,
             onPress: () => removeWithUndo(item),
           },
@@ -287,37 +298,39 @@ export default function ListDetailScreen({ route, navigation }: Props) {
       title: list.name,
       options: [
         {
-          label: 'Rename list',
+          label: t('detail.renameList'),
           onPress: () =>
             prompt.open({
-              title: 'Rename list',
+              title: t('detail.renameList'),
               initialValue: list.name,
               selectAll: true,
-              confirmLabel: 'Save',
+              confirmLabel: t('common.save'),
               onSubmit: (name) => renameList(listId, name),
             }),
         },
         {
-          label: list.shareIdentity ? 'Sharing settings' : 'Share this list',
+          label: list.shareIdentity
+            ? t('detail.sharingSettings')
+            : t('detail.shareThis'),
           onPress: () => navigation.navigate('Share', { listId }),
         },
         {
-          label: 'Reorder aisles',
+          label: t('detail.reorderAisles'),
           onPress: () => navigation.navigate('ReorderAisles', { listId }),
         },
         ...(staples.length > 0
-          ? [{ label: 'Add usuals', onPress: addUsuals }]
+          ? [{ label: t('detail.addUsuals'), onPress: addUsuals }]
           : []),
         ...(stats.checked > 0
           ? [
               {
-                label: `Finish shop (clear ${stats.checked})`,
+                label: t('detail.finishShopClear', { count: stats.checked }),
                 onPress: doFinishShop,
               },
             ]
           : []),
         {
-          label: 'Delete list',
+          label: t('detail.deleteList'),
           destructive: true,
           onPress: () => {
             deleteList(listId);
@@ -345,7 +358,7 @@ export default function ListDetailScreen({ route, navigation }: Props) {
       if (row.kind === 'section') {
         return (
           <Text style={s.sectionHeader} accessibilityRole="header">
-            {row.category}
+            {categoryLabel(row.category)}
           </Text>
         );
       }
@@ -355,9 +368,10 @@ export default function ListDetailScreen({ route, navigation }: Props) {
             style={({ pressed }) => [s.checkedHeader, pressed && s.pressed]}
             onPress={() => setCheckedOpen((v) => !v)}
             accessibilityRole="button"
-            accessibilityLabel={`Checked, ${row.count} items, ${
-              checkedOpen ? 'collapse' : 'expand'
-            }`}
+            accessibilityLabel={t('detail.checkedA11y', {
+              count: row.count,
+              state: checkedOpen ? t('detail.collapse') : t('detail.expand'),
+            })}
           >
             {checkedOpen ? (
               <ChevronDown size={16} color={c.fgMuted} strokeWidth={1.5} />
@@ -365,7 +379,7 @@ export default function ListDetailScreen({ route, navigation }: Props) {
               <ChevronRight size={16} color={c.fgMuted} strokeWidth={1.5} />
             )}
             <Text style={s.checkedHeaderText}>
-              Checked ({row.count})
+              {t('detail.checked', { count: row.count })}
             </Text>
           </Pressable>
         );
@@ -405,14 +419,14 @@ export default function ListDetailScreen({ route, navigation }: Props) {
               value={it.quantity}
               onChange={(q) => setQuantity(listId, it.id, q)}
               onRemove={() => removeWithUndo(it)}
-              label={`Quantity of ${it.name}`}
+              label={t('detail.quantityOf', { name: it.name })}
             />
           )}
           <Pressable
             onPress={() => openItemMenu(it)}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={`Options for ${it.name}`}
+            accessibilityLabel={t('common.optionsFor', { name: it.name })}
             style={({ pressed }) => [s.iconBtn, pressed && s.pressed]}
           >
             <MoreHorizontal size={20} color={c.fgMuted} strokeWidth={1.5} />
@@ -432,7 +446,7 @@ export default function ListDetailScreen({ route, navigation }: Props) {
           onPress={() => navigation.goBack()}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={t('common.back')}
           style={({ pressed }) => [s.iconBtn, pressed && s.pressed]}
         >
           <ChevronLeft size={24} color={c.fg} strokeWidth={1.5} />
@@ -441,30 +455,33 @@ export default function ListDetailScreen({ route, navigation }: Props) {
           style={s.headerTitleWrap}
           onPress={() =>
             prompt.open({
-              title: 'Rename list',
+              title: t('detail.renameList'),
               initialValue: list.name,
               selectAll: true,
-              confirmLabel: 'Save',
+              confirmLabel: t('common.save'),
               onSubmit: (name) => renameList(listId, name),
             })
           }
           accessibilityRole="button"
-          accessibilityLabel={`${list.name}, rename`}
+          accessibilityLabel={t('detail.renameA11y', { name: list.name })}
         >
           <Text style={s.headerTitle} numberOfLines={1}>
             {list.name}
           </Text>
           <Text style={s.headerMeta}>
             {stats.total === 0
-              ? 'Empty'
-              : `${stats.checked} of ${stats.total} checked`}
+              ? t('common.empty')
+              : t('common.countChecked', {
+                  checked: stats.checked,
+                  total: stats.total,
+                })}
           </Text>
         </Pressable>
         <Pressable
           onPress={openListMenu}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel="List options"
+          accessibilityLabel={t('detail.listOptions')}
           style={({ pressed }) => [s.iconBtn, pressed && s.pressed]}
         >
           <MoreHorizontal size={22} color={c.fg} strokeWidth={1.5} />
@@ -477,19 +494,19 @@ export default function ListDetailScreen({ route, navigation }: Props) {
           style={s.addInput}
           value={draft}
           onChangeText={setDraft}
-          placeholder="Add an item"
+          placeholder={t('detail.addItem')}
           placeholderTextColor={c.fgSubtle}
           returnKeyType="done"
           blurOnSubmit={false}
           onSubmitEditing={submitDraft}
-          accessibilityLabel="Add an item"
+          accessibilityLabel={t('detail.addItem')}
         />
         <Pressable
           onPress={submitDraft}
           disabled={draft.trim().length === 0}
           hitSlop={6}
           accessibilityRole="button"
-          accessibilityLabel="Add item"
+          accessibilityLabel={t('detail.addItemButton')}
           style={({ pressed }) => [
             s.addBtn,
             draft.trim().length === 0 && s.addBtnDisabled,
@@ -512,7 +529,7 @@ export default function ListDetailScreen({ route, navigation }: Props) {
               key={name}
               onPress={() => addOne(name, true)}
               accessibilityRole="button"
-              accessibilityLabel={`Add ${name}`}
+              accessibilityLabel={t('detail.addNamed', { name })}
               style={({ pressed }) => [s.chip, pressed && s.pressed]}
             >
               <Plus size={14} color={c.fgMuted} strokeWidth={1.5} />
@@ -534,10 +551,8 @@ export default function ListDetailScreen({ route, navigation }: Props) {
         }
         ListEmptyComponent={
           <View style={s.empty}>
-            <Text style={s.emptyTitle}>Nothing on this list yet</Text>
-            <Text style={s.emptyBody}>
-              Type an item above and it'll sort itself into the right aisle.
-            </Text>
+            <Text style={s.emptyTitle}>{t('detail.emptyTitle')}</Text>
+            <Text style={s.emptyBody}>{t('detail.emptyBody')}</Text>
           </View>
         }
       />
@@ -547,10 +562,14 @@ export default function ListDetailScreen({ route, navigation }: Props) {
           <Pressable
             onPress={doFinishShop}
             accessibilityRole="button"
-            accessibilityLabel={`Finish shop, clear ${stats.checked} checked items`}
+            accessibilityLabel={t('detail.finishShopA11y', {
+              count: stats.checked,
+            })}
             style={({ pressed }) => [s.finishBtn, pressed && s.pressed]}
           >
-            <Text style={s.finishText}>Finish shop ({stats.checked})</Text>
+            <Text style={s.finishText}>
+              {t('detail.finishShop', { count: stats.checked })}
+            </Text>
           </Pressable>
         </View>
       ) : null}
@@ -558,7 +577,7 @@ export default function ListDetailScreen({ route, navigation }: Props) {
       <Snackbar
         visible={!!snack}
         message={snack?.message ?? ''}
-        actionLabel="Undo"
+        actionLabel={t('common.undo')}
         onAction={() => snack?.undo()}
         onDismiss={() => setSnack(null)}
       />
@@ -592,12 +611,12 @@ function makeStyles(c: Colors) {
     },
     headerTitleWrap: { flex: 1, paddingHorizontal: space.s3 },
     headerTitle: {
-      ...t.md,
+      ...ty.md,
       fontFamily: fontFamily.sansSemibold,
       color: c.fg,
     },
     headerMeta: {
-      ...t.xs,
+      ...ty.xs,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
       marginTop: space.s1,
@@ -618,7 +637,7 @@ function makeStyles(c: Colors) {
       gap: space.s3,
     },
     addInput: {
-      ...t.base,
+      ...ty.base,
       flex: 1,
       fontFamily: fontFamily.sans,
       color: c.fg,
@@ -656,7 +675,7 @@ function makeStyles(c: Colors) {
       backgroundColor: c.bgElevated,
     },
     chipText: {
-      ...t.sm,
+      ...ty.sm,
       fontFamily: fontFamily.sans,
       color: c.fg,
       maxWidth: 180,
@@ -668,7 +687,7 @@ function makeStyles(c: Colors) {
       paddingBottom: space.s9,
     },
     sectionHeader: {
-      ...t.xs,
+      ...ty.xs,
       fontFamily: fontFamily.sansSemibold,
       color: c.fgMuted,
       textTransform: 'uppercase',
@@ -684,7 +703,7 @@ function makeStyles(c: Colors) {
       marginTop: space.s5,
     },
     checkedHeaderText: {
-      ...t.xs,
+      ...ty.xs,
       fontFamily: fontFamily.sansSemibold,
       color: c.fgMuted,
       textTransform: 'uppercase',
@@ -719,7 +738,7 @@ function makeStyles(c: Colors) {
     },
     itemText: { flex: 1 },
     itemName: {
-      ...t.base,
+      ...ty.base,
       fontFamily: fontFamily.sans,
       color: c.fg,
     },
@@ -728,7 +747,7 @@ function makeStyles(c: Colors) {
       textDecorationLine: 'line-through',
     },
     itemNote: {
-      ...t.sm,
+      ...ty.sm,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
       marginTop: space.s1,
@@ -737,13 +756,13 @@ function makeStyles(c: Colors) {
     emptyWrap: { ...boundedContent, flexGrow: 1, justifyContent: 'center' },
     empty: { paddingHorizontal: space.s7, alignItems: 'center' },
     emptyTitle: {
-      ...t.md,
+      ...ty.md,
       fontFamily: fontFamily.sansSemibold,
       color: c.fg,
       marginBottom: space.s3,
     },
     emptyBody: {
-      ...t.base,
+      ...ty.base,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
       textAlign: 'center',
@@ -765,7 +784,7 @@ function makeStyles(c: Colors) {
       borderRadius: radius.md,
     },
     finishText: {
-      ...t.base,
+      ...ty.base,
       fontFamily: fontFamily.sansSemibold,
       color: c.inkButtonText,
     },

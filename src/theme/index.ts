@@ -25,3 +25,13 @@ export type { Colors } from './colors';
 export { space, radius, target, motion, hairline } from './tokens';
 
 export { CONTENT_MAX_WIDTH, boundedContent } from './layout';
+
+export {
+  useApplyThemePreference,
+  useThemePreference,
+  setThemePreference,
+} from './themePreference';
+export type { ThemePref } from './themePreference';
+
+export { AppearanceToggle } from './AppearanceToggle';
+export type { AppearanceLabels } from './AppearanceToggle';
