@@ -76,13 +76,13 @@ export function makeList(name?: string): GroceryList {
   };
 }
 
-export function makeItem(name: string): GroceryItem {
+export function makeItem(name: string, locale: string = 'en'): GroceryItem {
   const now = Date.now();
   return {
     id: makeId('i'),
     name: name.trim(),
     quantity: 1,
-    category: inferCategory(name),
+    category: inferCategory(name, locale),
     checked: false,
     addedAt: now,
     updatedAt: now,

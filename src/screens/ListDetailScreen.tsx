@@ -58,7 +58,8 @@ import { useActionMenu, usePrompt } from '../components/Dialogs';
 import ReviewModal from '../components/ReviewModal';
 import { recordSuccessfulCompletion } from '../storage/reviewPrompt';
 import { APP_NAME, IOS_APP_STORE_ID, ANDROID_PACKAGE } from '../lib/links';
-import { t } from '../i18n';
+import { t, pickLocale, getLocale, CANONICAL_LOCALES } from '../i18n';
+import { useLocalePreference } from '../i18n/localePreference';
 import {
   useTheme,
   fontFamily,
@@ -101,6 +102,14 @@ export default function ListDetailScreen({ route, navigation }: Props) {
   const addStaple = useAccountStore((st) => st.addStaple);
   const removeStaple = useAccountStore((st) => st.removeStaple);
   const staples = useAccountStore((st) => st.staples);
+
+  // The active in-app language, so a newly added item categorizes against that
+  // language's keywords (System follows the device; an explicit pick wins).
+  const { pref } = useLocalePreference();
+  const activeLocale =
+    pref === 'system'
+      ? pickLocale(getLocale(), [...CANONICAL_LOCALES]) ?? 'en'
+      : pref;
 
   const menu = useActionMenu();
   const prompt = usePrompt();
@@ -165,14 +174,14 @@ export default function ListDetailScreen({ route, navigation }: Props) {
     (name: string, keepFocus: boolean) => {
       const n = name.trim();
       if (!n) return;
-      addItem(listId, n);
+      addItem(listId, n, activeLocale);
       recordUse(n);
       if (keepFocus) {
         setDraft('');
         requestAnimationFrame(() => inputRef.current?.focus());
       }
     },
-    [addItem, recordUse, listId]
+    [addItem, recordUse, listId, activeLocale]
   );
 
   const submitDraft = useCallback(() => {
@@ -194,11 +203,11 @@ export default function ListDetailScreen({ route, navigation }: Props) {
     );
     for (const name of staples) {
       if (!active.has(name)) {
-        addItem(listId, name);
+        addItem(listId, name, activeLocale);
         recordUse(name);
       }
     }
-  }, [list, staples, addItem, recordUse, listId]);
+  }, [list, staples, addItem, recordUse, listId, activeLocale]);
 
   const removeWithUndo = useCallback(
     (item: GroceryItem) => {

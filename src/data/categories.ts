@@ -12,6 +12,7 @@
  */
 
 import { t } from '../i18n';
+import { KEYWORDS_BY_LOCALE } from './categoryKeywords';
 
 export type Category =
   | 'Produce'
@@ -64,102 +65,39 @@ export const DEFAULT_CATEGORY_ORDER: Category[] = [
   'Other',
 ];
 
-/** Substring keywords → category. First category with any matching keyword
- *  wins (checked in CATEGORY_KEYWORDS insertion order). Lowercased compare. */
-const CATEGORY_KEYWORDS: Array<{ category: Category; keywords: string[] }> = [
-  {
-    category: 'Produce',
-    keywords: [
-      'apple', 'banana', 'orange', 'lemon', 'lime', 'grape', 'berry', 'berries',
-      'strawberr', 'blueberr', 'avocado', 'tomato', 'potato', 'onion', 'garlic',
-      'lettuce', 'spinach', 'kale', 'carrot', 'celery', 'pepper', 'cucumber',
-      'broccoli', 'cauliflower', 'mushroom', 'zucchini', 'squash', 'corn',
-      'salad', 'herb', 'cilantro', 'parsley', 'basil', 'ginger', 'melon',
-      'peach', 'pear', 'plum', 'mango', 'pineapple', 'cabbage', 'asparagus',
-    ],
-  },
-  {
-    category: 'Bakery',
-    keywords: [
-      'bread', 'bagel', 'bun', 'roll', 'baguette', 'croissant', 'muffin',
-      'tortilla', 'pita', 'naan', 'cake', 'donut', 'doughnut', 'pastry',
-    ],
-  },
-  {
-    category: 'Meat & seafood',
-    keywords: [
-      'chicken', 'beef', 'pork', 'steak', 'bacon', 'sausage', 'ham', 'turkey',
-      'lamb', 'mince', 'ground beef', 'fish', 'salmon', 'tuna', 'shrimp',
-      'prawn', 'cod', 'tilapia', 'crab', 'lobster', 'meat',
-    ],
-  },
-  {
-    category: 'Dairy & eggs',
-    keywords: [
-      'milk', 'cheese', 'butter', 'yogurt', 'yoghurt', 'cream', 'egg',
-      'sour cream', 'cottage', 'mozzarella', 'cheddar', 'parmesan', 'feta',
-      'margarine', 'half and half', 'creamer',
-    ],
-  },
-  {
-    category: 'Frozen',
-    keywords: [
-      'frozen', 'ice cream', 'popsicle', 'fries', 'frozen pizza', 'waffle',
-    ],
-  },
-  {
-    category: 'Pantry',
-    keywords: [
-      'rice', 'pasta', 'noodle', 'flour', 'sugar', 'salt', 'oil', 'olive oil',
-      'vinegar', 'sauce', 'ketchup', 'mustard', 'mayo', 'mayonnaise', 'beans',
-      'lentil', 'canned', 'can of', 'soup', 'cereal', 'oats', 'oatmeal',
-      'peanut butter', 'jam', 'jelly', 'honey', 'spice', 'stock', 'broth',
-      'tomato sauce', 'salsa', 'baking', 'yeast', 'cornstarch', 'tea bag',
-    ],
-  },
-  {
-    category: 'Snacks',
-    keywords: [
-      'chip', 'crisps', 'cracker', 'cookie', 'biscuit', 'candy', 'chocolate',
-      'popcorn', 'pretzel', 'nuts', 'almond', 'cashew', 'granola bar',
-      'snack', 'trail mix', 'gum',
-    ],
-  },
-  {
-    category: 'Beverages',
-    keywords: [
-      'water', 'juice', 'soda', 'pop', 'cola', 'coffee', 'tea', 'beer',
-      'wine', 'drink', 'sparkling', 'lemonade', 'kombucha', 'energy drink',
-    ],
-  },
-  {
-    category: 'Household',
-    keywords: [
-      'paper towel', 'toilet paper', 'tissue', 'napkin', 'detergent', 'soap',
-      'dish', 'sponge', 'trash bag', 'bin bag', 'cleaner', 'bleach', 'wipes',
-      'foil', 'plastic wrap', 'ziploc', 'battery', 'bulb', 'light bulb',
-      'laundry', 'fabric softener',
-    ],
-  },
-  {
-    category: 'Personal care',
-    keywords: [
-      'shampoo', 'conditioner', 'toothpaste', 'toothbrush', 'deodorant',
-      'floss', 'razor', 'shaving', 'lotion', 'sunscreen', 'tampon', 'pad',
-      'diaper', 'vitamin', 'medicine', 'bandage', 'body wash', 'hand soap',
-      'mouthwash', 'q-tip', 'cotton',
-    ],
-  },
-];
-
-/** Best-guess aisle for a freshly typed item. Defaults to 'Other'. */
-export function inferCategory(name: string): Category {
-  const n = name.trim().toLowerCase();
-  if (!n) return 'Other';
-  for (const { category, keywords } of CATEGORY_KEYWORDS) {
+/** Scan one locale's keyword map for the first category (in
+ *  DEFAULT_CATEGORY_ORDER) with a substring hit. 'Other' carries no keywords,
+ *  so it is never matched here — it's the fallback. Returns null on no match. */
+function matchInMap(
+  n: string,
+  map: Record<string, string[]> | undefined
+): Category | null {
+  if (!map) return null;
+  for (const category of DEFAULT_CATEGORY_ORDER) {
+    const keywords = map[category];
+    if (!keywords) continue;
     for (const kw of keywords) {
       if (n.includes(kw)) return category;
     }
   }
-  return 'Other';
+  return null;
+}
+
+/**
+ * Best-guess aisle for a freshly typed item. Locale-aware: an item typed in the
+ * active in-app language matches that language's keywords, with English as the
+ * per-item fallback so English input still sorts in any locale (and an unknown
+ * locale behaves exactly like the old English-only matcher). Defaults to
+ * 'Other'. Keywords live in `categoryKeywords.ts` (single source of truth).
+ */
+export function inferCategory(name: string, locale: string = 'en'): Category {
+  const n = name.trim().toLowerCase();
+  if (!n) return 'Other';
+  const localeMap = KEYWORDS_BY_LOCALE[locale];
+  // Try the active locale first (unless it IS English), then English fallback.
+  if (localeMap && localeMap !== KEYWORDS_BY_LOCALE.en) {
+    const hit = matchInMap(n, localeMap);
+    if (hit) return hit;
+  }
+  return matchInMap(n, KEYWORDS_BY_LOCALE.en) ?? 'Other';
 }
