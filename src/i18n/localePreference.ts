@@ -31,7 +31,12 @@
 
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CANONICAL_LOCALES, applyDeviceLocale, setLocaleStrings } from './index';
+import {
+  CANONICAL_LOCALES,
+  applyDeviceLocale,
+  setLocaleStrings,
+  resetToBaseStrings,
+} from './index';
 import { LOCALES } from './locales';
 import { SHELL_LOCALES } from './shellLocales';
 
@@ -77,16 +82,25 @@ function subscribe(listener: () => void): () => void {
 }
 
 /** Point the active dictionary at a preference. 'system' re-reads the device
- *  locale; an explicit tag overlays that locale (falling back to English
- *  per-key for anything untranslated); an unknown tag falls back to device. */
+ *  locale; 'en' resets to the English base; any other tag overlays that locale
+ *  (falling back to English per-key for anything untranslated); an unknown tag
+ *  resets to English. */
 function applyPref(p: LocalePref): void {
   if (p === 'system') {
     applyDeviceLocale();
     return;
   }
+  if (p === 'en') {
+    // Explicit English is a real destination, not just "stop translating":
+    // reset to the English base so we never re-overlay the device locale (which
+    // would re-translate on a non-English phone) and never leave a prior
+    // overlay in place (the reported "can't get back to English" bug).
+    resetToBaseStrings();
+    return;
+  }
   const dict = LOCALES[p];
   if (dict) setLocaleStrings(dict);
-  else applyDeviceLocale();
+  else resetToBaseStrings();
 }
 
 function coerce(value: string | null): LocalePref {

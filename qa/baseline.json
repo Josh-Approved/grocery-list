@@ -1,4 +1,5 @@
 {
   "commits/fingerprint": "30907d9",
-  "testing/enforce": true
+  "testing/enforce": true,
+  "i18n/enforce": true
 }

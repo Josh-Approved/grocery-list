@@ -21,10 +21,11 @@ import {
   fontFamily,
   space,
   radius,
-  type as t,
+  type as ty,
   hairline,
   Colors,
 } from '../theme';
+import { t } from '../i18n';
 
 const BMAC_URL = 'https://buymeacoffee.com/jtysonwilliams';
 
@@ -38,9 +39,6 @@ interface Props {
   /** Optional override for the AsyncStorage key (rare — only for multi-surface apps). */
   storageKey?: string;
 }
-
-const defaultBody = (appName: string) =>
-  `${appName} has no ads and no subscriptions — it's supported by the people who use it. If it's earned a place in your day, your support keeps it going.`;
 
 export default function DonationModal({
   visible,
@@ -75,23 +73,23 @@ export default function DonationModal({
     >
       <View style={s.overlay}>
         <View style={s.card}>
-          <Text style={s.body}>{bodyText ?? defaultBody(appName)}</Text>
+          <Text style={s.body}>{bodyText ?? t('donate.body', { app: appName })}</Text>
           <Pressable
             style={({ pressed }) => [s.primaryBtn, pressed && s.pressed]}
             onPress={handleDonate}
             accessibilityRole="button"
-            accessibilityLabel="Support this app, opens in your browser"
+            accessibilityLabel={t('donate.supportA11y')}
           >
-            <Text style={s.primaryBtnText}>Support this app</Text>
+            <Text style={s.primaryBtnText}>{t('about.support')}</Text>
           </Pressable>
           <Pressable
             style={({ pressed }) => [s.secondaryBtn, pressed && s.pressed]}
             onPress={onDismiss}
             accessibilityRole="button"
-            accessibilityLabel="Maybe later"
+            accessibilityLabel={t('common.maybeLater')}
             hitSlop={8}
           >
-            <Text style={s.secondaryBtnText}>Maybe later</Text>
+            <Text style={s.secondaryBtnText}>{t('common.maybeLater')}</Text>
           </Pressable>
         </View>
       </View>
@@ -123,7 +121,7 @@ function makeStyles(c: Colors) {
       elevation: 10,
     },
     body: {
-      ...t.sm,
+      ...ty.sm,
       fontFamily: fontFamily.sans,
       color: c.fg,
       textAlign: 'center',
@@ -139,13 +137,13 @@ function makeStyles(c: Colors) {
       marginBottom: space.s3,
     },
     primaryBtnText: {
-      ...t.base,
+      ...ty.base,
       fontFamily: fontFamily.sansSemibold,
       color: c.inkButtonText,
     },
     secondaryBtn: { paddingVertical: space.s2 },
     secondaryBtnText: {
-      ...t.sm,
+      ...ty.sm,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
     },

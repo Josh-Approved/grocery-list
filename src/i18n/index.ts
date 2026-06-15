@@ -51,12 +51,27 @@ function deepMerge(base: Dict, extra: Dict): Dict {
   return out;
 }
 
-let active: Dict = deepMerge(SHELL_STRINGS as Dict, APP_STRINGS as Dict);
+/** The English base — SHELL + APP, no locale overlay. A fresh object every call
+ *  so a reset can never alias a previously-overlaid dictionary. */
+function baseStrings(): Dict {
+  return deepMerge(SHELL_STRINGS as Dict, APP_STRINGS as Dict);
+}
 
-/** Replace the active dictionary (P7 locale switch). Keeps SHELL+APP as the
- *  English base and overlays the locale's translations. */
+let active: Dict = baseStrings();
+
+/** Drop every locale overlay and return the active dictionary to English.
+ *  This is what makes "English" (and System on an English phone) a real
+ *  destination, not just "stop translating": without an explicit reset,
+ *  switching away from a locale leaves the previous overlay in place and the
+ *  old language sticks on screen. */
+export function resetToBaseStrings(): void {
+  active = baseStrings();
+}
+
+/** Replace the active dictionary (locale switch). Keeps SHELL+APP as the
+ *  English base and overlays the locale's translations on top. */
 export function setLocaleStrings(localeDict: Dict): void {
-  active = deepMerge(deepMerge(SHELL_STRINGS as Dict, APP_STRINGS as Dict), localeDict);
+  active = deepMerge(baseStrings(), localeDict);
 }
 
 /**
@@ -83,16 +98,16 @@ export function pickLocale(
 /** Apply the device's locale from the LOCALES map (no-op when English or when
  *  no matching translation exists). Called once at module load below. */
 export function applyDeviceLocale(): void {
+  // Reset first so a device locale with no translation (e.g. English) returns
+  // to English instead of leaving a previous overlay in place.
+  resetToBaseStrings();
   try {
     const match = pickLocale(getLocale(), Object.keys(LOCALES));
     if (match && LOCALES[match]) {
-      active = deepMerge(
-        deepMerge(SHELL_STRINGS as Dict, APP_STRINGS as Dict),
-        LOCALES[match] as Dict
-      );
+      active = deepMerge(baseStrings(), LOCALES[match] as Dict);
     }
   } catch {
-    /* keep English */
+    /* keep English base */
   }
 }
 

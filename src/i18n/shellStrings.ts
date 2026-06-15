@@ -18,6 +18,8 @@ export const SHELL_STRINGS = {
     edit: 'Edit',
     rename: 'Rename',
     add: 'Add',
+    maybeLater: 'Maybe later',
+    notNow: 'Not now',
   },
   settings: {
     title: 'Settings',
@@ -48,5 +50,28 @@ export const SHELL_STRINGS = {
     oneLiner:
       'Privacy-first replacements for paywalled utility apps. Open source. Pay what you want.',
     learnMore: 'Learn more',
+    learnMoreA11y: 'Learn more at joshapproved.com',
+  },
+  // Donation prompt (DonationModal). The button label reuses about.support.
+  donate: {
+    body: "{app} has no ads and no subscriptions — it's supported by the people who use it. If it's earned a place in your day, your support keeps it going.",
+    supportA11y: 'Support this app, opens in your browser',
+  },
+  // Review prompt (ReviewModal). The button label reuses about.review;
+  // the dismiss label reuses common.notNow.
+  review: {
+    title: 'Enjoying {app}?',
+    body: 'A quick rating helps more people find this app.',
+    leaveA11y: 'Leave a review on the app store',
+  },
+  // Top-level error boundary fallback (ErrorBoundary).
+  error: {
+    title: 'Something went wrong',
+    body: 'The app hit an unexpected error. Reopen it to keep going — your data is safe on this device.',
+  },
+  // Acknowledgements screen (Credits). The header title reuses about.acknowledgements.
+  credits: {
+    footnote: "Full license texts live in each project's repository.",
+    linkHint: 'Opens the project page in your browser',
   },
 } as const;
