@@ -15,6 +15,16 @@ export const IOS_APP_STORE_ID = '';
 export const ANDROID_PACKAGE = 'com.joshapproved.grocerylist';
 
 export const BMAC_URL = 'https://buymeacoffee.com/jtysonwilliams';
+
+/**
+ * Gates every Buy Me a Coffee surface — the tertiary FundingFooter, the
+ * Settings/About support row, and the soft donation prompt. Set false
+ * 2026-06-16: Apple rejects external donation links for a for-profit app
+ * (App Store guideline 3.1.1 — must be In-App Purchase). Flip back to true
+ * when the IAP tip jar replaces the BMAC link.
+ */
+export const DONATIONS_ENABLED: boolean = false;
+
 export const STUDIO_URL = 'https://joshapproved.com';
 export const REPO_URL = 'https://github.com/josh-approved/grocery-list';
 export const PRIVACY_URL =

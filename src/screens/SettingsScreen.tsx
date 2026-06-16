@@ -36,6 +36,7 @@ import { t } from '../i18n';
 import {
   APP_NAME,
   BMAC_URL,
+  DONATIONS_ENABLED,
   PRIVACY_URL,
   REPO_URL,
   STUDIO_URL,
@@ -115,7 +116,7 @@ export default function SettingsScreen({ navigation }: Props) {
         {status ? <Text style={s.status}>{status}</Text> : null}
 
         <Text style={s.sectionLabel}>{t('settings.about')}</Text>
-        <AboutRow label={t('about.support')} icon={HandHeart} onPress={() => openUrl(BMAC_URL)} />
+        {DONATIONS_ENABLED && <AboutRow label={t('about.support')} icon={HandHeart} onPress={() => openUrl(BMAC_URL)} />}
         <AboutRow label={t('about.feedback')} icon={Mail} onPress={openFeedbackMail} />
         <AboutRow label={t('about.review')} icon={Star} onPress={openReview} />
         <AboutRow label={t('about.privacy')} icon={Shield} onPress={() => openUrl(PRIVACY_URL)} />

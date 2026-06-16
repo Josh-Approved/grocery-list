@@ -22,6 +22,7 @@ import { useListsStore } from '../store/lists';
 import { listStats, type GroceryList } from '../data/list';
 import { useActionMenu, usePrompt } from '../components/Dialogs';
 import { FundingFooter } from '../components/FundingFooter';
+import { DONATIONS_ENABLED } from '../lib/links';
 import { t } from '../i18n';
 import {
   useTheme,
@@ -196,7 +197,7 @@ export default function ListsHomeScreen({ navigation }: Props) {
         }
       />
 
-      <FundingFooter />
+      {DONATIONS_ENABLED && <FundingFooter />}
 
       {menu.element}
       {prompt.element}
