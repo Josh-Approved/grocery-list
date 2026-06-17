@@ -686,7 +686,9 @@ const ruleNoHardcodedStrings = () => {
   const files = srcSourceFiles().filter((f) => {
     const rel = relative(join(appDir, 'src'), f).replace(/\\/g, '/');
     if (!/\.tsx$/.test(f)) return false;
-    if (!(rel.startsWith('screens/') || rel.startsWith('components/'))) return false;
+    // Scan screens + components AND the app shell (src/shell — AppShell and any
+    // shell chrome); the shell renders user-facing text too (canon § Translations).
+    if (!(rel.startsWith('screens/') || rel.startsWith('components/') || rel.startsWith('shell/'))) return false;
     if (I18N_SKIP_FILES.has(f.split(/[\\/]/).pop())) return false;
     return true;
   });
@@ -789,6 +791,138 @@ const ruleLanguageControl = () => {
   return languageWarn('language/control', 'In-app language control incomplete (canon § Translations)', missing);
 };
 
+// ---------- rule: dark-mode contrast pairing (canon § Theming) ----------
+//
+// The OS-following palettes (src/theme/colors.ts) INVERT in dark mode: every
+// surface that is dark in light mode (c.fg, c.inkButton) becomes light in dark
+// mode. A button's foreground must therefore be the token that inverts WITH its
+// background — the matched pairs are `inkButton`/`inkButtonText` and `fg`/`bg`.
+// The trap that shipped a real production defect (packing-list's empty-state CTA
+// + FAB invisible in dark, reported by a dark-mode user 2026-06-17): pairing an
+// inverting button with `c.fgOnInk`/`c.fgOnAccent`, which are PAPER-coloured in
+// BOTH palettes — so on the dark-mode (now light) button the label/icon is
+// white-on-white. `c.fgOnInk` has no correct background in the inverting palette
+// (its only intended surface, the ink button, flips to light); the correct token
+// is always `c.inkButtonText`. `c.fgOnAccent` is legitimate ONLY on the green
+// `c.accent` surface (the white check on a "done" box). Two checks:
+//   A. `c.fgOnInk` used as a foreground anywhere in src → FAIL (use inkButtonText).
+//   B. any single style object pairing a `backgroundColor` + `color` whose WCAG
+//      contrast is legible in one palette (>=4.5) but COLLAPSES (<2.0) in the
+//      other → FAIL (an inversion mismatch, regardless of the tokens involved).
+// Hard FAIL (a defect rule like parity/*), not a rollout WARN: every flagged
+// pair is an invisible control, and the whole fleet is backfilled green here.
+
+// Backgrounds that are overlays/scrims, never a surface text sits directly on
+// (a sheet always sits between) — excluded from check B to avoid mis-pairing.
+const CONTRAST_BG_IGNORE = new Set(['bgScrim']);
+
+const ruleContrastPairing = () => {
+  if (surface !== 'rn') return skip('theme/contrast-pairing', 'Not a React Native app');
+  const colorsPath = join(appDir, 'src/theme/colors.ts');
+  if (!exists(colorsPath)) return skip('theme/contrast-pairing', 'No src/theme/colors.ts to resolve tokens');
+
+  // --- resolve the light/dark palettes from colors.ts (single source of truth) ---
+  const colorsSrc = readText(colorsPath) || '';
+  const palette = (name) => {
+    const m = new RegExp(`const\\s+${name}\\b[^=]*=\\s*\\{`).exec(colorsSrc);
+    if (!m) return null;
+    let i = colorsSrc.indexOf('{', m.index), depth = 0, end = i;
+    for (; end < colorsSrc.length; end++) {
+      if (colorsSrc[end] === '{') depth++;
+      else if (colorsSrc[end] === '}' && --depth === 0) { end++; break; }
+    }
+    const map = {};
+    for (const pm of colorsSrc.slice(i + 1, end - 1).matchAll(/(\w+)\s*:\s*(?:'([^']*)'|"([^"]*)")/g)) {
+      map[pm[1]] = pm[2] ?? pm[3];
+    }
+    return map;
+  };
+  const light = palette('light'), dark = palette('dark');
+  if (!light || !dark || !light.bg || !dark.bg) {
+    return skip('theme/contrast-pairing', 'Could not parse light/dark palettes from colors.ts');
+  }
+  const toRgb = (str, base) => {
+    if (!str) return null;
+    str = str.trim();
+    let m = str.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
+    if (m) {
+      let h = m[1]; if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+      return [0, 2, 4].map((o) => parseInt(h.substr(o, 2), 16));
+    }
+    m = str.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/);
+    if (m) {
+      const r = +m[1], g = +m[2], b = +m[3], a = m[4] == null ? 1 : +m[4];
+      if (a >= 1 || !base) return [r, g, b];
+      return [0, 1, 2].map((i) => Math.round(a * [r, g, b][i] + (1 - a) * base[i]));
+    }
+    return null;
+  };
+  const lum = ([r, g, b]) => {
+    const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
+  const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+  const resolve = (mode, tok) => toRgb(mode[tok], toRgb(mode.bg));
+  // contrast of (bgToken, fgToken) in both palettes → [lightRatio, darkRatio] or null
+  const pairRatios = (bgTok, fgTok) => {
+    const lb = resolve(light, bgTok), lf = resolve(light, fgTok);
+    const db = resolve(dark, bgTok), df = resolve(dark, fgTok);
+    if (!lb || !lf || !db || !df) return null;
+    return [ratio(lb, lf), ratio(db, df)];
+  };
+  const collapses = (rs) => rs && Math.min(rs[0], rs[1]) < 2.0 && Math.max(rs[0], rs[1]) >= 4.5;
+
+  const files = srcSourceFiles().filter((f) => f !== colorsPath);
+  const failsA = [];
+  const failsB = [];
+
+  // brace-matched block that ENCLOSES character index `idx` (the nearest {...})
+  const enclosingBlock = (code, idx) => {
+    let i = idx, depth = 0;
+    for (; i >= 0; i--) { if (code[i] === '}') depth++; else if (code[i] === '{') { if (depth === 0) break; depth--; } }
+    if (i < 0) return null;
+    let j = i, d = 0;
+    for (; j < code.length; j++) { if (code[j] === '{') d++; else if (code[j] === '}' && --d === 0) { j++; break; } }
+    return code.slice(i, j);
+  };
+
+  for (const f of files) {
+    const raw = readText(f);
+    if (!raw) continue;
+    const code = stripComments(raw);
+    const rel = relative(appDir, f);
+    // Check A — fgOnInk as a foreground (no correct inverting background exists)
+    for (const m of code.matchAll(/\bc\.fgOnInk\b/g)) {
+      failsA.push(`${rel}:${code.slice(0, m.index).split('\n').length}`);
+    }
+    // Check B — same style object pairs a background + text colour that collapses
+    for (const m of code.matchAll(/\bbackgroundColor\s*:\s*c\.(\w+)/g)) {
+      const bgTok = m[1];
+      if (CONTRAST_BG_IGNORE.has(bgTok)) continue;
+      const block = enclosingBlock(code, m.index);
+      if (!block) continue;
+      const cm = /(?<![A-Za-z])color\s*:\s*c\.(\w+)/.exec(block); // plain `color:` only
+      if (!cm) continue;
+      const fgTok = cm[1];
+      if (fgTok === 'fgOnInk') continue; // already reported by check A
+      const rs = pairRatios(bgTok, fgTok);
+      if (collapses(rs)) {
+        const line = code.slice(0, m.index).split('\n').length;
+        failsB.push(`${rel}:${line}: c.${bgTok} bg + c.${fgTok} text → ${rs[0].toFixed(1)}:1 light / ${rs[1].toFixed(1)}:1 dark (invisible in ${rs[0] < rs[1] ? 'light' : 'dark'})`);
+      }
+    }
+  }
+
+  const detail = [];
+  if (failsA.length) detail.push(`c.fgOnInk used as a foreground (${failsA.length}) — paper in both palettes, invisible on the inverted dark-mode button; use c.inkButtonText: ${failsA.slice(0, 10).join(', ')}${failsA.length > 10 ? ' …' : ''}`);
+  if (failsB.length) detail.push(...failsB.slice(0, 10));
+  if (detail.length) {
+    return fail('theme/contrast-pairing',
+      'Dark-mode contrast inversion — a button foreground does not invert with its background (canon § Theming)', detail);
+  }
+  return pass('theme/contrast-pairing', 'No dark-mode contrast-inversion pairs (matched inkButton/inkButtonText + fg/bg)');
+};
+
 // ---------- runner ----------
 
 const CANONICAL_RULES = [
@@ -807,6 +941,7 @@ const CANONICAL_RULES = [
   ruleNoPlatformEarlyReturn,
   ruleEasJsonShape,
   ruleAppearanceToggle,
+  ruleContrastPairing,
   ruleLanguageControl,
   ruleAppNameSpotlightSafe,
   ruleKeyboardDismissEscape,
