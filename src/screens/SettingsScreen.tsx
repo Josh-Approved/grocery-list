@@ -32,11 +32,12 @@ import { exportLists, pickAndParseLists } from '../lib/transfer';
 import { AboutRow } from '../components/AboutRow';
 import { Wordmark } from '../components/Wordmark';
 import { LanguageSetting } from '../components/LanguageSetting';
+import TipJarSheet from '../components/TipJarSheet';
+import { TIP_PRODUCT_IDS } from '../constants/tipProducts';
 import { t } from '../i18n';
 import {
   APP_NAME,
-  BMAC_URL,
-  DONATIONS_ENABLED,
+  TIP_JAR_ENABLED,
   PRIVACY_URL,
   REPO_URL,
   STUDIO_URL,
@@ -64,6 +65,7 @@ export default function SettingsScreen({ navigation }: Props) {
   const lists = useListsStore((st) => st.lists);
   const importLists = useListsStore((st) => st.importLists);
   const [status, setStatus] = useState<string | null>(null);
+  const [tipVisible, setTipVisible] = useState(false);
 
   const onExport = useCallback(() => {
     exportLists(lists).catch(() => setStatus(t('settings.couldntExport')));
@@ -116,7 +118,7 @@ export default function SettingsScreen({ navigation }: Props) {
         {status ? <Text style={s.status}>{status}</Text> : null}
 
         <Text style={s.sectionLabel}>{t('settings.about')}</Text>
-        {DONATIONS_ENABLED && <AboutRow label={t('about.support')} icon={HandHeart} onPress={() => openUrl(BMAC_URL)} />}
+        {TIP_JAR_ENABLED && <AboutRow label={t('about.support')} icon={HandHeart} onPress={() => setTipVisible(true)} />}
         <AboutRow label={t('about.feedback')} icon={Mail} onPress={openFeedbackMail} />
         <AboutRow label={t('about.review')} icon={Star} onPress={openReview} />
         <AboutRow label={t('about.privacy')} icon={Shield} onPress={() => openUrl(PRIVACY_URL)} />
@@ -137,6 +139,13 @@ export default function SettingsScreen({ navigation }: Props) {
           </Pressable>
         </View>
       </ScrollView>
+      {tipVisible && (
+        <TipJarSheet
+          visible
+          onDismiss={() => setTipVisible(false)}
+          productIds={TIP_PRODUCT_IDS}
+        />
+      )}
     </SafeAreaView>
   );
 }

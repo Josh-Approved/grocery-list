@@ -6,7 +6,7 @@
  * wired at build step 4; Settings at step 6.
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -15,14 +15,15 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, MoreHorizontal, ChevronRight, Settings } from 'lucide-react-native';
+import { Plus, MoreHorizontal, ChevronRight, Settings, HandHeart, Mail } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { useListsStore } from '../store/lists';
 import { listStats, type GroceryList } from '../data/list';
 import { useActionMenu, usePrompt } from '../components/Dialogs';
-import { FundingFooter } from '../components/FundingFooter';
-import { DONATIONS_ENABLED } from '../lib/links';
+import TipJarSheet from '../components/TipJarSheet';
+import { TIP_PRODUCT_IDS } from '../constants/tipProducts';
+import { TIP_JAR_ENABLED, openFeedbackMail } from '../lib/links';
 import { t } from '../i18n';
 import {
   useTheme,
@@ -49,6 +50,7 @@ export default function ListsHomeScreen({ navigation }: Props) {
 
   const menu = useActionMenu();
   const prompt = usePrompt();
+  const [tipVisible, setTipVisible] = useState(false);
 
   const newList = useCallback(() => {
     prompt.open({
@@ -197,7 +199,36 @@ export default function ListsHomeScreen({ navigation }: Props) {
         }
       />
 
-      {DONATIONS_ENABLED && <FundingFooter />}
+      <View style={s.footer}>
+        {TIP_JAR_ENABLED && (
+          <Pressable
+            style={({ pressed }) => [s.footerLink, pressed && s.rowPressed]}
+            onPress={() => setTipVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel={t('about.support')}
+          >
+            <HandHeart size={14} color={c.fgMuted} strokeWidth={1.5} />
+            <Text style={s.footerText}>{t('about.support')}</Text>
+          </Pressable>
+        )}
+        <Pressable
+          style={({ pressed }) => [s.footerLink, pressed && s.rowPressed]}
+          onPress={openFeedbackMail}
+          accessibilityRole="button"
+          accessibilityLabel={t('about.feedback')}
+        >
+          <Mail size={14} color={c.fgMuted} strokeWidth={1.5} />
+          <Text style={s.footerText}>{t('about.feedback')}</Text>
+        </Pressable>
+      </View>
+
+      {tipVisible && (
+        <TipJarSheet
+          visible
+          onDismiss={() => setTipVisible(false)}
+          productIds={TIP_PRODUCT_IDS}
+        />
+      )}
 
       {menu.element}
       {prompt.element}
@@ -317,6 +348,24 @@ function makeStyles(c: Colors) {
       ...ty.base,
       fontFamily: fontFamily.sansSemibold,
       color: c.inkButtonText,
+    },
+
+    footer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: space.s7,
+      paddingVertical: space.s5,
+    },
+    footerLink: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.s2,
+      minHeight: target.min,
+    },
+    footerText: {
+      ...ty.sm,
+      fontFamily: fontFamily.sans,
+      color: c.fgMuted,
     },
   });
 }
