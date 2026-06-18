@@ -1,0 +1,91 @@
+{
+  "identifier" : "grocery-tips",
+  "nonRenewingSubscriptions" : [],
+  "products" : [
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "100001",
+      "localizations" : [
+        {
+          "description" : "A tip to support Josh Approved.",
+          "displayName" : "Tip",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.joshapproved.grocerylist.tip.tier1",
+      "referenceName" : "Tip Tier 1",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "100002",
+      "localizations" : [
+        {
+          "description" : "A tip to support Josh Approved.",
+          "displayName" : "Tip",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.joshapproved.grocerylist.tip.tier2",
+      "referenceName" : "Tip Tier 2",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : false,
+      "internalID" : "100003",
+      "localizations" : [
+        {
+          "description" : "A tip to support Josh Approved.",
+          "displayName" : "Tip",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.joshapproved.grocerylist.tip.tier3",
+      "referenceName" : "Tip Tier 3",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "19.99",
+      "familyShareable" : false,
+      "internalID" : "100004",
+      "localizations" : [
+        {
+          "description" : "A tip to support Josh Approved.",
+          "displayName" : "Tip",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.joshapproved.grocerylist.tip.tier4",
+      "referenceName" : "Tip Tier 4",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "49.99",
+      "familyShareable" : false,
+      "internalID" : "100005",
+      "localizations" : [
+        {
+          "description" : "A tip to support Josh Approved.",
+          "displayName" : "Tip",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.joshapproved.grocerylist.tip.tier5",
+      "referenceName" : "Tip Tier 5",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6779417031",
+    "_developerTeamID" : "GY4CVTZ3QB",
+    "_failTransactionsEnabled" : false
+  },
+  "subscriptionGroups" : [],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

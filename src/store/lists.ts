@@ -88,8 +88,10 @@ interface ListsState {
   importLists: (incoming: GroceryList[]) => number;
 
   /** Add an item. If an active item with the same name exists, bump its
-   *  quantity instead of stacking a duplicate row. */
-  addItem: (listId: string, name: string) => void;
+   *  quantity instead of stacking a duplicate row. `locale` is the active
+   *  in-app language so a non-English item categorizes into the right aisle
+   *  (defaults to English for non-UI callers). */
+  addItem: (listId: string, name: string, locale?: string) => void;
   setChecked: (listId: string, itemId: string, checked: boolean) => void;
   setQuantity: (listId: string, itemId: string, qty: number) => void;
   setNote: (listId: string, itemId: string, note: string) => void;
@@ -239,7 +241,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
       return incoming.length;
     },
 
-    addItem: (listId, name) => {
+    addItem: (listId, name, locale = 'en') => {
       const trimmed = name.trim();
       if (!trimmed) return;
       const list = get().lists.find((l) => l.id === listId);
@@ -255,7 +257,10 @@ export const useListsStore = create<ListsState>()((set, get) => {
         }));
         return;
       }
-      mutate(listId, (l) => ({ ...l, items: [...l.items, makeItem(trimmed)] }));
+      mutate(listId, (l) => ({
+        ...l,
+        items: [...l.items, makeItem(trimmed, locale)],
+      }));
     },
 
     setChecked: (listId, itemId, checked) => {

@@ -1,0 +1,122 @@
+/**
+ * App-specific copy. APP-OWNED — sync drops this once (ifAbsent) and never
+ * overwrites it. Every user-facing string in this app's domain screens lives
+ * here (canon § Translations: no copy hardcoded in components). Reference it
+ * via `t('<key>')` from `../i18n`.
+ *
+ * Voice canon applies (canonical-voice.md): sentence case, plain second person,
+ * no emoji. These overlay the shell strings, so the `common`/`settings`/`about`
+ * namespaces extend (not replace) the shell's — reuse the shell keys
+ * (save/cancel/done/delete/rename/add, the About + Settings labels) rather than
+ * redefining a word the shell already translates.
+ */
+
+export const APP_STRINGS = {
+  // Extends the shell common namespace (back/cancel/done/save/delete/edit/rename/add).
+  common: {
+    create: 'Create',
+    empty: 'Empty',
+    undo: 'Undo',
+    close: 'Close',
+    closeMenu: 'Close menu',
+    optionsFor: 'Options for {name}',
+    countChecked: '{checked} of {total} checked',
+  },
+  // Grocery aisle display names. The Category union values are stable internal
+  // keys (persisted + used for inference); these are their localizable labels.
+  aisles: {
+    produce: 'Produce',
+    bakery: 'Bakery',
+    meatSeafood: 'Meat & seafood',
+    dairyEggs: 'Dairy & eggs',
+    frozen: 'Frozen',
+    pantry: 'Pantry',
+    snacks: 'Snacks',
+    beverages: 'Beverages',
+    household: 'Household',
+    personalCare: 'Personal care',
+    other: 'Other',
+  },
+  home: {
+    title: 'Grocery List',
+    subtitle: 'Shop together, off one list.',
+    newList: 'New list',
+    newListPlaceholder: 'Groceries',
+    renameList: 'Rename list',
+    share: 'Share',
+    sharingSettings: 'Sharing settings',
+    duplicate: 'Duplicate',
+    listSummary: '{name}, {checked} of {total} checked',
+    emptyTitle: 'No lists yet',
+    emptyBody:
+      'Create a list, then share it so anyone in your household can add to it and check things off as you shop.',
+    createFirst: 'Create your first list',
+    createList: 'Create a list',
+  },
+  detail: {
+    renameList: 'Rename list',
+    renameA11y: '{name}, rename',
+    listOptions: 'List options',
+    addItem: 'Add an item',
+    addItemButton: 'Add item',
+    addNamed: 'Add {name}',
+    checked: 'Checked ({count})',
+    checkedA11y: 'Checked, {count} items, {state}',
+    collapse: 'collapse',
+    expand: 'expand',
+    quantityOf: 'Quantity of {name}',
+    emptyTitle: 'Nothing on this list yet',
+    emptyBody: "Type an item above and it'll sort itself into the right aisle.",
+    finishShop: 'Finish shop ({count})',
+    finishShopA11y: 'Finish shop, clear {count} checked items',
+    finishShopClear: 'Finish shop (clear {count})',
+    removed: 'Removed {name}',
+    clearedOne: 'Cleared {count} item',
+    clearedOther: 'Cleared {count} items',
+    editNote: 'Edit note',
+    addNote: 'Add a note',
+    noteTitle: 'Note',
+    noteMessage: 'Brand, size, anything useful at the shelf.',
+    notePlaceholder: 'e.g. the big one',
+    moveToAisle: 'Move to aisle',
+    removeFromUsuals: 'Remove from usuals',
+    saveAsUsual: 'Save as a usual',
+    remove: 'Remove',
+    shareThis: 'Share this list',
+    sharingSettings: 'Sharing settings',
+    reorderAisles: 'Reorder aisles',
+    addUsuals: 'Add usuals',
+    deleteList: 'Delete list',
+  },
+  share: {
+    shareThis: 'Share this list',
+    scanCode: 'Scan a list code',
+    scanHint: "Point at the other phone's QR code.",
+    leadBefore: 'Anyone with this can see and edit',
+    thisList: 'this list',
+    leadAfter: '. No account needed. You only do this once.',
+    sendLink: 'Send link',
+    scanInsteadA11y: 'Scan a list code instead',
+    scanInstead: 'Scan a code instead',
+  },
+  reorder: {
+    title: 'Reorder aisles',
+    hint: 'Put these in the order you walk your store. Items sort into this order on the list.',
+    moveUp: 'Move {name} up',
+    moveDown: 'Move {name} down',
+  },
+  stepper: {
+    remove: 'Remove',
+    decrease: 'Decrease',
+    increase: 'Increase',
+  },
+  // Extends the shell settings namespace (title/appearance/theme*/language*/
+  // yourData/about/export/import/nothingImported/couldntExport/couldntRead).
+  settings: {
+    exportLists: 'Export lists',
+    importLists: 'Import lists',
+    addedListsOne: 'Added {count} list.',
+    addedListsOther: 'Added {count} lists.',
+    learnMoreA11y: 'Learn more at joshapproved.com',
+  },
+} as const;

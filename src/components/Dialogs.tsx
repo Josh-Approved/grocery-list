@@ -26,13 +26,14 @@ import {
   Platform,
   AccessibilityInfo,
 } from 'react-native';
+import { t } from '../i18n';
 import {
   useTheme,
   fontFamily,
   space,
   radius,
   target,
-  type as t,
+  type as ty,
   hairline,
   type Colors,
 } from '../theme';
@@ -115,7 +116,7 @@ export function useActionMenu(): {
         style={s.sheetOverlay}
         onPress={close}
         accessibilityRole="button"
-        accessibilityLabel="Close menu"
+        accessibilityLabel={t('common.closeMenu')}
       >
         <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
           {state.title ? (
@@ -142,9 +143,9 @@ export function useActionMenu(): {
             style={({ pressed }) => [s.sheetCancel, pressed && s.pressed]}
             onPress={close}
             accessibilityRole="button"
-            accessibilityLabel="Cancel"
+            accessibilityLabel={t('common.cancel')}
           >
-            <Text style={s.sheetCancelText}>Cancel</Text>
+            <Text style={s.sheetCancelText}>{t('common.cancel')}</Text>
           </Pressable>
         </Pressable>
       </Pressable>
@@ -224,7 +225,7 @@ export function usePrompt(): {
           style={s.centerOverlay}
           onPress={close}
           accessibilityRole="button"
-          accessibilityLabel="Cancel"
+          accessibilityLabel={t('common.cancel')}
         >
           <Pressable style={s.card} onPress={(e) => e.stopPropagation()}>
             <Text style={s.cardTitle} accessibilityRole="header">
@@ -250,9 +251,9 @@ export function usePrompt(): {
                 style={({ pressed }) => [s.btnGhost, pressed && s.pressed]}
                 onPress={close}
                 accessibilityRole="button"
-                accessibilityLabel="Cancel"
+                accessibilityLabel={t('common.cancel')}
               >
-                <Text style={s.btnGhostText}>Cancel</Text>
+                <Text style={s.btnGhostText}>{t('common.cancel')}</Text>
               </Pressable>
               <Pressable
                 style={({ pressed }) => [
@@ -263,10 +264,10 @@ export function usePrompt(): {
                 onPress={submit}
                 disabled={!canSubmit}
                 accessibilityRole="button"
-                accessibilityLabel={state.confirmLabel ?? 'Save'}
+                accessibilityLabel={state.confirmLabel ?? t('common.save')}
               >
                 <Text style={s.btnPrimaryText}>
-                  {state.confirmLabel ?? 'Save'}
+                  {state.confirmLabel ?? t('common.save')}
                 </Text>
               </Pressable>
             </View>
@@ -301,7 +302,7 @@ function makeStyles(c: Colors) {
       paddingBottom: space.s7,
     },
     sheetTitle: {
-      ...t.sm,
+      ...ty.sm,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
       textAlign: 'center',
@@ -314,7 +315,7 @@ function makeStyles(c: Colors) {
       paddingVertical: space.s4,
     },
     sheetRowText: {
-      ...t.base,
+      ...ty.base,
       fontFamily: fontFamily.sans,
       color: c.fg,
       textAlign: 'center',
@@ -330,7 +331,7 @@ function makeStyles(c: Colors) {
       paddingTop: space.s4,
     },
     sheetCancelText: {
-      ...t.base,
+      ...ty.base,
       fontFamily: fontFamily.sansSemibold,
       color: c.fgMuted,
       textAlign: 'center',
@@ -352,19 +353,19 @@ function makeStyles(c: Colors) {
       padding: space.s7,
     },
     cardTitle: {
-      ...t.md,
+      ...ty.md,
       fontFamily: fontFamily.sansSemibold,
       color: c.fg,
       marginBottom: space.s3,
     },
     cardMessage: {
-      ...t.sm,
+      ...ty.sm,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
       marginBottom: space.s4,
     },
     input: {
-      ...t.base,
+      ...ty.base,
       fontFamily: fontFamily.sans,
       color: c.fg,
       borderWidth: hairline,
@@ -387,7 +388,7 @@ function makeStyles(c: Colors) {
       marginRight: space.s3,
     },
     btnGhostText: {
-      ...t.base,
+      ...ty.base,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
     },
@@ -399,7 +400,7 @@ function makeStyles(c: Colors) {
       paddingHorizontal: space.s7,
     },
     btnPrimaryText: {
-      ...t.base,
+      ...ty.base,
       fontFamily: fontFamily.sansSemibold,
       color: c.inkButtonText,
     },

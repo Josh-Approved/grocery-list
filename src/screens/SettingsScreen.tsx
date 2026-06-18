@@ -31,9 +31,13 @@ import { useListsStore } from '../store/lists';
 import { exportLists, pickAndParseLists } from '../lib/transfer';
 import { AboutRow } from '../components/AboutRow';
 import { Wordmark } from '../components/Wordmark';
+import { LanguageSetting } from '../components/LanguageSetting';
+import TipJarSheet from '../components/TipJarSheet';
+import { TIP_PRODUCT_IDS } from '../constants/tipProducts';
+import { t } from '../i18n';
 import {
   APP_NAME,
-  BMAC_URL,
+  TIP_JAR_ENABLED,
   PRIVACY_URL,
   REPO_URL,
   STUDIO_URL,
@@ -47,8 +51,9 @@ import {
   fontFamily,
   space,
   target,
-  type as t,
+  type as ty,
   type Colors,
+  AppearanceToggle,
 } from '../theme';
 import { boundedContent } from '../theme';
 
@@ -60,22 +65,27 @@ export default function SettingsScreen({ navigation }: Props) {
   const lists = useListsStore((st) => st.lists);
   const importLists = useListsStore((st) => st.importLists);
   const [status, setStatus] = useState<string | null>(null);
+  const [tipVisible, setTipVisible] = useState(false);
 
   const onExport = useCallback(() => {
-    exportLists(lists).catch(() => setStatus("Couldn't export."));
+    exportLists(lists).catch(() => setStatus(t('settings.couldntExport')));
   }, [lists]);
 
   const onImport = useCallback(async () => {
     try {
       const incoming = await pickAndParseLists();
       if (incoming.length === 0) {
-        setStatus('Nothing imported.');
+        setStatus(t('settings.nothingImported'));
         return;
       }
       const n = importLists(incoming);
-      setStatus(`Added ${n} list${n === 1 ? '' : 's'}.`);
+      setStatus(
+        t(n === 1 ? 'settings.addedListsOne' : 'settings.addedListsOther', {
+          count: n,
+        })
+      );
     } catch {
-      setStatus("Couldn't read that file.");
+      setStatus(t('settings.couldntRead'));
     }
   }, [importLists]);
 
@@ -86,46 +96,56 @@ export default function SettingsScreen({ navigation }: Props) {
           onPress={() => navigation.goBack()}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={t('common.back')}
           style={({ pressed }) => [s.iconBtn, pressed && s.pressed]}
         >
           <ChevronLeft size={24} color={c.fg} strokeWidth={1.5} />
         </Pressable>
-        <Text style={s.title}>Settings</Text>
+        <Text style={s.title}>{t('settings.title')}</Text>
         <View style={s.iconBtn} />
       </View>
 
       <ScrollView contentContainerStyle={s.content}>
-        <Text style={s.sectionLabel}>Your data</Text>
-        <AboutRow label="Export lists" icon={Upload} onPress={onExport} />
-        <AboutRow label="Import lists" icon={Download} onPress={onImport} />
+        <Text style={s.sectionLabel}>{t('settings.appearance')}</Text>
+        <AppearanceToggle />
+
+        <Text style={s.sectionLabel}>{t('settings.language')}</Text>
+        <LanguageSetting />
+
+        <Text style={s.sectionLabel}>{t('settings.yourData')}</Text>
+        <AboutRow label={t('settings.exportLists')} icon={Upload} onPress={onExport} />
+        <AboutRow label={t('settings.importLists')} icon={Download} onPress={onImport} />
         {status ? <Text style={s.status}>{status}</Text> : null}
 
-        <Text style={s.sectionLabel}>About</Text>
-        <AboutRow label="Support this app" icon={HandHeart} onPress={() => openUrl(BMAC_URL)} />
-        <AboutRow label="Send feedback" icon={Mail} onPress={openFeedbackMail} />
-        <AboutRow label="Leave a review" icon={Star} onPress={openReview} />
-        <AboutRow label="Privacy" icon={Shield} onPress={() => openUrl(PRIVACY_URL)} />
-        <AboutRow label="Source code" icon={Code2} onPress={() => openUrl(REPO_URL)} />
-        <AboutRow label="Acknowledgements" icon={Library} onPress={() => navigation.navigate('Acknowledgements')} />
-        <AboutRow label="Version" value={versionLabel()} />
+        <Text style={s.sectionLabel}>{t('settings.about')}</Text>
+        {TIP_JAR_ENABLED && <AboutRow label={t('about.support')} icon={HandHeart} onPress={() => setTipVisible(true)} />}
+        <AboutRow label={t('about.feedback')} icon={Mail} onPress={openFeedbackMail} />
+        <AboutRow label={t('about.review')} icon={Star} onPress={openReview} />
+        <AboutRow label={t('about.privacy')} icon={Shield} onPress={() => openUrl(PRIVACY_URL)} />
+        <AboutRow label={t('about.source')} icon={Code2} onPress={() => openUrl(REPO_URL)} />
+        <AboutRow label={t('about.acknowledgements')} icon={Library} onPress={() => navigation.navigate('Acknowledgements')} />
+        <AboutRow label={t('about.version')} value={versionLabel()} />
 
         <View style={s.stamp}>
           <Wordmark />
-          <Text style={s.stampLine}>
-            Privacy-first replacements for paywalled utility apps. Open
-            source. Pay what you want.
-          </Text>
+          <Text style={s.stampLine}>{t('about.oneLiner')}</Text>
           <Pressable
             onPress={() => openUrl(STUDIO_URL)}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel="Learn more at joshapproved.com"
+            accessibilityLabel={t('settings.learnMoreA11y')}
           >
-            <Text style={s.learnMore}>Learn more</Text>
+            <Text style={s.learnMore}>{t('about.learnMore')}</Text>
           </Pressable>
         </View>
       </ScrollView>
+      {tipVisible && (
+        <TipJarSheet
+          visible
+          onDismiss={() => setTipVisible(false)}
+          productIds={TIP_PRODUCT_IDS}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -143,7 +163,7 @@ function makeStyles(c: Colors) {
       paddingVertical: space.s3,
     },
     title: {
-      ...t.md,
+      ...ty.md,
       fontFamily: fontFamily.sansSemibold,
       color: c.fg,
     },
@@ -155,7 +175,7 @@ function makeStyles(c: Colors) {
     },
     content: { ...boundedContent, paddingBottom: space.s9 },
     sectionLabel: {
-      ...t.xs,
+      ...ty.xs,
       fontFamily: fontFamily.sansSemibold,
       color: c.fgMuted,
       textTransform: 'uppercase',
@@ -165,7 +185,7 @@ function makeStyles(c: Colors) {
       paddingBottom: space.s3,
     },
     status: {
-      ...t.sm,
+      ...ty.sm,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
       paddingHorizontal: space.s6,
@@ -178,13 +198,13 @@ function makeStyles(c: Colors) {
       gap: space.s3,
     },
     stampLine: {
-      ...t.sm,
+      ...ty.sm,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
       textAlign: 'center',
     },
     learnMore: {
-      ...t.sm,
+      ...ty.sm,
       fontFamily: fontFamily.sansSemibold,
       color: c.fg,
       paddingVertical: space.s2,

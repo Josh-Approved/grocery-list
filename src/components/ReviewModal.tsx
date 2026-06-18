@@ -27,10 +27,11 @@ import {
   fontFamily,
   space,
   radius,
-  type as t,
+  type as ty,
   hairline,
   Colors,
 } from '../theme';
+import { t } from '../i18n';
 
 interface Props {
   visible: boolean;
@@ -46,8 +47,6 @@ interface Props {
   /** Optional override for the AsyncStorage key (rare — only for multi-surface apps). */
   storageKey?: string;
 }
-
-const DEFAULT_BODY = 'A quick rating helps more people find this app.';
 
 export default function ReviewModal({
   visible,
@@ -115,24 +114,24 @@ export default function ReviewModal({
     >
       <View style={s.overlay}>
         <View style={s.card}>
-          <Text style={s.title}>{`Enjoying ${appName}?`}</Text>
-          <Text style={s.body}>{bodyText ?? DEFAULT_BODY}</Text>
+          <Text style={s.title}>{t('review.title', { app: appName })}</Text>
+          <Text style={s.body}>{bodyText ?? t('review.body')}</Text>
           <Pressable
             style={({ pressed }) => [s.primaryBtn, pressed && s.pressed]}
             onPress={handleReview}
             accessibilityRole="button"
-            accessibilityLabel="Leave a review on the app store"
+            accessibilityLabel={t('review.leaveA11y')}
           >
-            <Text style={s.primaryBtnText}>Leave a review</Text>
+            <Text style={s.primaryBtnText}>{t('about.review')}</Text>
           </Pressable>
           <Pressable
             style={({ pressed }) => [s.secondaryBtn, pressed && s.pressed]}
             onPress={handleDismiss}
             accessibilityRole="button"
-            accessibilityLabel="Not now"
+            accessibilityLabel={t('common.notNow')}
             hitSlop={8}
           >
-            <Text style={s.secondaryBtnText}>Not now</Text>
+            <Text style={s.secondaryBtnText}>{t('common.notNow')}</Text>
           </Pressable>
         </View>
       </View>
@@ -168,14 +167,14 @@ function makeStyles(c: Colors) {
       elevation: 10,
     },
     title: {
-      ...t.md,
+      ...ty.md,
       fontFamily: fontFamily.sansSemibold,
       color: c.fg,
       textAlign: 'center',
       marginBottom: space.s3,
     },
     body: {
-      ...t.sm,
+      ...ty.sm,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
       textAlign: 'center',
@@ -191,13 +190,13 @@ function makeStyles(c: Colors) {
       marginBottom: space.s3,
     },
     primaryBtnText: {
-      ...t.base,
+      ...ty.base,
       fontFamily: fontFamily.sansSemibold,
       color: c.inkButtonText,
     },
     secondaryBtn: { paddingVertical: space.s2 },
     secondaryBtnText: {
-      ...t.sm,
+      ...ty.sm,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
     },

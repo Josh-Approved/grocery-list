@@ -12,7 +12,7 @@ export function qaLists(): GroceryList[] {
     'Baby spinach', 'Cheddar', 'Olive oil', 'Coffee beans', 'Greek yogurt',
     'Tomatoes', 'Pasta',
   ];
-  list.items = names.map(makeItem);
+  list.items = names.map((name) => makeItem(name));
   // A couple checked off so the progress UI reads as a real, mid-shop list.
   for (const i of [1, 4]) {
     list.items[i].checked = true;

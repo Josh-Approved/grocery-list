@@ -6,7 +6,7 @@
  * wired at build step 4; Settings at step 6.
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -15,20 +15,23 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, MoreHorizontal, ChevronRight, Settings } from 'lucide-react-native';
+import { Plus, MoreHorizontal, ChevronRight, Settings, HandHeart, Mail } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { useListsStore } from '../store/lists';
 import { listStats, type GroceryList } from '../data/list';
 import { useActionMenu, usePrompt } from '../components/Dialogs';
-import { FundingFooter } from '../components/FundingFooter';
+import TipJarSheet from '../components/TipJarSheet';
+import { TIP_PRODUCT_IDS } from '../constants/tipProducts';
+import { TIP_JAR_ENABLED, openFeedbackMail } from '../lib/links';
+import { t } from '../i18n';
 import {
   useTheme,
   fontFamily,
   space,
   radius,
   target,
-  type as t,
+  type as ty,
   hairline,
   type Colors,
 } from '../theme';
@@ -47,12 +50,13 @@ export default function ListsHomeScreen({ navigation }: Props) {
 
   const menu = useActionMenu();
   const prompt = usePrompt();
+  const [tipVisible, setTipVisible] = useState(false);
 
   const newList = useCallback(() => {
     prompt.open({
-      title: 'New list',
-      placeholder: 'Groceries',
-      confirmLabel: 'Create',
+      title: t('home.newList'),
+      placeholder: t('home.newListPlaceholder'),
+      confirmLabel: t('common.create'),
       onSubmit: (name) => {
         const id = createList(name);
         navigation.navigate('ListDetail', { listId: id });
@@ -66,27 +70,29 @@ export default function ListsHomeScreen({ navigation }: Props) {
         title: list.name,
         options: [
           {
-            label: 'Rename',
+            label: t('common.rename'),
             onPress: () =>
               prompt.open({
-                title: 'Rename list',
+                title: t('home.renameList'),
                 initialValue: list.name,
                 selectAll: true,
-                confirmLabel: 'Save',
+                confirmLabel: t('common.save'),
                 onSubmit: (name) => renameList(list.id, name),
               }),
           },
           {
-            label: list.shareIdentity ? 'Sharing settings' : 'Share',
+            label: list.shareIdentity
+              ? t('home.sharingSettings')
+              : t('home.share'),
             onPress: () =>
               navigation.navigate('Share', { listId: list.id }),
           },
           {
-            label: 'Duplicate',
+            label: t('home.duplicate'),
             onPress: () => duplicateList(list.id),
           },
           {
-            label: 'Delete',
+            label: t('common.delete'),
             destructive: true,
             onPress: () => deleteList(list.id),
           },
@@ -105,7 +111,11 @@ export default function ListsHomeScreen({ navigation }: Props) {
           style={({ pressed }) => [s.row, pressed && s.rowPressed]}
           onPress={() => navigation.navigate('ListDetail', { listId: item.id })}
           accessibilityRole="button"
-          accessibilityLabel={`${item.name}, ${checked} of ${total} checked`}
+          accessibilityLabel={t('home.listSummary', {
+            name: item.name,
+            checked,
+            total,
+          })}
         >
           <View style={s.rowMain}>
             <Text style={s.rowName} numberOfLines={1}>
@@ -113,8 +123,8 @@ export default function ListsHomeScreen({ navigation }: Props) {
             </Text>
             <Text style={s.rowMeta}>
               {total === 0
-                ? 'Empty'
-                : `${checked} of ${total} checked`}
+                ? t('common.empty')
+                : t('common.countChecked', { checked, total })}
             </Text>
             <View style={s.track}>
               <View style={[s.fill, { width: `${Math.round(pct * 100)}%` }]} />
@@ -124,7 +134,7 @@ export default function ListsHomeScreen({ navigation }: Props) {
             onPress={() => openMenu(item)}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel={`Options for ${item.name}`}
+            accessibilityLabel={t('common.optionsFor', { name: item.name })}
             style={({ pressed }) => [s.iconBtn, pressed && s.rowPressed]}
           >
             <MoreHorizontal size={20} color={c.fgMuted} strokeWidth={1.5} />
@@ -140,24 +150,24 @@ export default function ListsHomeScreen({ navigation }: Props) {
     <SafeAreaView style={s.safe} edges={['top', 'left', 'right', 'bottom']}>
       <View style={s.header}>
         <View style={s.headerText}>
-          <Text style={s.title}>Grocery List</Text>
-          <Text style={s.subtitle}>Shop together, off one list.</Text>
+          <Text style={s.title}>{t('home.title')}</Text>
+          <Text style={s.subtitle}>{t('home.subtitle')}</Text>
         </View>
         <Pressable
           onPress={newList}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel="New list"
+          accessibilityLabel={t('home.newList')}
           style={({ pressed }) => [s.newBtn, pressed && s.rowPressed]}
         >
           <Plus size={18} color={c.fg} strokeWidth={1.5} />
-          <Text style={s.newBtnText}>New list</Text>
+          <Text style={s.newBtnText}>{t('home.newList')}</Text>
         </Pressable>
         <Pressable
           onPress={() => navigation.navigate('Settings')}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel="Settings"
+          accessibilityLabel={t('settings.title')}
           style={({ pressed }) => [s.iconBtn, pressed && s.rowPressed]}
         >
           <Settings size={20} color={c.fgMuted} strokeWidth={1.5} />
@@ -175,24 +185,50 @@ export default function ListsHomeScreen({ navigation }: Props) {
         ItemSeparatorComponent={() => <View style={s.sep} />}
         ListEmptyComponent={
           <View style={s.empty}>
-            <Text style={s.emptyTitle}>No lists yet</Text>
-            <Text style={s.emptyBody}>
-              Create a list, then share it so anyone in your household can add
-              to it and check things off as you shop.
-            </Text>
+            <Text style={s.emptyTitle}>{t('home.emptyTitle')}</Text>
+            <Text style={s.emptyBody}>{t('home.emptyBody')}</Text>
             <Pressable
               onPress={newList}
               accessibilityRole="button"
-              accessibilityLabel="Create your first list"
+              accessibilityLabel={t('home.createFirst')}
               style={({ pressed }) => [s.emptyBtn, pressed && s.rowPressed]}
             >
-              <Text style={s.emptyBtnText}>Create a list</Text>
+              <Text style={s.emptyBtnText}>{t('home.createList')}</Text>
             </Pressable>
           </View>
         }
       />
 
-      <FundingFooter />
+      <View style={s.footer}>
+        {TIP_JAR_ENABLED && (
+          <Pressable
+            style={({ pressed }) => [s.footerLink, pressed && s.rowPressed]}
+            onPress={() => setTipVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel={t('about.support')}
+          >
+            <HandHeart size={14} color={c.fgMuted} strokeWidth={1.5} />
+            <Text style={s.footerText}>{t('about.support')}</Text>
+          </Pressable>
+        )}
+        <Pressable
+          style={({ pressed }) => [s.footerLink, pressed && s.rowPressed]}
+          onPress={openFeedbackMail}
+          accessibilityRole="button"
+          accessibilityLabel={t('about.feedback')}
+        >
+          <Mail size={14} color={c.fgMuted} strokeWidth={1.5} />
+          <Text style={s.footerText}>{t('about.feedback')}</Text>
+        </Pressable>
+      </View>
+
+      {tipVisible && (
+        <TipJarSheet
+          visible
+          onDismiss={() => setTipVisible(false)}
+          productIds={TIP_PRODUCT_IDS}
+        />
+      )}
 
       {menu.element}
       {prompt.element}
@@ -223,7 +259,7 @@ function makeStyles(c: Colors) {
       color: c.fg,
     },
     subtitle: {
-      ...t.sm,
+      ...ty.sm,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
       marginTop: space.s2,
@@ -236,7 +272,7 @@ function makeStyles(c: Colors) {
       gap: space.s2,
     },
     newBtnText: {
-      ...t.base,
+      ...ty.base,
       fontFamily: fontFamily.sansSemibold,
       color: c.fg,
     },
@@ -257,12 +293,12 @@ function makeStyles(c: Colors) {
     },
     rowMain: { flex: 1 },
     rowName: {
-      ...t.md,
+      ...ty.md,
       fontFamily: fontFamily.sansSemibold,
       color: c.fg,
     },
     rowMeta: {
-      ...t.sm,
+      ...ty.sm,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
       marginTop: space.s1,
@@ -289,13 +325,13 @@ function makeStyles(c: Colors) {
     emptyWrap: { ...boundedContent, flexGrow: 1, justifyContent: 'center' },
     empty: { paddingHorizontal: space.s7, alignItems: 'center' },
     emptyTitle: {
-      ...t.md,
+      ...ty.md,
       fontFamily: fontFamily.sansSemibold,
       color: c.fg,
       marginBottom: space.s3,
     },
     emptyBody: {
-      ...t.base,
+      ...ty.base,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
       textAlign: 'center',
@@ -309,9 +345,27 @@ function makeStyles(c: Colors) {
       borderRadius: radius.md,
     },
     emptyBtnText: {
-      ...t.base,
+      ...ty.base,
       fontFamily: fontFamily.sansSemibold,
       color: c.inkButtonText,
+    },
+
+    footer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: space.s7,
+      paddingVertical: space.s5,
+    },
+    footerLink: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.s2,
+      minHeight: target.min,
+    },
+    footerText: {
+      ...ty.sm,
+      fontFamily: fontFamily.sans,
+      color: c.fgMuted,
     },
   });
 }

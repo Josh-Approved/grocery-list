@@ -22,13 +22,14 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { useListsStore } from '../store/lists';
 import { buildShareLink, parseShareLink } from '../sync/share';
+import { t } from '../i18n';
 import {
   useTheme,
   fontFamily,
   space,
   radius,
   target,
-  type as t,
+  type as ty,
   hairline,
   type Colors,
 } from '../theme';
@@ -78,7 +79,7 @@ export default function ShareScreen({ route, navigation }: Props) {
     <SafeAreaView style={s.safe} edges={['top', 'left', 'right', 'bottom']}>
       <View style={s.header}>
         <Text style={s.title}>
-          {scanning ? 'Scan a list code' : 'Share this list'}
+          {scanning ? t('share.scanCode') : t('share.shareThis')}
         </Text>
         <Pressable
           onPress={() =>
@@ -86,7 +87,7 @@ export default function ShareScreen({ route, navigation }: Props) {
           }
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel="Close"
+          accessibilityLabel={t('common.close')}
           style={({ pressed }) => [s.iconBtn, pressed && s.pressed]}
         >
           <X size={22} color={c.fg} strokeWidth={1.5} />
@@ -101,16 +102,14 @@ export default function ShareScreen({ route, navigation }: Props) {
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
             onBarcodeScanned={onScanned}
           />
-          <Text style={s.hint}>
-            Point at the other phone's QR code.
-          </Text>
+          <Text style={s.hint}>{t('share.scanHint')}</Text>
         </View>
       ) : (
         <View style={s.body}>
           <Text style={s.lead}>
-            Anyone with this can see and edit{' '}
-            <Text style={s.leadStrong}>{list?.name ?? 'this list'}</Text>.
-            No account needed. You only do this once.
+            {t('share.leadBefore')}{' '}
+            <Text style={s.leadStrong}>{list?.name ?? t('share.thisList')}</Text>
+            {t('share.leadAfter')}
           </Text>
           {link ? (
             <View style={s.qrCard}>
@@ -120,20 +119,20 @@ export default function ShareScreen({ route, navigation }: Props) {
           <Pressable
             onPress={onSend}
             accessibilityRole="button"
-            accessibilityLabel="Send link"
+            accessibilityLabel={t('share.sendLink')}
             style={({ pressed }) => [s.primaryBtn, pressed && s.pressed]}
           >
             <Share2 size={18} color={c.inkButtonText} strokeWidth={1.5} />
-            <Text style={s.primaryText}>Send link</Text>
+            <Text style={s.primaryText}>{t('share.sendLink')}</Text>
           </Pressable>
           <Pressable
             onPress={startScan}
             accessibilityRole="button"
-            accessibilityLabel="Scan a list code instead"
+            accessibilityLabel={t('share.scanInsteadA11y')}
             style={({ pressed }) => [s.ghostBtn, pressed && s.pressed]}
           >
             <ScanLine size={18} color={c.fg} strokeWidth={1.5} />
-            <Text style={s.ghostText}>Scan a code instead</Text>
+            <Text style={s.ghostText}>{t('share.scanInstead')}</Text>
           </Pressable>
         </View>
       )}
@@ -153,7 +152,7 @@ function makeStyles(c: Colors) {
       paddingHorizontal: space.s5,
       paddingVertical: space.s4,
     },
-    title: { ...t.md, fontFamily: fontFamily.sansSemibold, color: c.fg },
+    title: { ...ty.md, fontFamily: fontFamily.sansSemibold, color: c.fg },
     iconBtn: {
       width: target.min,
       height: target.min,
@@ -162,7 +161,7 @@ function makeStyles(c: Colors) {
     },
     body: { ...boundedContent, flex: 1, alignItems: 'center', paddingHorizontal: space.s7, gap: space.s6 },
     lead: {
-      ...t.base,
+      ...ty.base,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
       textAlign: 'center',
@@ -188,7 +187,7 @@ function makeStyles(c: Colors) {
       alignSelf: 'stretch',
     },
     primaryText: {
-      ...t.base,
+      ...ty.base,
       fontFamily: fontFamily.sansSemibold,
       color: c.inkButtonText,
     },
@@ -199,7 +198,7 @@ function makeStyles(c: Colors) {
       gap: space.s3,
       minHeight: target.min,
     },
-    ghostText: { ...t.base, fontFamily: fontFamily.sans, color: c.fg },
+    ghostText: { ...ty.base, fontFamily: fontFamily.sans, color: c.fg },
     scanWrap: { flex: 1, alignItems: 'center', gap: space.s5 },
     camera: {
       width: '86%',
@@ -209,7 +208,7 @@ function makeStyles(c: Colors) {
       marginTop: space.s5,
     },
     hint: {
-      ...t.sm,
+      ...ty.sm,
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
       textAlign: 'center',

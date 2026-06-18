@@ -24,11 +24,12 @@ import {
   fontFamily,
   space,
   radius,
-  type as t,
+  type as ty,
   hairline,
   tracking,
   Colors,
 } from '../theme';
+import { t } from '../i18n';
 
 interface Props {
   onBack: () => void;
@@ -44,15 +45,15 @@ export default function Credits({ onBack }: Props) {
         <Pressable
           onPress={onBack}
           hitSlop={8}
-          accessibilityLabel="Back"
+          accessibilityLabel={t('common.back')}
           accessibilityRole="button"
           style={({ pressed }) => [s.headerSide, pressed && s.pressed]}
         >
           <ChevronLeft size={22} color={c.fg} strokeWidth={1.5} />
-          <Text style={s.headerBackText}>Back</Text>
+          <Text style={s.headerBackText}>{t('common.back')}</Text>
         </Pressable>
         <Text style={s.headerTitle} accessibilityRole="header">
-          Acknowledgements
+          {t('about.acknowledgements')}
         </Text>
         <View style={s.headerSide} />
       </View>
@@ -72,7 +73,7 @@ export default function Credits({ onBack }: Props) {
               onPress={() => Linking.openURL(entry.url).catch(() => {})}
               accessibilityRole="link"
               accessibilityLabel={`${entry.name}, ${entry.license}`}
-              accessibilityHint="Opens the project page in your browser"
+              accessibilityHint={t('credits.linkHint')}
             >
               <View style={s.rowMain}>
                 <Text style={s.name}>{entry.name}</Text>
@@ -92,9 +93,7 @@ export default function Credits({ onBack }: Props) {
           ))}
         </View>
 
-        <Text style={s.footnote}>
-          Full license texts live in each project's repository.
-        </Text>
+        <Text style={s.footnote}>{t('credits.footnote')}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -118,9 +117,9 @@ function makeStyles(c: Colors) {
       gap: space.s1,
     },
     pressed: { opacity: 0.7 },
-    headerBackText: { ...t.base, color: c.fg, fontFamily: fontFamily.sans },
+    headerBackText: { ...ty.base, color: c.fg, fontFamily: fontFamily.sans },
     headerTitle: {
-      ...t.base,
+      ...ty.base,
       color: c.fg,
       fontFamily: fontFamily.sansSemibold,
       textAlign: 'center',
@@ -128,7 +127,7 @@ function makeStyles(c: Colors) {
 
     scroll: { padding: space.s5, paddingBottom: space.s8 },
     intro: {
-      ...t.sm,
+      ...ty.sm,
       color: c.fgMuted,
       fontFamily: fontFamily.sans,
       lineHeight: 20,
@@ -154,7 +153,7 @@ function makeStyles(c: Colors) {
     rowPressed: { backgroundColor: c.bg },
     rowMain: { flex: 1 },
     name: {
-      ...t.sm,
+      ...ty.sm,
       color: c.fg,
       fontFamily: fontFamily.sansMedium,
     },
@@ -165,12 +164,12 @@ function makeStyles(c: Colors) {
       marginTop: 2,
     },
     version: {
-      ...t.xs,
+      ...ty.xs,
       color: c.fgSubtle,
       fontFamily: fontFamily.mono,
     },
     license: {
-      ...t.xs,
+      ...ty.xs,
       color: c.fgMuted,
       fontFamily: fontFamily.sans,
       letterSpacing: tracking.wide,
@@ -178,7 +177,7 @@ function makeStyles(c: Colors) {
     },
 
     footnote: {
-      ...t.xs,
+      ...ty.xs,
       color: c.fgSubtle,
       fontFamily: fontFamily.sans,
       textAlign: 'center',
