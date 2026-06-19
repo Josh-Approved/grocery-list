@@ -265,7 +265,7 @@ function traverse() {
   // a matrix cell (the flow writes to qa/captures/${STORE}/<id>).
   const capturesDir = path.join(appDir, 'qa', 'captures', ...captureKey.split('/'));
   if (!dry) fs.mkdirSync(capturesDir, { recursive: true });
-  const debugDir = `maestro-debug-${tag}`;
+  const debugDir = path.join('qa', 'maestro-debug', tag);
   const r = run('traverse — maestro test', 'maestro', [
     ...deviceArg(), 'test', path.join('qa', 'flows', 'mobile.yaml'),
     `--env=STORE=${captureKey}`, '--debug-output', debugDir,
@@ -316,7 +316,7 @@ if (!ok) ok = healAndRetry();
 
 if (!ok) {
   console.error(`\n✗ capture: traverse failed${flags.has('--heal') ? ' even after heal' : ''}. ` +
-    `See maestro-debug-${storeKey}/ and qa/heal-report.json. ` +
+    `See qa/maestro-debug/${storeKey}/ and qa/heal-report.json. ` +
     (flags.has('--heal') ? '' : 'Re-run with --heal to auto-repair confident anchor drift.'));
   process.exit(1);
 }
