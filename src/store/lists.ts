@@ -95,6 +95,9 @@ interface ListsState {
   setChecked: (listId: string, itemId: string, checked: boolean) => void;
   setQuantity: (listId: string, itemId: string, qty: number) => void;
   setNote: (listId: string, itemId: string, note: string) => void;
+  /** Rename an item. An empty/whitespace name is ignored (the previous name
+   *  stands) so clearing the field mid-edit can never wipe the row. */
+  setName: (listId: string, itemId: string, name: string) => void;
   recategorize: (listId: string, itemId: string, category: Category) => void;
   /** Replace this list's aisle order (build step 3, user-reorderable). */
   reorderAisles: (listId: string, order: Category[]) => void;
@@ -284,6 +287,12 @@ export const useListsStore = create<ListsState>()((set, get) => {
         ...it,
         note: n.length ? n : undefined,
       }));
+    },
+
+    setName: (listId, itemId, name) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      mutateItem(listId, itemId, (it) => ({ ...it, name: trimmed }));
     },
 
     recategorize: (listId, itemId, category) => {
