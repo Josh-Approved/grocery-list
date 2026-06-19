@@ -14,6 +14,11 @@
       { "id": "core",          "source": "ipad/list.png",         "caption": "Free grocery list. Sorted into aisles for you." },
       { "id": "josh-approved", "kind": "card" },
       { "id": "autocomplete",  "source": "ipad/autocomplete.png", "caption": "It remembers the items you buy." }
+    ],
+    "androidTablet": [
+      { "id": "core",          "source": "androidTablet/list.png",         "caption": "Free grocery list. Sorted into aisles for you." },
+      { "id": "josh-approved", "kind": "card" },
+      { "id": "autocomplete",  "source": "androidTablet/autocomplete.png", "caption": "It remembers the items you buy." }
     ]
   }
 }
