@@ -47,6 +47,7 @@ export const APP_STRINGS = {
     sharingSettings: 'Sharing settings',
     duplicate: 'Duplicate',
     listSummary: '{name}, {checked} of {total} checked',
+    listSummaryShared: '{name}, shared, {checked} of {total} checked',
     emptyTitle: 'No lists yet',
     emptyBody:
       'Create a list, then share it so anyone in your household can add to it and check things off as you shop.',
@@ -56,6 +57,7 @@ export const APP_STRINGS = {
   detail: {
     renameList: 'Rename list',
     renameA11y: '{name}, rename',
+    renameSharedA11y: '{name}, shared list, rename',
     listOptions: 'List options',
     addItem: 'Add an item',
     addItemButton: 'Add item',

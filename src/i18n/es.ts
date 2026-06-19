@@ -38,6 +38,7 @@ const es = {
     sharingSettings: 'Ajustes de uso compartido',
     duplicate: 'Duplicar',
     listSummary: '{name}, {checked} de {total} marcados',
+    listSummaryShared: '{name}, compartida, {checked} de {total} marcados',
     emptyTitle: 'Aún no hay listas',
     emptyBody:
       'Crea una lista y compártela para que cualquiera en casa pueda añadir cosas y marcarlas mientras compra.',
@@ -47,6 +48,7 @@ const es = {
   detail: {
     renameList: 'Cambiar nombre de la lista',
     renameA11y: '{name}, cambiar nombre',
+    renameSharedA11y: '{name}, lista compartida, cambiar nombre',
     listOptions: 'Opciones de la lista',
     addItem: 'Añadir un artículo',
     addItemButton: 'Añadir artículo',

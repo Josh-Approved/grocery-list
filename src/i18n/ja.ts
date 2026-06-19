@@ -39,6 +39,7 @@ const ja = {
     sharingSettings: '共有設定',
     duplicate: '複製',
     listSummary: '{name}、{total}件中{checked}件をチェック',
+    listSummaryShared: '{name}、共有中、{total}件中{checked}件をチェック',
     emptyTitle: 'リストがまだありません',
     emptyBody:
       'リストを作って共有すると、家族の誰でも品物を追加したり、買い物しながらチェックしたりできます。',
@@ -48,6 +49,7 @@ const ja = {
   detail: {
     renameList: 'リスト名を変更',
     renameA11y: '{name}、名前を変更',
+    renameSharedA11y: '{name}、共有リスト、名前を変更',
     listOptions: 'リストのオプション',
     addItem: '品物を追加',
     addItemButton: '追加',

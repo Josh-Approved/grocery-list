@@ -37,6 +37,7 @@ const it = {
     sharingSettings: 'Impostazioni di condivisione',
     duplicate: 'Duplica',
     listSummary: '{name}, {checked} di {total} spuntati',
+    listSummaryShared: '{name}, condivisa, {checked} di {total} spuntati',
     emptyTitle: 'Ancora nessuna lista',
     emptyBody:
       'Crea una lista e condividila così chiunque in casa può aggiungere articoli e spuntarli mentre fa la spesa.',
@@ -46,6 +47,7 @@ const it = {
   detail: {
     renameList: 'Rinomina lista',
     renameA11y: '{name}, rinomina',
+    renameSharedA11y: '{name}, lista condivisa, rinomina',
     listOptions: 'Opzioni della lista',
     addItem: 'Aggiungi un articolo',
     addItemButton: 'Aggiungi',

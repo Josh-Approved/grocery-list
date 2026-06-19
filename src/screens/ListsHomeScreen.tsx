@@ -15,7 +15,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, MoreHorizontal, ChevronRight, Settings, HandHeart, Mail } from 'lucide-react-native';
+import { Plus, MoreHorizontal, ChevronRight, Settings, HandHeart, Mail, Link2 } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { useListsStore } from '../store/lists';
@@ -106,21 +106,32 @@ export default function ListsHomeScreen({ navigation }: Props) {
     ({ item }: { item: GroceryList }) => {
       const { total, checked } = listStats(item);
       const pct = total === 0 ? 0 : checked / total;
+      const shared = !!item.shareIdentity;
       return (
         <Pressable
           style={({ pressed }) => [s.row, pressed && s.rowPressed]}
           onPress={() => navigation.navigate('ListDetail', { listId: item.id })}
           accessibilityRole="button"
-          accessibilityLabel={t('home.listSummary', {
-            name: item.name,
-            checked,
-            total,
-          })}
+          accessibilityLabel={t(
+            shared ? 'home.listSummaryShared' : 'home.listSummary',
+            { name: item.name, checked, total }
+          )}
         >
           <View style={s.rowMain}>
-            <Text style={s.rowName} numberOfLines={1}>
-              {item.name}
-            </Text>
+            <View style={s.nameRow}>
+              <Text style={s.rowName} numberOfLines={1}>
+                {item.name}
+              </Text>
+              {shared && (
+                <Link2
+                  size={15}
+                  color={c.accent}
+                  strokeWidth={2}
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
+                />
+              )}
+            </View>
             <Text style={s.rowMeta}>
               {total === 0
                 ? t('common.empty')
@@ -292,10 +303,16 @@ function makeStyles(c: Colors) {
       gap: space.s3,
     },
     rowMain: { flex: 1 },
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.s2,
+    },
     rowName: {
       ...ty.md,
       fontFamily: fontFamily.sansSemibold,
       color: c.fg,
+      flexShrink: 1,
     },
     rowMeta: {
       ...ty.sm,

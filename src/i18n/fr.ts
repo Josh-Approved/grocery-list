@@ -37,6 +37,7 @@ const fr = {
     sharingSettings: 'Paramètres de partage',
     duplicate: 'Dupliquer',
     listSummary: '{name}, {checked} sur {total} cochés',
+    listSummaryShared: '{name}, partagée, {checked} sur {total} cochés',
     emptyTitle: "Aucune liste pour l'instant",
     emptyBody:
       'Créez une liste, puis partagez-la pour que tout le monde chez vous puisse y ajouter des articles et les cocher pendant les courses.',
@@ -46,6 +47,7 @@ const fr = {
   detail: {
     renameList: 'Renommer la liste',
     renameA11y: '{name}, renommer',
+    renameSharedA11y: '{name}, liste partagée, renommer',
     listOptions: 'Options de la liste',
     addItem: 'Ajouter un article',
     addItemButton: 'Ajouter',

@@ -51,6 +51,12 @@ export interface GroceryItem {
 export interface GroceryList {
   id: string;
   name: string;
+  /** When the *name* was last set by a person (rename, or creation). The name
+   *  merges by its own clock, NOT the whole-list `updatedAt` — so adding or
+   *  checking an item never lets a stale name win, and a freshly-joined
+   *  device (which has no name of its own) can't rename the other side's
+   *  list. A list keeps its name until someone explicitly renames it. */
+  nameUpdatedAt: number;
   items: GroceryItem[];
   /** This list's own aisle order (user-reorderable, build step 3). Seeded
    *  from DEFAULT_CATEGORY_ORDER at creation. */
@@ -69,6 +75,7 @@ export function makeList(name?: string): GroceryList {
   return {
     id: makeId('l'),
     name: (name ?? '').trim() || DEFAULT_LIST_NAME,
+    nameUpdatedAt: now,
     items: [],
     categoryOrder: [...DEFAULT_CATEGORY_ORDER],
     createdAt: now,

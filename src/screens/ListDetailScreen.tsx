@@ -35,6 +35,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Link2,
 } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
@@ -472,11 +473,25 @@ export default function ListDetailScreen({ route, navigation }: Props) {
             })
           }
           accessibilityRole="button"
-          accessibilityLabel={t('detail.renameA11y', { name: list.name })}
+          accessibilityLabel={t(
+            list.shareIdentity ? 'detail.renameSharedA11y' : 'detail.renameA11y',
+            { name: list.name }
+          )}
         >
-          <Text style={s.headerTitle} numberOfLines={1}>
-            {list.name}
-          </Text>
+          <View style={s.titleRow}>
+            <Text style={s.headerTitle} numberOfLines={1}>
+              {list.name}
+            </Text>
+            {list.shareIdentity && (
+              <Link2
+                size={16}
+                color={c.accent}
+                strokeWidth={2}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              />
+            )}
+          </View>
           <Text style={s.headerMeta}>
             {stats.total === 0
               ? t('common.empty')
@@ -619,10 +634,16 @@ function makeStyles(c: Colors) {
       gap: space.s2,
     },
     headerTitleWrap: { flex: 1, paddingHorizontal: space.s3 },
+    titleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.s2,
+    },
     headerTitle: {
       ...ty.md,
       fontFamily: fontFamily.sansSemibold,
       color: c.fg,
+      flexShrink: 1,
     },
     headerMeta: {
       ...ty.xs,

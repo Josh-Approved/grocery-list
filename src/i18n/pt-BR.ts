@@ -38,6 +38,7 @@ const pt_BR = {
     sharingSettings: 'Configurações de compartilhamento',
     duplicate: 'Duplicar',
     listSummary: '{name}, {checked} de {total} marcados',
+    listSummaryShared: '{name}, compartilhada, {checked} de {total} marcados',
     emptyTitle: 'Nenhuma lista ainda',
     emptyBody:
       'Crie uma lista e compartilhe para que qualquer pessoa da sua casa possa adicionar itens e marcá-los enquanto faz compras.',
@@ -47,6 +48,7 @@ const pt_BR = {
   detail: {
     renameList: 'Renomear lista',
     renameA11y: '{name}, renomear',
+    renameSharedA11y: '{name}, lista compartilhada, renomear',
     listOptions: 'Opções da lista',
     addItem: 'Adicionar um item',
     addItemButton: 'Adicionar',

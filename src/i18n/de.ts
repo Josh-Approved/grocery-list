@@ -39,6 +39,7 @@ const de = {
     sharingSettings: 'Freigabeeinstellungen',
     duplicate: 'Duplizieren',
     listSummary: '{name}, {checked} von {total} abgehakt',
+    listSummaryShared: '{name}, geteilt, {checked} von {total} abgehakt',
     emptyTitle: 'Noch keine Listen',
     emptyBody:
       'Erstelle eine Liste und teile sie, damit jeder in deinem Haushalt etwas hinzufügen und beim Einkaufen abhaken kann.',
@@ -48,6 +49,7 @@ const de = {
   detail: {
     renameList: 'Liste umbenennen',
     renameA11y: '{name}, umbenennen',
+    renameSharedA11y: '{name}, geteilte Liste, umbenennen',
     listOptions: 'Listenoptionen',
     addItem: 'Einen Artikel hinzufügen',
     addItemButton: 'Artikel hinzufügen',

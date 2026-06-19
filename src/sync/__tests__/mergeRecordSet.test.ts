@@ -267,31 +267,28 @@ describe('mergeList — grocery-list wrapper', () => {
     expect(mergeList(local, remote).id).toBe('local-id');
   });
 
-  it('list-level fields are LWW on the list updatedAt; createdAt=min, updatedAt=max', () => {
+  it('updatedAt-following fields (aisle order) are LWW on the list updatedAt; createdAt=min, updatedAt=max', () => {
     const local = listWith({
       updatedAt: T0,
       createdAt: T0 - 5000,
-      name: 'Old name',
       categoryOrder: ['Produce', 'Pantry'],
     });
     const remote = listWith({
       id: 'r',
       updatedAt: T0 + 9000,
       createdAt: T0,
-      name: 'New name',
       categoryOrder: ['Pantry', 'Produce'],
     });
     const out = mergeList(local, remote);
-    expect(out.name).toBe('New name'); // remote is newer → its head fields win
-    expect(out.categoryOrder).toEqual(['Pantry', 'Produce']);
+    expect(out.categoryOrder).toEqual(['Pantry', 'Produce']); // remote newer → wins
     expect(out.createdAt).toBe(T0 - 5000); // earliest creation
     expect(out.updatedAt).toBe(T0 + 9000); // latest touch
   });
 
-  it('local wins list-level fields when its updatedAt ties or exceeds remote', () => {
-    const local = listWith({ updatedAt: T0, name: 'Local' });
-    const remote = listWith({ id: 'r', updatedAt: T0, name: 'Remote' });
-    expect(mergeList(local, remote).name).toBe('Local'); // tie → local (>=)
+  it('local wins updatedAt-following fields when its updatedAt ties or exceeds remote', () => {
+    const local = listWith({ updatedAt: T0, categoryOrder: ['Produce', 'Pantry'] });
+    const remote = listWith({ id: 'r', updatedAt: T0, categoryOrder: ['Pantry', 'Produce'] });
+    expect(mergeList(local, remote).categoryOrder).toEqual(['Produce', 'Pantry']); // tie → local
   });
 
   it('adopts a shareIdentity from whichever side has one (pairing must propagate)', () => {
@@ -318,6 +315,91 @@ describe('mergeList — grocery-list wrapper', () => {
     const ab = byId(mergeList(local, remote).items);
     const ba = byId(mergeList(remote, local).items);
     expect(ab).toEqual(ba);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The name merges on its OWN clock (nameUpdatedAt), not the list's updatedAt.
+// Regression cover for the "joining renamed my list to 'Shared list'" bug:
+// the name must survive a partner joining and survive everyday item edits,
+// and only ever change when someone actually renames the list.
+// ---------------------------------------------------------------------------
+
+describe('mergeList — the name only changes on an explicit rename', () => {
+  function listWith(over: Partial<GroceryList>): GroceryList {
+    return { ...makeList('Base'), ...over };
+  }
+
+  it("a freshly-joined device (placeholder name, nameUpdatedAt:0) never renames the creator's list", () => {
+    // The creator's list — named "Shiz" at creation.
+    const creator = listWith({
+      name: 'Shiz',
+      nameUpdatedAt: T0,
+      createdAt: T0,
+      updatedAt: T0,
+    });
+    // The joiner's placeholder: created later (so a NAIVE whole-list LWW would
+    // let it win), but its name clock is 0 because the joiner never named it.
+    const joinerPlaceholder = listWith({
+      id: 'joiner',
+      name: 'Shared list',
+      nameUpdatedAt: 0,
+      createdAt: T0 + 60_000,
+      updatedAt: T0 + 60_000,
+    });
+
+    // On the creator's device: merge the joiner's copy in.
+    expect(mergeList(creator, joinerPlaceholder).name).toBe('Shiz');
+    // On the joiner's device: it adopts the creator's real name.
+    expect(mergeList(joinerPlaceholder, creator).name).toBe('Shiz');
+  });
+
+  it('adding/checking items (which bump updatedAt) does NOT change the name', () => {
+    // Creator named it at T0; then both sides keep editing items for a week,
+    // pushing updatedAt far past the name clock. The name must stay put.
+    const creator = listWith({
+      name: 'Shiz',
+      nameUpdatedAt: T0,
+      updatedAt: T0 + 999_999, // lots of item activity since the name was set
+    });
+    const partner = listWith({
+      id: 'p',
+      name: 'Shared list', // partner's stale placeholder
+      nameUpdatedAt: 0,
+      updatedAt: T0 + 1_000_000, // partner edited an item most recently
+    });
+    expect(mergeList(creator, partner).name).toBe('Shiz');
+    expect(mergeList(partner, creator).name).toBe('Shiz');
+  });
+
+  it('an explicit rename (newer nameUpdatedAt) wins on every device, either side', () => {
+    const renamed = listWith({ name: 'Costco run', nameUpdatedAt: T0 + 5000 });
+    const stale = listWith({ id: 'r', name: 'Shiz', nameUpdatedAt: T0 });
+    expect(mergeList(renamed, stale).name).toBe('Costco run');
+    expect(mergeList(stale, renamed).name).toBe('Costco run');
+  });
+
+  it('carries the winning name clock forward so a re-merge is a fixed point (converges)', () => {
+    const a = listWith({ name: 'Shiz', nameUpdatedAt: T0, updatedAt: T0 });
+    const b = listWith({ id: 'b', name: 'Shared list', nameUpdatedAt: 0, updatedAt: T0 + 9 });
+    const m = mergeList(a, b);
+    expect(m.name).toBe('Shiz');
+    expect(m.nameUpdatedAt).toBe(T0); // max of the two name clocks
+    // Re-merging either parent in does not flip the name.
+    expect(mergeList(m, b).name).toBe('Shiz');
+    expect(mergeList(b, m).name).toBe('Shiz');
+  });
+
+  it('falls back to createdAt for legacy lists persisted before nameUpdatedAt existed', () => {
+    // Simulate a pre-migration pair: neither carries an explicit name clock.
+    const older = { ...makeList('Weekly'), createdAt: T0, updatedAt: T0 + 100 } as GroceryList;
+    const newer = { ...makeList('Weekly'), id: 'r', createdAt: T0 + 1, updatedAt: T0 } as GroceryList;
+    delete (older as Partial<GroceryList>).nameUpdatedAt;
+    delete (newer as Partial<GroceryList>).nameUpdatedAt;
+    // Both fall back to createdAt; the earlier-created side's name wins — and
+    // since both are 'Weekly' here, the result is stable either way.
+    expect(mergeList(older, newer).name).toBe('Weekly');
+    expect(mergeList(newer, older).name).toBe('Weekly');
   });
 });
 

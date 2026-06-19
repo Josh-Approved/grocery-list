@@ -192,7 +192,9 @@ export const useListsStore = create<ListsState>()((set, get) => {
     renameList: (id, name) => {
       const trimmed = name.trim();
       if (!trimmed) return;
-      mutate(id, (l) => ({ ...l, name: trimmed }));
+      // Stamp the name's own clock so this explicit rename wins the merge on
+      // every paired device, no matter what they last called the list.
+      mutate(id, (l) => ({ ...l, name: trimmed, nameUpdatedAt: Date.now() }));
     },
 
     duplicateList: (id) => {
@@ -203,6 +205,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
         ...original,
         id: makeId('l'),
         name: `${original.name} (copy)`,
+        nameUpdatedAt: now,
         // Fresh ids; reset checked; drop tombstoned items and the share
         // identity (a copy is a new, unshared list).
         items: original.items
@@ -347,6 +350,11 @@ export const useListsStore = create<ListsState>()((set, get) => {
       const base = makeList('Shared list');
       const list: GroceryList = {
         ...base,
+        // "Shared list" is only a placeholder shown until the first sync
+        // arrives. nameUpdatedAt:0 makes it lose the name merge to whatever
+        // the list is actually called, so joining never renames the other
+        // person's list — they keep the name they chose.
+        nameUpdatedAt: 0,
         shareIdentity: { secret, createdAt: Date.now() },
       };
       set((s) => ({ lists: [list, ...s.lists] }));
