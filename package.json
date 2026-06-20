@@ -66,7 +66,9 @@
     "shell-quote": "1.8.4",
     "xcode": {
       "uuid": "^11.1.1"
-    }
+    },
+    "form-data": "^4.0.6",
+    "undici": "^6.27.0"
   },
   "expo": {
     "install": {
