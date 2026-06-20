@@ -73,7 +73,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ListDetail'>;
 
 type Row =
   | { kind: 'section'; key: string; category: Category }
-  | { kind: 'item'; key: string; item: GroceryItem }
+  | { kind: 'item'; key: string; item: GroceryItem; divider?: boolean }
   | { kind: 'checkedHeader'; key: string; count: number };
 
 export default function ListDetailScreen({ route, navigation }: Props) {
@@ -151,6 +151,13 @@ export default function ListDetailScreen({ route, navigation }: Props) {
           out.push({ kind: 'item', key: it.id, item: it });
         }
       }
+    }
+    // Hairline between consecutive items only — a section/checked header (with
+    // its own spacing) already separates the last item of a group, so no line
+    // is drawn there. Restores the per-row structure the checkbox used to give.
+    for (let i = 0; i < out.length; i++) {
+      const r = out[i];
+      if (r.kind === 'item') r.divider = out[i + 1]?.kind === 'item';
     }
     return out;
   }, [list, checkedOpen]);
@@ -329,7 +336,7 @@ export default function ListDetailScreen({ route, navigation }: Props) {
       }
       const it = row.item;
       return (
-        <View style={s.itemRow}>
+        <View style={[s.itemRow, row.divider && s.itemDivider]}>
           <Pressable
             style={s.itemTap}
             onPress={() => setChecked(listId, it.id, !it.checked)}
@@ -679,6 +686,10 @@ function makeStyles(c: Colors) {
       alignItems: 'center',
       paddingVertical: space.s3,
       gap: space.s3,
+    },
+    itemDivider: {
+      borderBottomWidth: hairline,
+      borderBottomColor: c.hairline,
     },
     itemTap: {
       flex: 1,
