@@ -39,6 +39,7 @@ const ja = {
     sharingSettings: '共有設定',
     duplicate: '複製',
     listSummary: '{name}、{total}件中{checked}件をチェック',
+    listSummaryShared: '{name}、共有中、{total}件中{checked}件をチェック',
     emptyTitle: 'リストがまだありません',
     emptyBody:
       'リストを作って共有すると、家族の誰でも品物を追加したり、買い物しながらチェックしたりできます。',
@@ -48,6 +49,7 @@ const ja = {
   detail: {
     renameList: 'リスト名を変更',
     renameA11y: '{name}、名前を変更',
+    renameSharedA11y: '{name}、共有リスト、名前を変更',
     listOptions: 'リストのオプション',
     addItem: '品物を追加',
     addItemButton: '追加',
@@ -57,6 +59,14 @@ const ja = {
     collapse: '折りたたむ',
     expand: '展開する',
     quantityOf: '{name}の数量',
+    quantityLabel: '数量',
+    itemWithQtyA11y: '{name}、数量 {count}',
+    editItem: 'アイテムを編集',
+    editItemA11y: '{name}を編集',
+    itemNameLabel: 'アイテム',
+    aisleLabel: '売り場',
+    newAisle: '新しい売り場',
+    newAislePlaceholder: 'この売り場に名前を付ける',
     emptyTitle: 'このリストにはまだ何もありません',
     emptyBody: '上に品物を入力すると、正しい売り場に自動で振り分けられます。',
     finishShop: '買い物を終える（{count}）',
@@ -96,6 +106,7 @@ const ja = {
     hint: 'お店を歩く順に並べてください。品物はこの順でリストに並びます。',
     moveUp: '{name}を上へ',
     moveDown: '{name}を下へ',
+    remove: '{name}を削除',
   },
   stepper: {
     remove: '削除',

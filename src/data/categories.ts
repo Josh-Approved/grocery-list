@@ -14,7 +14,10 @@
 import { t } from '../i18n';
 import { KEYWORDS_BY_LOCALE } from './categoryKeywords';
 
-export type Category =
+/** The fixed, code-defined aisles. Stable internal keys (persisted + used for
+ *  keyword inference); their localizable display names live in i18n under
+ *  `aisles.*`. */
+export type BuiltinCategory =
   | 'Produce'
   | 'Bakery'
   | 'Meat & seafood'
@@ -27,10 +30,17 @@ export type Category =
   | 'Personal care'
   | 'Other';
 
+/** An aisle key. Either a built-in (above) or a user-created custom aisle —
+ *  for a custom aisle the literal name IS the key and its own display label
+ *  (it carries no translation and never auto-receives items; you file items
+ *  into it by hand). Stored in `list.categoryOrder`, so it syncs and reorders
+ *  exactly like a built-in. */
+export type Category = string;
+
 /** The Category union values are stable internal keys (persisted + used for
  *  inference); their localizable display names live in i18n under `aisles.*`.
  *  Keys, not resolved strings — `categoryLabel` resolves at render time. */
-const CATEGORY_LABEL_KEY: Record<Category, string> = {
+const CATEGORY_LABEL_KEY: Record<BuiltinCategory, string> = {
   Produce: 'aisles.produce',
   Bakery: 'aisles.bakery',
   'Meat & seafood': 'aisles.meatSeafood',
@@ -44,14 +54,20 @@ const CATEGORY_LABEL_KEY: Record<Category, string> = {
   Other: 'aisles.other',
 };
 
-/** Localized display name for an aisle. Call at render time (never module-level). */
+/** Is this key one of the fixed, code-defined aisles? (vs. a user custom one) */
+export function isBuiltinCategory(category: string): category is BuiltinCategory {
+  return Object.prototype.hasOwnProperty.call(CATEGORY_LABEL_KEY, category);
+}
+
+/** Localized display name for an aisle. Call at render time (never module-level).
+ *  A custom aisle is its own label — there's nothing to translate. */
 export function categoryLabel(category: Category): string {
-  return t(CATEGORY_LABEL_KEY[category]);
+  return isBuiltinCategory(category) ? t(CATEGORY_LABEL_KEY[category]) : category;
 }
 
 /** Canonical default aisle order. A list copies this at creation and may then
  *  reorder its own copy (build step 3) without affecting other lists. */
-export const DEFAULT_CATEGORY_ORDER: Category[] = [
+export const DEFAULT_CATEGORY_ORDER: BuiltinCategory[] = [
   'Produce',
   'Bakery',
   'Meat & seafood',

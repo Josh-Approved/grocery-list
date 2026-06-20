@@ -19,7 +19,7 @@ import {
   makeItem,
   makeList,
 } from '../data/list';
-import type { Category } from '../data/categories';
+import { isBuiltinCategory, type Category } from '../data/categories';
 import { makeId } from '../lib/id';
 import { makeShareIdentity } from '../sync/share';
 import { mergeList } from '../sync/merge';
@@ -95,9 +95,19 @@ interface ListsState {
   setChecked: (listId: string, itemId: string, checked: boolean) => void;
   setQuantity: (listId: string, itemId: string, qty: number) => void;
   setNote: (listId: string, itemId: string, note: string) => void;
+  /** Rename an item. An empty/whitespace name is ignored (the previous name
+   *  stands) so clearing the field mid-edit can never wipe the row. */
+  setName: (listId: string, itemId: string, name: string) => void;
   recategorize: (listId: string, itemId: string, category: Category) => void;
   /** Replace this list's aisle order (build step 3, user-reorderable). */
   reorderAisles: (listId: string, order: Category[]) => void;
+  /** Create a custom aisle on this list (deduped case-insensitively against
+   *  existing aisles). Returns the resolved aisle key, or null if the name was
+   *  empty or the list is gone. */
+  addCategory: (listId: string, name: string) => string | null;
+  /** Remove a custom aisle: drop it from the order and reassign its items to
+   *  'Other'. Built-in aisles can't be removed. */
+  removeCategory: (listId: string, category: string) => void;
   /** Soft-delete (tombstone) an item. */
   deleteItem: (listId: string, itemId: string) => void;
 
@@ -192,7 +202,9 @@ export const useListsStore = create<ListsState>()((set, get) => {
     renameList: (id, name) => {
       const trimmed = name.trim();
       if (!trimmed) return;
-      mutate(id, (l) => ({ ...l, name: trimmed }));
+      // Stamp the name's own clock so this explicit rename wins the merge on
+      // every paired device, no matter what they last called the list.
+      mutate(id, (l) => ({ ...l, name: trimmed, nameUpdatedAt: Date.now() }));
     },
 
     duplicateList: (id) => {
@@ -203,6 +215,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
         ...original,
         id: makeId('l'),
         name: `${original.name} (copy)`,
+        nameUpdatedAt: now,
         // Fresh ids; reset checked; drop tombstoned items and the share
         // identity (a copy is a new, unshared list).
         items: original.items
@@ -283,12 +296,52 @@ export const useListsStore = create<ListsState>()((set, get) => {
       }));
     },
 
+    setName: (listId, itemId, name) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      mutateItem(listId, itemId, (it) => ({ ...it, name: trimmed }));
+    },
+
     recategorize: (listId, itemId, category) => {
       mutateItem(listId, itemId, (it) => ({ ...it, category }));
     },
 
     reorderAisles: (listId, order) => {
       mutate(listId, (l) => ({ ...l, categoryOrder: order }));
+    },
+
+    addCategory: (listId, name) => {
+      const trimmed = name.trim().slice(0, 40);
+      if (!trimmed) return null;
+      const list = get().lists.find((l) => l.id === listId);
+      if (!list) return null;
+      // Dedup case-insensitively against existing aisles (built-in or custom).
+      const existing = list.categoryOrder.find(
+        (cat) => cat.toLowerCase() === trimmed.toLowerCase()
+      );
+      if (existing) return existing;
+      const order = [...list.categoryOrder];
+      // Slot a new custom aisle just above 'Other' (the catch-all), else append.
+      const otherIdx = order.indexOf('Other');
+      if (otherIdx >= 0) order.splice(otherIdx, 0, trimmed);
+      else order.push(trimmed);
+      mutate(listId, (l) => ({ ...l, categoryOrder: order }));
+      return trimmed;
+    },
+
+    removeCategory: (listId, category) => {
+      // Built-ins are permanent — only user-created aisles can be removed.
+      if (isBuiltinCategory(category)) return;
+      const at = Date.now();
+      mutate(listId, (l) => ({
+        ...l,
+        categoryOrder: l.categoryOrder.filter((cat) => cat !== category),
+        items: l.items.map((it) =>
+          it.category === category
+            ? { ...it, category: 'Other', updatedAt: at }
+            : it
+        ),
+      }));
     },
 
     deleteItem: (listId, itemId) => {
@@ -347,6 +400,11 @@ export const useListsStore = create<ListsState>()((set, get) => {
       const base = makeList('Shared list');
       const list: GroceryList = {
         ...base,
+        // "Shared list" is only a placeholder shown until the first sync
+        // arrives. nameUpdatedAt:0 makes it lose the name merge to whatever
+        // the list is actually called, so joining never renames the other
+        // person's list — they keep the name they chose.
+        nameUpdatedAt: 0,
         shareIdentity: { secret, createdAt: Date.now() },
       };
       set((s) => ({ lists: [list, ...s.lists] }));

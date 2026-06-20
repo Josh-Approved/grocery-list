@@ -29,6 +29,7 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
     CREATE TABLE IF NOT EXISTS lists (
       id            TEXT PRIMARY KEY NOT NULL,
       name          TEXT NOT NULL,
+      nameUpdatedAt INTEGER,
       items         TEXT NOT NULL,
       categoryOrder TEXT NOT NULL,
       shareIdentity TEXT,
@@ -53,6 +54,15 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
       lastUsed INTEGER NOT NULL
     );
   `);
+  // Migration: `nameUpdatedAt` (the name's own merge clock) was added after
+  // first release. Old installs have the column missing; add it. Existing
+  // rows stay NULL → rowToList falls back to createdAt.
+  const cols = await _db.getAllAsync<{ name: string }>(
+    'PRAGMA table_info(lists)'
+  );
+  if (!cols.some((c) => c.name === 'nameUpdatedAt')) {
+    await _db.execAsync('ALTER TABLE lists ADD COLUMN nameUpdatedAt INTEGER');
+  }
   return _db;
 }
 
@@ -83,6 +93,7 @@ export async function recordHistory(name: string): Promise<void> {
 interface ListRow {
   id: string;
   name: string;
+  nameUpdatedAt: number | null;
   items: string;
   categoryOrder: string;
   shareIdentity: string | null;
@@ -90,10 +101,25 @@ interface ListRow {
   updatedAt: number;
 }
 
+/** The placeholder name `joinShared` minted before the name carried its own
+ *  clock. A legacy row matching it is an un-renamed joined list, so its name
+ *  must lose the merge (clock 0) — otherwise its later createdAt would let the
+ *  placeholder overwrite the creator's real name, the very bug this fixes. */
+const LEGACY_JOIN_PLACEHOLDER = 'Shared list';
+
 function rowToList(row: ListRow): GroceryList {
+  // Pre-migration rows have no name clock. A real list's name was set at
+  // creation (→ createdAt); an un-renamed joined placeholder never had a
+  // user-chosen name (→ 0, so any real name beats it).
+  const nameUpdatedAt =
+    row.nameUpdatedAt ??
+    (row.shareIdentity != null && row.name === LEGACY_JOIN_PLACEHOLDER
+      ? 0
+      : row.createdAt);
   return {
     id: row.id,
     name: row.name,
+    nameUpdatedAt,
     items: JSON.parse(row.items) as GroceryItem[],
     categoryOrder: JSON.parse(row.categoryOrder) as Category[],
     shareIdentity: row.shareIdentity
@@ -116,11 +142,12 @@ export async function saveList(list: GroceryList): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     `INSERT OR REPLACE INTO lists
-       (id, name, items, categoryOrder, shareIdentity, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       (id, name, nameUpdatedAt, items, categoryOrder, shareIdentity, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       list.id,
       list.name,
+      list.nameUpdatedAt,
       JSON.stringify(list.items),
       JSON.stringify(list.categoryOrder),
       list.shareIdentity ? JSON.stringify(list.shareIdentity) : null,

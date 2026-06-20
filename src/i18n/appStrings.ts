@@ -47,6 +47,7 @@ export const APP_STRINGS = {
     sharingSettings: 'Sharing settings',
     duplicate: 'Duplicate',
     listSummary: '{name}, {checked} of {total} checked',
+    listSummaryShared: '{name}, shared, {checked} of {total} checked',
     emptyTitle: 'No lists yet',
     emptyBody:
       'Create a list, then share it so anyone in your household can add to it and check things off as you shop.',
@@ -56,6 +57,7 @@ export const APP_STRINGS = {
   detail: {
     renameList: 'Rename list',
     renameA11y: '{name}, rename',
+    renameSharedA11y: '{name}, shared list, rename',
     listOptions: 'List options',
     addItem: 'Add an item',
     addItemButton: 'Add item',
@@ -65,6 +67,14 @@ export const APP_STRINGS = {
     collapse: 'collapse',
     expand: 'expand',
     quantityOf: 'Quantity of {name}',
+    quantityLabel: 'Quantity',
+    itemWithQtyA11y: '{name}, quantity {count}',
+    editItem: 'Edit item',
+    editItemA11y: 'Edit {name}',
+    itemNameLabel: 'Item',
+    aisleLabel: 'Aisle',
+    newAisle: 'New aisle',
+    newAislePlaceholder: 'Name this aisle',
     emptyTitle: 'Nothing on this list yet',
     emptyBody: "Type an item above and it'll sort itself into the right aisle.",
     finishShop: 'Finish shop ({count})',
@@ -104,6 +114,7 @@ export const APP_STRINGS = {
     hint: 'Put these in the order you walk your store. Items sort into this order on the list.',
     moveUp: 'Move {name} up',
     moveDown: 'Move {name} down',
+    remove: 'Remove {name}',
   },
   stepper: {
     remove: 'Remove',

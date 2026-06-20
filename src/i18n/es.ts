@@ -38,6 +38,7 @@ const es = {
     sharingSettings: 'Ajustes de uso compartido',
     duplicate: 'Duplicar',
     listSummary: '{name}, {checked} de {total} marcados',
+    listSummaryShared: '{name}, compartida, {checked} de {total} marcados',
     emptyTitle: 'Aún no hay listas',
     emptyBody:
       'Crea una lista y compártela para que cualquiera en casa pueda añadir cosas y marcarlas mientras compra.',
@@ -47,6 +48,7 @@ const es = {
   detail: {
     renameList: 'Cambiar nombre de la lista',
     renameA11y: '{name}, cambiar nombre',
+    renameSharedA11y: '{name}, lista compartida, cambiar nombre',
     listOptions: 'Opciones de la lista',
     addItem: 'Añadir un artículo',
     addItemButton: 'Añadir artículo',
@@ -56,6 +58,14 @@ const es = {
     collapse: 'contraer',
     expand: 'expandir',
     quantityOf: 'Cantidad de {name}',
+    quantityLabel: 'Cantidad',
+    itemWithQtyA11y: '{name}, cantidad {count}',
+    editItem: 'Editar artículo',
+    editItemA11y: 'Editar {name}',
+    itemNameLabel: 'Artículo',
+    aisleLabel: 'Pasillo',
+    newAisle: 'Pasillo nuevo',
+    newAislePlaceholder: 'Nombra este pasillo',
     emptyTitle: 'Todavía no hay nada en esta lista',
     emptyBody: 'Escribe un artículo arriba y se ordenará solo en el pasillo correcto.',
     finishShop: 'Terminar compra ({count})',
@@ -95,6 +105,7 @@ const es = {
     hint: 'Ponlos en el orden en que recorres tu tienda. Los artículos se ordenan así en la lista.',
     moveUp: 'Subir {name}',
     moveDown: 'Bajar {name}',
+    remove: 'Quitar {name}',
   },
   stepper: {
     remove: 'Quitar',

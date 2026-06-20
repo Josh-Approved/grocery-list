@@ -39,6 +39,7 @@ const de = {
     sharingSettings: 'Freigabeeinstellungen',
     duplicate: 'Duplizieren',
     listSummary: '{name}, {checked} von {total} abgehakt',
+    listSummaryShared: '{name}, geteilt, {checked} von {total} abgehakt',
     emptyTitle: 'Noch keine Listen',
     emptyBody:
       'Erstelle eine Liste und teile sie, damit jeder in deinem Haushalt etwas hinzufügen und beim Einkaufen abhaken kann.',
@@ -48,6 +49,7 @@ const de = {
   detail: {
     renameList: 'Liste umbenennen',
     renameA11y: '{name}, umbenennen',
+    renameSharedA11y: '{name}, geteilte Liste, umbenennen',
     listOptions: 'Listenoptionen',
     addItem: 'Einen Artikel hinzufügen',
     addItemButton: 'Artikel hinzufügen',
@@ -57,6 +59,14 @@ const de = {
     collapse: 'einklappen',
     expand: 'ausklappen',
     quantityOf: 'Menge von {name}',
+    quantityLabel: 'Menge',
+    itemWithQtyA11y: '{name}, Menge {count}',
+    editItem: 'Artikel bearbeiten',
+    editItemA11y: '{name} bearbeiten',
+    itemNameLabel: 'Artikel',
+    aisleLabel: 'Gang',
+    newAisle: 'Neuer Gang',
+    newAislePlaceholder: 'Diesen Gang benennen',
     emptyTitle: 'Noch nichts auf dieser Liste',
     emptyBody: 'Tippe oben einen Artikel ein, und er sortiert sich von selbst in den richtigen Gang ein.',
     finishShop: 'Einkauf beenden ({count})',
@@ -96,6 +106,7 @@ const de = {
     hint: 'Bring sie in die Reihenfolge, in der du deinen Laden durchläufst. Artikel sortieren sich auf der Liste in diese Reihenfolge.',
     moveUp: '{name} nach oben',
     moveDown: '{name} nach unten',
+    remove: '{name} entfernen',
   },
   stepper: {
     remove: 'Entfernen',

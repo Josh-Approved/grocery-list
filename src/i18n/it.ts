@@ -37,6 +37,7 @@ const it = {
     sharingSettings: 'Impostazioni di condivisione',
     duplicate: 'Duplica',
     listSummary: '{name}, {checked} di {total} spuntati',
+    listSummaryShared: '{name}, condivisa, {checked} di {total} spuntati',
     emptyTitle: 'Ancora nessuna lista',
     emptyBody:
       'Crea una lista e condividila così chiunque in casa può aggiungere articoli e spuntarli mentre fa la spesa.',
@@ -46,6 +47,7 @@ const it = {
   detail: {
     renameList: 'Rinomina lista',
     renameA11y: '{name}, rinomina',
+    renameSharedA11y: '{name}, lista condivisa, rinomina',
     listOptions: 'Opzioni della lista',
     addItem: 'Aggiungi un articolo',
     addItemButton: 'Aggiungi',
@@ -55,6 +57,14 @@ const it = {
     collapse: 'comprimi',
     expand: 'espandi',
     quantityOf: 'Quantità di {name}',
+    quantityLabel: 'Quantità',
+    itemWithQtyA11y: '{name}, quantità {count}',
+    editItem: 'Modifica articolo',
+    editItemA11y: 'Modifica {name}',
+    itemNameLabel: 'Articolo',
+    aisleLabel: 'Reparto',
+    newAisle: 'Nuovo reparto',
+    newAislePlaceholder: 'Dai un nome a questo reparto',
     emptyTitle: 'Ancora niente in questa lista',
     emptyBody: 'Scrivi un articolo qui sopra e si ordinerà da solo nel reparto giusto.',
     finishShop: 'Termina spesa ({count})',
@@ -94,6 +104,7 @@ const it = {
     hint: 'Mettili nell\'ordine in cui percorri il tuo negozio. Gli articoli si ordinano così nella lista.',
     moveUp: 'Sposta su {name}',
     moveDown: 'Sposta giù {name}',
+    remove: 'Rimuovi {name}',
   },
   stepper: {
     remove: 'Rimuovi',

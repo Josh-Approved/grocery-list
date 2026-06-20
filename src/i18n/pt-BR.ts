@@ -38,6 +38,7 @@ const pt_BR = {
     sharingSettings: 'Configurações de compartilhamento',
     duplicate: 'Duplicar',
     listSummary: '{name}, {checked} de {total} marcados',
+    listSummaryShared: '{name}, compartilhada, {checked} de {total} marcados',
     emptyTitle: 'Nenhuma lista ainda',
     emptyBody:
       'Crie uma lista e compartilhe para que qualquer pessoa da sua casa possa adicionar itens e marcá-los enquanto faz compras.',
@@ -47,6 +48,7 @@ const pt_BR = {
   detail: {
     renameList: 'Renomear lista',
     renameA11y: '{name}, renomear',
+    renameSharedA11y: '{name}, lista compartilhada, renomear',
     listOptions: 'Opções da lista',
     addItem: 'Adicionar um item',
     addItemButton: 'Adicionar',
@@ -56,6 +58,14 @@ const pt_BR = {
     collapse: 'recolher',
     expand: 'expandir',
     quantityOf: 'Quantidade de {name}',
+    quantityLabel: 'Quantidade',
+    itemWithQtyA11y: '{name}, quantidade {count}',
+    editItem: 'Editar item',
+    editItemA11y: 'Editar {name}',
+    itemNameLabel: 'Item',
+    aisleLabel: 'Corredor',
+    newAisle: 'Novo corredor',
+    newAislePlaceholder: 'Dê um nome a este corredor',
     emptyTitle: 'Nada nesta lista ainda',
     emptyBody: 'Digite um item acima e ele se organiza sozinho no corredor certo.',
     finishShop: 'Concluir compra ({count})',
@@ -95,6 +105,7 @@ const pt_BR = {
     hint: 'Coloque-os na ordem em que você percorre seu mercado. Os itens se organizam nessa ordem na lista.',
     moveUp: 'Mover {name} para cima',
     moveDown: 'Mover {name} para baixo',
+    remove: 'Remover {name}',
   },
   stepper: {
     remove: 'Remover',
