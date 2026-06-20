@@ -65,6 +65,8 @@ const ja = {
     editItemA11y: '{name}を編集',
     itemNameLabel: 'アイテム',
     aisleLabel: '売り場',
+    newAisle: '新しい売り場',
+    newAislePlaceholder: 'この売り場に名前を付ける',
     emptyTitle: 'このリストにはまだ何もありません',
     emptyBody: '上に品物を入力すると、正しい売り場に自動で振り分けられます。',
     finishShop: '買い物を終える（{count}）',
@@ -104,6 +106,7 @@ const ja = {
     hint: 'お店を歩く順に並べてください。品物はこの順でリストに並びます。',
     moveUp: '{name}を上へ',
     moveDown: '{name}を下へ',
+    remove: '{name}を削除',
   },
   stepper: {
     remove: '削除',

@@ -64,6 +64,8 @@ const es = {
     editItemA11y: 'Editar {name}',
     itemNameLabel: 'Artículo',
     aisleLabel: 'Pasillo',
+    newAisle: 'Pasillo nuevo',
+    newAislePlaceholder: 'Nombra este pasillo',
     emptyTitle: 'Todavía no hay nada en esta lista',
     emptyBody: 'Escribe un artículo arriba y se ordenará solo en el pasillo correcto.',
     finishShop: 'Terminar compra ({count})',
@@ -103,6 +105,7 @@ const es = {
     hint: 'Ponlos en el orden en que recorres tu tienda. Los artículos se ordenan así en la lista.',
     moveUp: 'Subir {name}',
     moveDown: 'Bajar {name}',
+    remove: 'Quitar {name}',
   },
   stepper: {
     remove: 'Quitar',

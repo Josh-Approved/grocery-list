@@ -11,11 +11,15 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, Pressable, FlatList, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronUp, ChevronDown, X } from 'lucide-react-native';
+import { ChevronUp, ChevronDown, X, Trash2 } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { useListsStore } from '../store/lists';
-import { categoryLabel, type Category } from '../data/categories';
+import {
+  categoryLabel,
+  isBuiltinCategory,
+  type Category,
+} from '../data/categories';
 import { t } from '../i18n';
 import {
   useTheme,
@@ -38,6 +42,7 @@ export default function ReorderAislesScreen({ route, navigation }: Props) {
 
   const list = useListsStore((st) => st.lists.find((l) => l.id === listId));
   const reorderAisles = useListsStore((st) => st.reorderAisles);
+  const removeCategory = useListsStore((st) => st.removeCategory);
   const [order, setOrder] = useState<Category[]>(list?.categoryOrder ?? []);
 
   const move = useCallback(
@@ -52,6 +57,14 @@ export default function ReorderAislesScreen({ route, navigation }: Props) {
       });
     },
     [listId, reorderAisles]
+  );
+
+  const remove = useCallback(
+    (cat: Category) => {
+      removeCategory(listId, cat);
+      setOrder((prev) => prev.filter((c) => c !== cat));
+    },
+    [listId, removeCategory]
   );
 
   return (
@@ -117,6 +130,19 @@ export default function ReorderAislesScreen({ route, navigation }: Props) {
                 strokeWidth={1.5}
               />
             </Pressable>
+            {!isBuiltinCategory(item) ? (
+              <Pressable
+                onPress={() => remove(item)}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel={t('reorder.remove', {
+                  name: categoryLabel(item),
+                })}
+                style={({ pressed }) => [s.moveBtn, pressed && s.pressed]}
+              >
+                <Trash2 size={18} color={c.danger} strokeWidth={1.5} />
+              </Pressable>
+            ) : null}
           </View>
         )}
       />

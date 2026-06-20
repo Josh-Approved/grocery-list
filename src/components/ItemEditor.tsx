@@ -30,7 +30,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { Star, Trash2 } from 'lucide-react-native';
+import { Plus, Star, Trash2 } from 'lucide-react-native';
 import { useReducedMotion } from './Dialogs';
 import { Stepper } from './Stepper';
 import { useListsStore } from '../store/lists';
@@ -68,18 +68,21 @@ export function useItemEditor(): {
   const [target_, setTarget] = useState<EditTarget | null>(null);
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
+  // Inline "create a new aisle" affordance within the aisle picker.
+  const [addingAisle, setAddingAisle] = useState(false);
+  const [aisleDraft, setAisleDraft] = useState('');
 
-  // Live item — so quantity/aisle/usual edits reflect instantly in the sheet.
-  const item = useListsStore((st) =>
-    target_
-      ? st.lists
-          .find((l) => l.id === target_.listId)
-          ?.items.find((i) => i.id === target_.itemId)
-      : undefined
+  // Live list/item — so quantity/aisle/usual edits reflect instantly in the
+  // sheet, and a freshly created aisle appears among the chips at once.
+  const list = useListsStore((st) =>
+    target_ ? st.lists.find((l) => l.id === target_.listId) : undefined
   );
+  const item = list?.items.find((i) => i.id === target_?.itemId);
+  const categoryOrder = list?.categoryOrder ?? DEFAULT_CATEGORY_ORDER;
 
   const setQuantity = useListsStore((st) => st.setQuantity);
   const recategorize = useListsStore((st) => st.recategorize);
+  const addCategory = useListsStore((st) => st.addCategory);
   const setItemName = useListsStore((st) => st.setName);
   const setItemNote = useListsStore((st) => st.setNote);
 
@@ -94,8 +97,21 @@ export function useItemEditor(): {
       ?.items.find((i) => i.id === cfg.itemId);
     setName(found?.name ?? '');
     setNote(found?.note ?? '');
+    setAddingAisle(false);
+    setAisleDraft('');
     setTarget(cfg);
   }, []);
+
+  const commitAisle = useCallback(() => {
+    const cur = target_;
+    const draft = aisleDraft.trim();
+    if (cur && draft) {
+      const key = addCategory(cur.listId, draft);
+      if (key) recategorize(cur.listId, cur.itemId, key);
+    }
+    setAddingAisle(false);
+    setAisleDraft('');
+  }, [target_, aisleDraft, addCategory, recategorize]);
 
   const commitAndClose = useCallback(() => {
     const cur = target_;
@@ -116,6 +132,8 @@ export function useItemEditor(): {
         }
       }
     }
+    setAddingAisle(false);
+    setAisleDraft('');
     setTarget(null);
   }, [target_, name, note, setItemName, setItemNote]);
 
@@ -216,7 +234,7 @@ export function useItemEditor(): {
 
                 <Text style={s.fieldLabel}>{t('detail.aisleLabel')}</Text>
                 <View style={s.chips}>
-                  {DEFAULT_CATEGORY_ORDER.map((cat) => {
+                  {categoryOrder.map((cat) => {
                     const on = cat === item.category;
                     return (
                       <Pressable
@@ -240,7 +258,54 @@ export function useItemEditor(): {
                       </Pressable>
                     );
                   })}
+                  {!addingAisle ? (
+                    <Pressable
+                      onPress={() => setAddingAisle(true)}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('detail.newAisle')}
+                      style={({ pressed }) => [
+                        s.chip,
+                        s.chipAdd,
+                        pressed && s.pressed,
+                      ]}
+                    >
+                      <Plus size={14} color={c.fgMuted} strokeWidth={1.5} />
+                      <Text style={[s.chipText, s.chipAddText]}>
+                        {t('detail.newAisle')}
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </View>
+
+                {addingAisle ? (
+                  <View style={s.aisleInputRow}>
+                    <TextInput
+                      style={[s.input, s.aisleInput]}
+                      value={aisleDraft}
+                      onChangeText={setAisleDraft}
+                      placeholder={t('detail.newAislePlaceholder')}
+                      placeholderTextColor={c.fgSubtle}
+                      autoFocus
+                      returnKeyType="done"
+                      maxLength={40}
+                      onSubmitEditing={commitAisle}
+                      accessibilityLabel={t('detail.newAislePlaceholder')}
+                    />
+                    <Pressable
+                      onPress={commitAisle}
+                      disabled={aisleDraft.trim().length === 0}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('common.add')}
+                      style={({ pressed }) => [
+                        s.aisleAddBtn,
+                        aisleDraft.trim().length === 0 && s.aisleAddDisabled,
+                        pressed && s.pressed,
+                      ]}
+                    >
+                      <Text style={s.aisleAddText}>{t('common.add')}</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
 
                 <View style={s.divider} />
 
@@ -391,6 +456,34 @@ function makeStyles(c: Colors) {
       color: c.fg,
     },
     chipTextOn: { color: c.fgOnAccent },
+    chipAdd: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.s1,
+    },
+    chipAddText: { color: c.fgMuted },
+
+    aisleInputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.s3,
+      marginTop: space.s3,
+    },
+    aisleInput: { flex: 1 },
+    aisleAddBtn: {
+      minHeight: target.min,
+      paddingHorizontal: space.s5,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: c.inkButton,
+      borderRadius: radius.md,
+    },
+    aisleAddDisabled: { opacity: 0.4 },
+    aisleAddText: {
+      ...ty.base,
+      fontFamily: fontFamily.sansSemibold,
+      color: c.inkButtonText,
+    },
 
     divider: {
       borderTopWidth: hairline,

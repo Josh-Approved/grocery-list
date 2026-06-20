@@ -64,6 +64,8 @@ const pt_BR = {
     editItemA11y: 'Editar {name}',
     itemNameLabel: 'Item',
     aisleLabel: 'Corredor',
+    newAisle: 'Novo corredor',
+    newAislePlaceholder: 'Dê um nome a este corredor',
     emptyTitle: 'Nada nesta lista ainda',
     emptyBody: 'Digite um item acima e ele se organiza sozinho no corredor certo.',
     finishShop: 'Concluir compra ({count})',
@@ -103,6 +105,7 @@ const pt_BR = {
     hint: 'Coloque-os na ordem em que você percorre seu mercado. Os itens se organizam nessa ordem na lista.',
     moveUp: 'Mover {name} para cima',
     moveDown: 'Mover {name} para baixo',
+    remove: 'Remover {name}',
   },
   stepper: {
     remove: 'Remover',

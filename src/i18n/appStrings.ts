@@ -73,6 +73,8 @@ export const APP_STRINGS = {
     editItemA11y: 'Edit {name}',
     itemNameLabel: 'Item',
     aisleLabel: 'Aisle',
+    newAisle: 'New aisle',
+    newAislePlaceholder: 'Name this aisle',
     emptyTitle: 'Nothing on this list yet',
     emptyBody: "Type an item above and it'll sort itself into the right aisle.",
     finishShop: 'Finish shop ({count})',
@@ -112,6 +114,7 @@ export const APP_STRINGS = {
     hint: 'Put these in the order you walk your store. Items sort into this order on the list.',
     moveUp: 'Move {name} up',
     moveDown: 'Move {name} down',
+    remove: 'Remove {name}',
   },
   stepper: {
     remove: 'Remove',

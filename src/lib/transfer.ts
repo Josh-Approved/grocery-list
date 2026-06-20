@@ -21,7 +21,7 @@ import {
   type GroceryItem,
   makeList,
 } from '../data/list';
-import { DEFAULT_CATEGORY_ORDER, type Category } from '../data/categories';
+import { DEFAULT_CATEGORY_ORDER } from '../data/categories';
 
 const EXPORT_VERSION = 1;
 
@@ -75,23 +75,36 @@ function sanitizeList(raw: unknown): GroceryList | null {
           ? Math.round(o.quantity)
           : 1,
       note: typeof o.note === 'string' ? o.note : undefined,
-      category: DEFAULT_CATEGORY_ORDER.includes(o.category as Category)
-        ? (o.category as Category)
-        : 'Other',
+      // Any non-empty string is a valid aisle now (custom aisles are just
+      // names); fall back to 'Other' only when it's missing/blank.
+      category:
+        typeof o.category === 'string' && o.category.trim()
+          ? o.category.trim().slice(0, 40)
+          : 'Other',
       checked: o.checked === true,
       addedAt: typeof o.addedAt === 'number' ? o.addedAt : now,
       updatedAt: now,
     });
   }
+  // Keep the file's aisle order (built-ins + any custom aisles), then append
+  // any built-in the file omitted so every standard aisle stays selectable.
+  const imported = Array.isArray(r.categoryOrder)
+    ? (r.categoryOrder as unknown[])
+        .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+        .map((x) => x.trim().slice(0, 40))
+    : [];
+  const seen = new Set(imported.map((x) => x.toLowerCase()));
+  const categoryOrder = imported.length
+    ? [
+        ...imported,
+        ...DEFAULT_CATEGORY_ORDER.filter((d) => !seen.has(d.toLowerCase())),
+      ]
+    : [...DEFAULT_CATEGORY_ORDER];
   return {
     ...base,
     name: `${r.name} (imported)`,
     items,
-    categoryOrder: Array.isArray(r.categoryOrder)
-      ? (r.categoryOrder as Category[]).filter((x) =>
-          DEFAULT_CATEGORY_ORDER.includes(x)
-        )
-      : [...DEFAULT_CATEGORY_ORDER],
+    categoryOrder,
   };
 }
 

@@ -19,7 +19,7 @@ import {
   makeItem,
   makeList,
 } from '../data/list';
-import type { Category } from '../data/categories';
+import { isBuiltinCategory, type Category } from '../data/categories';
 import { makeId } from '../lib/id';
 import { makeShareIdentity } from '../sync/share';
 import { mergeList } from '../sync/merge';
@@ -101,6 +101,13 @@ interface ListsState {
   recategorize: (listId: string, itemId: string, category: Category) => void;
   /** Replace this list's aisle order (build step 3, user-reorderable). */
   reorderAisles: (listId: string, order: Category[]) => void;
+  /** Create a custom aisle on this list (deduped case-insensitively against
+   *  existing aisles). Returns the resolved aisle key, or null if the name was
+   *  empty or the list is gone. */
+  addCategory: (listId: string, name: string) => string | null;
+  /** Remove a custom aisle: drop it from the order and reassign its items to
+   *  'Other'. Built-in aisles can't be removed. */
+  removeCategory: (listId: string, category: string) => void;
   /** Soft-delete (tombstone) an item. */
   deleteItem: (listId: string, itemId: string) => void;
 
@@ -301,6 +308,40 @@ export const useListsStore = create<ListsState>()((set, get) => {
 
     reorderAisles: (listId, order) => {
       mutate(listId, (l) => ({ ...l, categoryOrder: order }));
+    },
+
+    addCategory: (listId, name) => {
+      const trimmed = name.trim().slice(0, 40);
+      if (!trimmed) return null;
+      const list = get().lists.find((l) => l.id === listId);
+      if (!list) return null;
+      // Dedup case-insensitively against existing aisles (built-in or custom).
+      const existing = list.categoryOrder.find(
+        (cat) => cat.toLowerCase() === trimmed.toLowerCase()
+      );
+      if (existing) return existing;
+      const order = [...list.categoryOrder];
+      // Slot a new custom aisle just above 'Other' (the catch-all), else append.
+      const otherIdx = order.indexOf('Other');
+      if (otherIdx >= 0) order.splice(otherIdx, 0, trimmed);
+      else order.push(trimmed);
+      mutate(listId, (l) => ({ ...l, categoryOrder: order }));
+      return trimmed;
+    },
+
+    removeCategory: (listId, category) => {
+      // Built-ins are permanent — only user-created aisles can be removed.
+      if (isBuiltinCategory(category)) return;
+      const at = Date.now();
+      mutate(listId, (l) => ({
+        ...l,
+        categoryOrder: l.categoryOrder.filter((cat) => cat !== category),
+        items: l.items.map((it) =>
+          it.category === category
+            ? { ...it, category: 'Other', updatedAt: at }
+            : it
+        ),
+      }));
     },
 
     deleteItem: (listId, itemId) => {

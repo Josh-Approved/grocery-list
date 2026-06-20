@@ -65,6 +65,8 @@ const de = {
     editItemA11y: '{name} bearbeiten',
     itemNameLabel: 'Artikel',
     aisleLabel: 'Gang',
+    newAisle: 'Neuer Gang',
+    newAislePlaceholder: 'Diesen Gang benennen',
     emptyTitle: 'Noch nichts auf dieser Liste',
     emptyBody: 'Tippe oben einen Artikel ein, und er sortiert sich von selbst in den richtigen Gang ein.',
     finishShop: 'Einkauf beenden ({count})',
@@ -104,6 +106,7 @@ const de = {
     hint: 'Bring sie in die Reihenfolge, in der du deinen Laden durchläufst. Artikel sortieren sich auf der Liste in diese Reihenfolge.',
     moveUp: '{name} nach oben',
     moveDown: '{name} nach unten',
+    remove: '{name} entfernen',
   },
   stepper: {
     remove: 'Entfernen',

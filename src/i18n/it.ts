@@ -63,6 +63,8 @@ const it = {
     editItemA11y: 'Modifica {name}',
     itemNameLabel: 'Articolo',
     aisleLabel: 'Reparto',
+    newAisle: 'Nuovo reparto',
+    newAislePlaceholder: 'Dai un nome a questo reparto',
     emptyTitle: 'Ancora niente in questa lista',
     emptyBody: 'Scrivi un articolo qui sopra e si ordinerà da solo nel reparto giusto.',
     finishShop: 'Termina spesa ({count})',
@@ -102,6 +104,7 @@ const it = {
     hint: 'Mettili nell\'ordine in cui percorri il tuo negozio. Gli articoli si ordinano così nella lista.',
     moveUp: 'Sposta su {name}',
     moveDown: 'Sposta giù {name}',
+    remove: 'Rimuovi {name}',
   },
   stepper: {
     remove: 'Rimuovi',
