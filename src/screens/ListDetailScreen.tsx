@@ -152,12 +152,12 @@ export default function ListDetailScreen({ route, navigation }: Props) {
         }
       }
     }
-    // Hairline between consecutive items only — a section/checked header (with
-    // its own spacing) already separates the last item of a group, so no line
-    // is drawn there. Restores the per-row structure the checkbox used to give.
+    // Hairline under every item except the final row of the list — so the last
+    // item of a category is separated from the next category's header too, not
+    // just consecutive items within a category (Josh, 2026-06-20).
     for (let i = 0; i < out.length; i++) {
       const r = out[i];
-      if (r.kind === 'item') r.divider = out[i + 1]?.kind === 'item';
+      if (r.kind === 'item') r.divider = i < out.length - 1;
     }
     return out;
   }, [list, checkedOpen]);
