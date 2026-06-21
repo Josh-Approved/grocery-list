@@ -83,13 +83,19 @@ export function makeList(name?: string): GroceryList {
   };
 }
 
-export function makeItem(name: string, locale: string = 'en'): GroceryItem {
+export function makeItem(
+  name: string,
+  locale: string = 'en',
+  category?: Category
+): GroceryItem {
   const now = Date.now();
   return {
     id: makeId('i'),
     name: name.trim(),
     quantity: 1,
-    category: inferCategory(name, locale),
+    // A known category (e.g. from the seed catalog) wins; otherwise guess from
+    // the name in the active language.
+    category: category ?? inferCategory(name, locale),
     checked: false,
     addedAt: now,
     updatedAt: now,

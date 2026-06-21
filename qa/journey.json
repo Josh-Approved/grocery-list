@@ -14,9 +14,12 @@
 
     { "assertNot": "@added-item" },
     { "tap": "@add-input" },
+    { "waitFor": "@add-search", "timeout": 10000 },
+    { "tap": "@add-search" },
     { "type": "Avocado" },
     { "screenshot": "autocomplete" },
     { "pressKey": "Enter" },
+    { "tap": "@sheet-done" },
     { "assert": "@added-item" }
   ]
 }

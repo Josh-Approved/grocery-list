@@ -62,6 +62,16 @@ export const APP_STRINGS = {
     addItem: 'Add an item',
     addItemButton: 'Add item',
     addNamed: 'Add {name}',
+    // Full-screen Add-items sheet (your usuals + recent history + a built-in
+    // "common items" seed list). All copy routes through here — no hardcoding.
+    addItemsTitle: 'Add items',
+    searchOrAdd: 'Search or add an item',
+    yourUsuals: 'Your usuals',
+    recent: 'Recent',
+    commonItems: 'Common items',
+    onList: 'On list',
+    onListItemA11y: '{name}, on your list',
+    starterHint: 'Your usuals and recent items will show here as you shop.',
     checked: 'Checked ({count})',
     checkedA11y: 'Checked, {count} items, {state}',
     collapse: 'collapse',

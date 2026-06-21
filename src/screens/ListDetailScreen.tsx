@@ -14,18 +14,14 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import {
   View,
   Text,
   Pressable,
-  TextInput,
   FlatList,
-  ScrollView,
   StyleSheet,
-  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -52,6 +48,7 @@ import { categoryLabel, type Category } from '../data/categories';
 import { Snackbar } from '../components/Snackbar';
 import { useActionMenu, usePrompt } from '../components/Dialogs';
 import { useItemEditor } from '../components/ItemEditor';
+import AddItemsSheet from '../components/AddItemsSheet';
 import ReviewModal from '../components/ReviewModal';
 import { recordSuccessfulCompletion } from '../storage/reviewPrompt';
 import { APP_NAME, IOS_APP_STORE_ID, ANDROID_PACKAGE } from '../lib/links';
@@ -91,7 +88,6 @@ export default function ListDetailScreen({ route, navigation }: Props) {
   const restoreItems = useListsStore((st) => st.restoreItems);
 
   const recordUse = useAccountStore((st) => st.recordUse);
-  const suggest = useAccountStore((st) => st.suggest);
   const staples = useAccountStore((st) => st.staples);
 
   // The active in-app language, so a newly added item categorizes against that
@@ -105,7 +101,7 @@ export default function ListDetailScreen({ route, navigation }: Props) {
   const menu = useActionMenu();
   const prompt = usePrompt();
   const { open: openEditor, element: editorElement } = useItemEditor();
-  const [draft, setDraft] = useState('');
+  const [addSheetOpen, setAddSheetOpen] = useState(false);
   // Checked items move into a group that's open by default — crossing
   // something off should visibly land it somewhere, not vanish behind a
   // collapsed header (Josh, 2026-06-19).
@@ -115,7 +111,6 @@ export default function ListDetailScreen({ route, navigation }: Props) {
     message: string;
     undo: () => void;
   } | null>(null);
-  const inputRef = useRef<TextInput>(null);
 
   // The list can vanish (deleted elsewhere / a synced delete). Leave.
   // NOTE: every hook below runs unconditionally — the `!list` early return
@@ -161,42 +156,6 @@ export default function ListDetailScreen({ route, navigation }: Props) {
     }
     return out;
   }, [list, checkedOpen]);
-
-  const activeNames = useMemo(
-    () => (list ? visibleItems(list).map((it) => it.name) : []),
-    [list]
-  );
-
-  const suggestions = useMemo(
-    () => (draft.trim() ? suggest(draft, activeNames, 5) : []),
-    [draft, activeNames, suggest]
-  );
-
-  const addOne = useCallback(
-    (name: string, keepFocus: boolean) => {
-      const n = name.trim();
-      if (!n) return;
-      addItem(listId, n, activeLocale);
-      recordUse(n);
-      if (keepFocus) {
-        setDraft('');
-        requestAnimationFrame(() => inputRef.current?.focus());
-      }
-    },
-    [addItem, recordUse, listId, activeLocale]
-  );
-
-  const submitDraft = useCallback(() => {
-    // The add box keeps the keyboard up after each add (blurOnSubmit={false})
-    // so you can rapid-fire a whole list. But that means an empty submit has
-    // no on-keyboard way out — tapping "done"/return on an empty box must be
-    // read as "I'm finished" and dismiss the keyboard, not as a no-op.
-    if (draft.trim()) {
-      addOne(draft, true);
-    } else {
-      Keyboard.dismiss();
-    }
-  }, [addOne, draft]);
 
   const addUsuals = useCallback(() => {
     if (!list) return;
@@ -453,57 +412,16 @@ export default function ListDetailScreen({ route, navigation }: Props) {
       </View>
 
       <View style={s.addBar}>
-        <TextInput
-          ref={inputRef}
-          style={s.addInput}
-          value={draft}
-          onChangeText={setDraft}
-          placeholder={t('detail.addItem')}
-          placeholderTextColor={c.fgSubtle}
-          returnKeyType="done"
-          blurOnSubmit={false}
-          onSubmitEditing={submitDraft}
-          accessibilityLabel={t('detail.addItem')}
-        />
         <Pressable
-          onPress={submitDraft}
-          disabled={draft.trim().length === 0}
-          hitSlop={6}
+          onPress={() => setAddSheetOpen(true)}
           accessibilityRole="button"
-          accessibilityLabel={t('detail.addItemButton')}
-          style={({ pressed }) => [
-            s.addBtn,
-            draft.trim().length === 0 && s.addBtnDisabled,
-            pressed && s.pressed,
-          ]}
+          accessibilityLabel={t('detail.addItem')}
+          style={({ pressed }) => [s.addTrigger, pressed && s.pressed]}
         >
-          <Plus size={20} color={c.inkButtonText} strokeWidth={2} />
+          <Text style={s.addTriggerText}>{t('detail.addItem')}</Text>
+          <Plus size={20} color={c.accent} strokeWidth={2} />
         </Pressable>
       </View>
-
-      {suggestions.length > 0 ? (
-        <ScrollView
-          horizontal
-          keyboardShouldPersistTaps="handled"
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.suggestRow}
-        >
-          {suggestions.map((name) => (
-            <Pressable
-              key={name}
-              onPress={() => addOne(name, true)}
-              accessibilityRole="button"
-              accessibilityLabel={t('detail.addNamed', { name })}
-              style={({ pressed }) => [s.chip, pressed && s.pressed]}
-            >
-              <Plus size={14} color={c.fgMuted} strokeWidth={1.5} />
-              <Text style={s.chipText} numberOfLines={1}>
-                {name}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      ) : null}
 
       <FlatList
         data={rows}
@@ -537,6 +455,12 @@ export default function ListDetailScreen({ route, navigation }: Props) {
           </Pressable>
         </View>
       ) : null}
+
+      <AddItemsSheet
+        visible={addSheetOpen}
+        listId={listId}
+        onClose={() => setAddSheetOpen(false)}
+      />
 
       <Snackbar
         visible={!!snack}
@@ -605,13 +529,12 @@ function makeStyles(c: Colors) {
       alignItems: 'center',
       paddingHorizontal: space.s6,
       paddingBottom: space.s4,
-      gap: space.s3,
     },
-    addInput: {
-      ...ty.base,
+    addTrigger: {
       flex: 1,
-      fontFamily: fontFamily.sans,
-      color: c.fg,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
       backgroundColor: c.bgElevated,
       borderWidth: hairline,
       borderColor: c.hairlineStrong,
@@ -619,37 +542,10 @@ function makeStyles(c: Colors) {
       paddingHorizontal: space.s5,
       minHeight: target.min,
     },
-    addBtn: {
-      width: target.min,
-      height: target.min,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: c.inkButton,
-      borderRadius: radius.md,
-    },
-    addBtnDisabled: { opacity: 0.4 },
-
-    suggestRow: {
-      paddingHorizontal: space.s6,
-      paddingBottom: space.s4,
-      gap: space.s3,
-    },
-    chip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: space.s2,
-      minHeight: 36,
-      paddingHorizontal: space.s4,
-      borderRadius: radius.pill,
-      borderWidth: hairline,
-      borderColor: c.hairlineStrong,
-      backgroundColor: c.bgElevated,
-    },
-    chipText: {
-      ...ty.sm,
+    addTriggerText: {
+      ...ty.base,
       fontFamily: fontFamily.sans,
-      color: c.fg,
-      maxWidth: 180,
+      color: c.fgSubtle,
     },
 
     listContent: {
