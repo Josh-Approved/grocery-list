@@ -30,10 +30,6 @@ interface AccountState {
   /** Record that the user added `name` (bumps autocomplete ranking). */
   recordUse: (name: string) => void;
 
-  /** Up to `limit` past item names matching `query` (prefix-first, then
-   *  substring), excluding names already on the current list. */
-  suggest: (query: string, exclude: string[], limit?: number) => string[];
-
   isStaple: (name: string) => boolean;
   addStaple: (name: string) => void;
   removeStaple: (name: string) => void;
@@ -91,22 +87,6 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
     recordHistory(n).catch((err) =>
       console.warn('grocery-list: failed to record history', err)
     );
-  },
-
-  suggest: (query, exclude, limit = 5) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    const ex = new Set(exclude.map((e) => e.toLowerCase()));
-    const prefix: string[] = [];
-    const contains: string[] = [];
-    for (const h of get().history) {
-      const lower = h.name.toLowerCase();
-      if (ex.has(lower) || lower === q) continue;
-      if (lower.startsWith(q)) prefix.push(h.name);
-      else if (lower.includes(q)) contains.push(h.name);
-      if (prefix.length >= limit) break;
-    }
-    return [...prefix, ...contains].slice(0, limit);
   },
 
   isStaple: (name) =>

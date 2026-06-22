@@ -150,7 +150,7 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
       (n) => !usualSet.has(n.toLowerCase())
     );
 
-    const usuals = rankNames(staples, q, q ? USUALS_CAP : USUALS_CAP);
+    const usuals = rankNames(staples, q, USUALS_CAP);
     const recent = rankNames(
       recentSource,
       q,
