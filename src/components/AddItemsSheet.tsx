@@ -71,7 +71,14 @@ interface Props {
 }
 
 type SheetRow =
-  | { t: 'header'; key: string; label: string; dim?: boolean; star?: boolean }
+  | {
+      t: 'header';
+      key: string;
+      label: string;
+      dim?: boolean;
+      star?: boolean;
+      toggle?: 'more' | 'less';
+    }
   | { t: 'hint'; key: string; text: string }
   | {
       t: 'item';
@@ -85,6 +92,9 @@ type SheetRow =
 const RECENT_BROWSE_CAP = 30;
 const RECENT_QUERY_CAP = 12;
 const USUALS_CAP = 50;
+// While browsing (no query), only peek the top usuals so a long usuals list
+// can't bury Recent. "Show all" expands to the full set (still capped above).
+const USUALS_PEEK = 8;
 const SEED_CAP = 20;
 
 /** Prefix-first, then substring; case-insensitive; deduped; capped. */
@@ -114,6 +124,8 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
   const reduced = useReducedMotion();
   const inputRef = useRef<TextInput>(null);
   const [query, setQuery] = useState('');
+  // Browse-only "Show all usuals" expander (see USUALS_PEEK).
+  const [showAllUsuals, setShowAllUsuals] = useState(false);
 
   const list = useListsStore((st) => st.lists.find((l) => l.id === listId));
   const addItem = useListsStore((st) => st.addItem);
@@ -134,9 +146,16 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
   useEffect(() => {
     if (!visible) return;
     setQuery('');
+    setShowAllUsuals(false);
     const id = setTimeout(() => inputRef.current?.focus(), 60);
     return () => clearTimeout(id);
   }, [visible]);
+
+  // The peek only exists while browsing; searching always shows every match.
+  // Collapse on search so returning to the browse view starts compact again.
+  useEffect(() => {
+    if (query.trim()) setShowAllUsuals(false);
+  }, [query]);
 
   const activeSet = useMemo(
     () =>
@@ -149,27 +168,47 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
 
   const rows = useMemo<SheetRow[]>(() => {
     const q = query.trim();
+    const browsing = !q;
     const historyNames = history.map((h) => h.name);
     const recentSource = historyNames.filter(
       (n) => !usualSet.has(n.toLowerCase())
     );
 
-    const usuals = rankNames(staples, q, USUALS_CAP);
+    // While browsing, drop anything already on the list — it's done, and you
+    // manage it on the list itself; re-listing it here is just noise. While
+    // searching, keep on-list rows (they show a check) so you still get the
+    // "already added" feedback and can bump quantity.
+    const dropOnList = (names: string[]) =>
+      browsing ? names.filter((n) => !activeSet.has(n.toLowerCase())) : names;
+
+    const usualsRanked = rankNames(dropOnList(staples), q, USUALS_CAP);
     const recent = rankNames(
-      recentSource,
+      dropOnList(recentSource),
       q,
       q ? RECENT_QUERY_CAP : RECENT_BROWSE_CAP
     );
+
+    // Peek the usuals while browsing so they can't bury Recent; the query view
+    // is already filtered down, so it shows every match.
+    const usualsHasMore = browsing && usualsRanked.length > USUALS_PEEK;
+    const usuals =
+      browsing && !showAllUsuals
+        ? usualsRanked.slice(0, USUALS_PEEK)
+        : usualsRanked;
 
     // Catalog suggestions never re-offer something the user already has.
     const exclude = new Set<string>([
       ...staples,
       ...historyNames.map((n) => n.toLowerCase()),
     ]);
+    // "Brand-new" means no data at all — not a returning user whose usuals and
+    // recent merely filtered down to nothing because they're already on the
+    // list. The starter set and its hint are only for a truly empty account.
+    const brandNew = staples.length === 0 && history.length === 0;
     let common: SeedItem[] = [];
     if (q) {
       common = suggestSeed(q, activeLocale, exclude, SEED_CAP);
-    } else if (usuals.length === 0 && recent.length === 0) {
+    } else if (brandNew) {
       // Brand-new user: carry day one with a small starter set.
       common = starterItemsForLocale(activeLocale).filter(
         (it) => !exclude.has(it.name.toLowerCase())
@@ -195,6 +234,7 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
         key: 'h-usuals',
         label: t('detail.yourUsuals'),
         star: true,
+        toggle: usualsHasMore ? (showAllUsuals ? 'less' : 'more') : undefined,
       });
       for (const n of usuals) mk(n, undefined, 'u');
     }
@@ -202,11 +242,18 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
       out.push({ t: 'header', key: 'h-recent', label: t('detail.recent') });
       for (const n of recent) mk(n, undefined, 'r');
     }
-    if (!q && usuals.length === 0 && recent.length === 0) {
+    if (browsing && brandNew) {
       out.push({
         t: 'hint',
         key: 'hint-starter',
         text: t('detail.starterHint'),
+      });
+    } else if (browsing && usuals.length === 0 && recent.length === 0) {
+      // Returning user who has already added everything they usually buy.
+      out.push({
+        t: 'hint',
+        key: 'hint-all-on-list',
+        text: t('detail.allOnList'),
       });
     }
     if (common.length) {
@@ -219,7 +266,7 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
       for (const it of common) mk(it.name, it.category, 'c');
     }
     return out;
-  }, [query, staples, history, usualSet, activeSet, activeLocale]);
+  }, [query, staples, history, usualSet, activeSet, activeLocale, showAllUsuals]);
 
   const add = useCallback(
     (name: string, category?: Category) => {
@@ -272,6 +319,25 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
             <Text style={[s.sectionHeader, row.dim && s.sectionHeaderDim]}>
               {row.label}
             </Text>
+            {row.toggle ? (
+              <Pressable
+                onPress={() => setShowAllUsuals(row.toggle === 'more')}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  row.toggle === 'more'
+                    ? t('detail.showAll')
+                    : t('detail.showLess')
+                }
+                style={({ pressed }) => [s.headerToggle, pressed && s.pressed]}
+              >
+                <Text style={s.headerToggleText}>
+                  {row.toggle === 'more'
+                    ? t('detail.showAll')
+                    : t('detail.showLess')}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         );
       }
@@ -495,6 +561,17 @@ function makeStyles(c: Colors) {
       letterSpacing: 0.5,
     },
     sectionHeaderDim: { color: c.fgSubtle },
+    headerToggle: {
+      marginLeft: 'auto',
+      paddingVertical: space.s1,
+      paddingLeft: space.s3,
+    },
+    headerToggleText: {
+      ...ty.xs,
+      fontFamily: fontFamily.sansSemibold,
+      color: c.accent,
+      letterSpacing: 0.3,
+    },
     hint: {
       ...ty.sm,
       fontFamily: fontFamily.sans,

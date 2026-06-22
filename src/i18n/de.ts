@@ -62,6 +62,10 @@ const de = {
     onList: 'Auf der Liste',
     onListItemA11y: '{name}, auf deiner Liste',
     starterHint: 'Deine Stammartikel und zuletzt verwendeten Artikel erscheinen hier, während du einkaufst.',
+    showAll: 'Alle anzeigen',
+    showLess: 'Weniger anzeigen',
+    allOnList:
+      'Alles steht schon auf deiner Liste. Tippe oben, um etwas anderes hinzuzufügen.',
     checked: 'Abgehakt ({count})',
     checkedA11y: 'Abgehakt, {count} Artikel, {state}',
     collapse: 'einklappen',
@@ -91,6 +95,7 @@ const de = {
     moveToAisle: 'In anderen Gang verschieben',
     removeFromUsuals: 'Aus Stammartikeln entfernen',
     saveAsUsual: 'Als Stammartikel speichern',
+    usual: 'Stammartikel',
     remove: 'Entfernen',
     shareThis: 'Diese Liste teilen',
     sharingSettings: 'Freigabeeinstellungen',

@@ -61,6 +61,10 @@ const pt_BR = {
     onList: 'Na lista',
     onListItemA11y: '{name}, na sua lista',
     starterHint: 'Seus habituais e itens recentes vão aparecer aqui conforme você faz compras.',
+    showAll: 'Ver todos',
+    showLess: 'Ver menos',
+    allOnList:
+      'Você já tem tudo na lista. Digite acima para adicionar outra coisa.',
     checked: 'Marcados ({count})',
     checkedA11y: 'Marcados, {count} itens, {state}',
     collapse: 'recolher',
@@ -90,6 +94,7 @@ const pt_BR = {
     moveToAisle: 'Mover para o corredor',
     removeFromUsuals: 'Remover dos habituais',
     saveAsUsual: 'Salvar como habitual',
+    usual: 'Habitual',
     remove: 'Remover',
     shareThis: 'Compartilhar esta lista',
     sharingSettings: 'Configurações de compartilhamento',

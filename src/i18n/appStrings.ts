@@ -72,6 +72,10 @@ export const APP_STRINGS = {
     onList: 'On list',
     onListItemA11y: '{name}, on your list',
     starterHint: 'Your usuals and recent items will show here as you shop.',
+    showAll: 'Show all',
+    showLess: 'Show less',
+    allOnList:
+      "Everything's already on your list. Type above to add anything else.",
     checked: 'Checked ({count})',
     checkedA11y: 'Checked, {count} items, {state}',
     collapse: 'collapse',
@@ -101,6 +105,7 @@ export const APP_STRINGS = {
     moveToAisle: 'Move to aisle',
     removeFromUsuals: 'Remove from usuals',
     saveAsUsual: 'Save as a usual',
+    usual: 'Usual',
     remove: 'Remove',
     shareThis: 'Share this list',
     sharingSettings: 'Sharing settings',

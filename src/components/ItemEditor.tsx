@@ -309,40 +309,63 @@ export function useItemEditor(): {
 
                 <View style={s.divider} />
 
-                <Pressable
-                  onPress={toggleUsual}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: usual }}
-                  accessibilityLabel={
-                    usual
-                      ? t('detail.removeFromUsuals')
-                      : t('detail.saveAsUsual')
-                  }
-                  style={({ pressed }) => [s.actionRow, pressed && s.pressed]}
-                >
-                  <Star
-                    size={18}
-                    color={usual ? c.accent : c.fgMuted}
-                    strokeWidth={1.5}
-                  />
-                  <Text style={s.actionText}>
-                    {usual
-                      ? t('detail.removeFromUsuals')
-                      : t('detail.saveAsUsual')}
-                  </Text>
-                </Pressable>
+                {/*
+                 * Usuals (left) and Remove (right) as two distinct, half-width
+                 * buttons with a real gap between them. They used to be stacked
+                 * full-width rows that were easy to fat-finger; separating them
+                 * side by side — and giving Remove its own danger-tinted button —
+                 * makes the destructive action both easy to hit and hard to hit
+                 * by accident.
+                 */}
+                <View style={s.actions}>
+                  <Pressable
+                    onPress={toggleUsual}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: usual }}
+                    accessibilityLabel={
+                      usual
+                        ? t('detail.removeFromUsuals')
+                        : t('detail.saveAsUsual')
+                    }
+                    style={({ pressed }) => [
+                      s.actionBtn,
+                      usual ? s.usualBtnOn : s.usualBtn,
+                      pressed && s.pressed,
+                    ]}
+                  >
+                    <Star
+                      size={18}
+                      color={usual ? c.accent : c.fgMuted}
+                      strokeWidth={1.5}
+                      fill={usual ? c.accent : 'transparent'}
+                    />
+                    <Text
+                      style={[s.actionBtnText, usual && s.usualBtnTextOn]}
+                      numberOfLines={1}
+                    >
+                      {t('detail.usual')}
+                    </Text>
+                  </Pressable>
 
-                <Pressable
-                  onPress={handleDelete}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('detail.remove')}
-                  style={({ pressed }) => [s.actionRow, pressed && s.pressed]}
-                >
-                  <Trash2 size={18} color={c.danger} strokeWidth={1.5} />
-                  <Text style={[s.actionText, s.actionDanger]}>
-                    {t('detail.remove')}
-                  </Text>
-                </Pressable>
+                  <Pressable
+                    onPress={handleDelete}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('detail.remove')}
+                    style={({ pressed }) => [
+                      s.actionBtn,
+                      s.removeBtn,
+                      pressed && s.pressed,
+                    ]}
+                  >
+                    <Trash2 size={18} color={c.danger} strokeWidth={1.5} />
+                    <Text
+                      style={[s.actionBtnText, s.removeBtnText]}
+                      numberOfLines={1}
+                    >
+                      {t('detail.remove')}
+                    </Text>
+                  </Pressable>
+                </View>
               </ScrollView>
             ) : null}
           </Pressable>
@@ -490,18 +513,40 @@ function makeStyles(c: Colors) {
       borderTopColor: c.hairline,
       marginTop: space.s6,
     },
-    actionRow: {
+    actions: {
+      flexDirection: 'row',
+      gap: space.s4,
+      marginTop: space.s5,
+    },
+    actionBtn: {
+      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.s3,
-      minHeight: target.min,
-      paddingVertical: space.s2,
+      justifyContent: 'center',
+      gap: space.s2,
+      minHeight: 52,
+      paddingHorizontal: space.s4,
+      borderRadius: radius.md,
+      borderWidth: hairline,
     },
-    actionText: {
+    actionBtnText: {
       ...ty.base,
-      fontFamily: fontFamily.sans,
+      fontFamily: fontFamily.sansSemibold,
       color: c.fg,
     },
-    actionDanger: { color: c.danger },
+    usualBtn: {
+      backgroundColor: c.bgSubtle,
+      borderColor: c.hairlineStrong,
+    },
+    usualBtnOn: {
+      backgroundColor: c.accentBg,
+      borderColor: c.accent,
+    },
+    usualBtnTextOn: { color: c.accent },
+    removeBtn: {
+      backgroundColor: c.dangerBg,
+      borderColor: c.danger,
+    },
+    removeBtnText: { color: c.danger },
   });
 }

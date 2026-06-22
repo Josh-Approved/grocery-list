@@ -60,6 +60,10 @@ const fr = {
     onList: 'Sur la liste',
     onListItemA11y: '{name}, sur votre liste',
     starterHint: 'Vos habituels et vos articles récents apparaîtront ici au fil de vos courses.',
+    showAll: 'Tout afficher',
+    showLess: 'Afficher moins',
+    allOnList:
+      'Tout est déjà sur votre liste. Tapez ci-dessus pour ajouter autre chose.',
     checked: 'Cochés ({count})',
     checkedA11y: 'Cochés, {count} articles, {state}',
     collapse: 'réduire',
@@ -89,6 +93,7 @@ const fr = {
     moveToAisle: 'Déplacer vers un rayon',
     removeFromUsuals: 'Retirer des habituels',
     saveAsUsual: 'Enregistrer comme habituel',
+    usual: 'Habituel',
     remove: 'Retirer',
     shareThis: 'Partager cette liste',
     sharingSettings: 'Paramètres de partage',
