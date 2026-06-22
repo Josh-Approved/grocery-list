@@ -30,7 +30,11 @@ import {
   StyleSheet,
   Keyboard,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  SafeAreaProvider,
+  SafeAreaView,
+  initialWindowMetrics,
+} from 'react-native-safe-area-context';
 import { Search, Plus, Check, Star, X } from 'lucide-react-native';
 import { useReducedMotion } from './Dialogs';
 import { useListsStore } from '../store/lists';
@@ -230,16 +234,19 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
   const submitTyped = useCallback(() => {
     const n = query.trim();
     // The search keeps the keyboard up after each add (blurOnSubmit={false}) so
-    // you can rapid-fire a list. An empty submit then has no on-keyboard way
-    // out, so read it as "I'm done typing" and dismiss — never trap the user.
+    // you can rapid-fire a list. An empty submit means "I'm done" — dismiss the
+    // keyboard and close the whole sheet, matching the top-bar Done. The
+    // keyboard's blue Done/return key is the same affordance as Done; it should
+    // leave the screen, not just drop the keyboard and strand you here.
     if (!n) {
       Keyboard.dismiss();
+      onClose();
       return;
     }
     add(n);
     setQuery('');
     requestAnimationFrame(() => inputRef.current?.focus());
-  }, [query, add]);
+  }, [query, add, onClose]);
 
   const toggleUsual = useCallback(
     (name: string) => {
@@ -341,64 +348,73 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <SafeAreaView style={s.safe} edges={['top', 'bottom', 'left', 'right']}>
-        <View style={s.topBar}>
-          <Text style={s.title} accessibilityRole="header">
-            {t('detail.addItemsTitle')}
-          </Text>
-          <Pressable
-            onPress={onClose}
-            hitSlop={8}
-            testID="addSheetDone"
-            accessibilityRole="button"
-            accessibilityLabel={t('common.done')}
-            style={({ pressed }) => [s.doneBtn, pressed && s.pressed]}
-          >
-            <Text style={s.doneText}>{t('common.done')}</Text>
-          </Pressable>
-        </View>
-
-        <View style={s.searchWrap}>
-          <Search size={18} color={c.fgSubtle} strokeWidth={1.5} />
-          <TextInput
-            ref={inputRef}
-            style={s.searchInput}
-            value={query}
-            onChangeText={setQuery}
-            placeholder={t('detail.searchOrAdd')}
-            placeholderTextColor={c.fgSubtle}
-            returnKeyType="done"
-            blurOnSubmit={false}
-            autoCapitalize="none"
-            autoCorrect={false}
-            onSubmitEditing={submitTyped}
-            accessibilityLabel={t('detail.searchOrAdd')}
-          />
-          {query.length > 0 ? (
+      {/*
+       * A RN Modal renders in its own native hierarchy, detached from the app's
+       * root SafeAreaProvider, so insets read as 0 here — the title and Done
+       * overlapped the status bar. Nest a provider (seeded with the launch
+       * metrics to avoid a 0-inset first frame) so the SafeAreaView below gets
+       * real top/bottom insets inside the full-screen modal.
+       */}
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        <SafeAreaView style={s.safe} edges={['top', 'bottom', 'left', 'right']}>
+          <View style={s.topBar}>
+            <Text style={s.title} accessibilityRole="header">
+              {t('detail.addItemsTitle')}
+            </Text>
             <Pressable
-              onPress={() => {
-                setQuery('');
-                requestAnimationFrame(() => inputRef.current?.focus());
-              }}
+              onPress={onClose}
               hitSlop={8}
+              testID="addSheetDone"
               accessibilityRole="button"
-              accessibilityLabel={t('common.close')}
-              style={({ pressed }) => [s.clearBtn, pressed && s.pressed]}
+              accessibilityLabel={t('common.done')}
+              style={({ pressed }) => [s.doneBtn, pressed && s.pressed]}
             >
-              <X size={18} color={c.fgSubtle} strokeWidth={1.5} />
+              <Text style={s.doneText}>{t('common.done')}</Text>
             </Pressable>
-          ) : null}
-        </View>
+          </View>
 
-        <FlatList
-          data={rows}
-          keyExtractor={(r) => r.key}
-          renderItem={renderRow}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="none"
-          contentContainerStyle={s.listContent}
-        />
-      </SafeAreaView>
+          <View style={s.searchWrap}>
+            <Search size={18} color={c.fgSubtle} strokeWidth={1.5} />
+            <TextInput
+              ref={inputRef}
+              style={s.searchInput}
+              value={query}
+              onChangeText={setQuery}
+              placeholder={t('detail.searchOrAdd')}
+              placeholderTextColor={c.fgSubtle}
+              returnKeyType="done"
+              blurOnSubmit={false}
+              autoCapitalize="none"
+              autoCorrect={false}
+              onSubmitEditing={submitTyped}
+              accessibilityLabel={t('detail.searchOrAdd')}
+            />
+            {query.length > 0 ? (
+              <Pressable
+                onPress={() => {
+                  setQuery('');
+                  requestAnimationFrame(() => inputRef.current?.focus());
+                }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.close')}
+                style={({ pressed }) => [s.clearBtn, pressed && s.pressed]}
+              >
+                <X size={18} color={c.fgSubtle} strokeWidth={1.5} />
+              </Pressable>
+            ) : null}
+          </View>
+
+          <FlatList
+            data={rows}
+            keyExtractor={(r) => r.key}
+            renderItem={renderRow}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="none"
+            contentContainerStyle={s.listContent}
+          />
+        </SafeAreaView>
+      </SafeAreaProvider>
     </Modal>
   );
 }
