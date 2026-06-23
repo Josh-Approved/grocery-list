@@ -1,0 +1,15 @@
+{
+  "category": "Everyone",
+  "answers": {
+    "violence": "none",
+    "sexuality": "none",
+    "language": "none",
+    "controlledSubstances": "none",
+    "gambling": "none",
+    "userInteraction": false,
+    "sharesLocation": false,
+    "personalInfoShared": false,
+    "unrestrictedInternet": false
+  },
+  "note": "Play content rating is the IARC questionnaire — entered in the console, not via the API. These are the answers to enter."
+}

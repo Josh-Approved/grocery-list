@@ -1,0 +1,6 @@
+field,value
+data_collected,false
+data_shared,false
+encrypted_in_transit,true
+data_deletion_requestable,true
+account_required,false
