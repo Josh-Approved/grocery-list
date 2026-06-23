@@ -40,6 +40,7 @@ export const SHELL_STRINGS = {
   },
   about: {
     support: 'Support this app',
+    supportShort: 'Support',
     feedback: 'Send feedback',
     review: 'Leave a review',
     privacy: 'Privacy',

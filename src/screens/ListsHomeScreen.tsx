@@ -15,15 +15,16 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, MoreHorizontal, ChevronRight, Settings, HandHeart, Mail, Link2 } from 'lucide-react-native';
+import { Plus, MoreHorizontal, ChevronRight, Settings, Link2 } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { useListsStore } from '../store/lists';
 import { listStats, type GroceryList } from '../data/list';
 import { useActionMenu, usePrompt } from '../components/Dialogs';
 import TipJarSheet from '../components/TipJarSheet';
+import { FundingFooter } from '../components/FundingFooter';
 import { TIP_PRODUCT_IDS } from '../constants/tipProducts';
-import { TIP_JAR_ENABLED, openFeedbackMail } from '../lib/links';
+import { TIP_JAR_ENABLED } from '../lib/links';
 import { t } from '../i18n';
 import {
   useTheme,
@@ -208,30 +209,12 @@ export default function ListsHomeScreen({ navigation }: Props) {
             </Pressable>
           </View>
         }
+        ListFooterComponent={
+          <FundingFooter
+            onSupport={TIP_JAR_ENABLED ? () => setTipVisible(true) : undefined}
+          />
+        }
       />
-
-      <View style={s.footer}>
-        {TIP_JAR_ENABLED && (
-          <Pressable
-            style={({ pressed }) => [s.footerLink, pressed && s.rowPressed]}
-            onPress={() => setTipVisible(true)}
-            accessibilityRole="button"
-            accessibilityLabel={t('about.support')}
-          >
-            <HandHeart size={14} color={c.fgMuted} strokeWidth={1.5} />
-            <Text style={s.footerText}>{t('about.support')}</Text>
-          </Pressable>
-        )}
-        <Pressable
-          style={({ pressed }) => [s.footerLink, pressed && s.rowPressed]}
-          onPress={openFeedbackMail}
-          accessibilityRole="button"
-          accessibilityLabel={t('about.feedback')}
-        >
-          <Mail size={14} color={c.fgMuted} strokeWidth={1.5} />
-          <Text style={s.footerText}>{t('about.feedback')}</Text>
-        </Pressable>
-      </View>
 
       {tipVisible && (
         <TipJarSheet
@@ -367,22 +350,5 @@ function makeStyles(c: Colors) {
       color: c.inkButtonText,
     },
 
-    footer: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      gap: space.s7,
-      paddingVertical: space.s5,
-    },
-    footerLink: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: space.s2,
-      minHeight: target.min,
-    },
-    footerText: {
-      ...ty.sm,
-      fontFamily: fontFamily.sans,
-      color: c.fgMuted,
-    },
   });
 }
