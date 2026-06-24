@@ -1,24 +1,78 @@
 {
   "stores": {
     "ios": [
-      { "id": "core",          "source": "ios/list.png",         "caption": "Free grocery list. Sorted into aisles for you." },
-      { "id": "josh-approved", "kind": "card" },
-      { "id": "autocomplete",  "source": "ios/autocomplete.png", "caption": "It remembers the items you buy." }
+      {
+        "id": "core",
+        "source": "ios/list.png",
+        "caption": "Free grocery list. Sorted into aisles for you."
+      },
+      {
+        "id": "josh-approved",
+        "kind": "card"
+      },
+      {
+        "id": "autocomplete",
+        "source": "ios/autocomplete.png",
+        "caption": "It remembers the items you buy.",
+        "layout": "detail",
+        "crop": "0.05,0.12,0.90,0.34"
+      }
     ],
     "android": [
-      { "id": "core",          "source": "android/list.png",         "caption": "Free grocery list. Sorted into aisles for you." },
-      { "id": "josh-approved", "kind": "card" },
-      { "id": "autocomplete",  "source": "android/autocomplete.png", "caption": "It remembers the items you buy." }
+      {
+        "id": "core",
+        "source": "android/list.png",
+        "caption": "A grocery list, sorted into aisles for you."
+      },
+      {
+        "id": "josh-approved",
+        "kind": "card"
+      },
+      {
+        "id": "autocomplete",
+        "source": "android/autocomplete.png",
+        "caption": "It remembers the items you buy.",
+        "layout": "detail",
+        "crop": "0.05,0.12,0.90,0.34"
+      }
     ],
     "ipad": [
-      { "id": "core",          "source": "ipad/list.png",         "caption": "Free grocery list. Sorted into aisles for you." },
-      { "id": "josh-approved", "kind": "card" },
-      { "id": "autocomplete",  "source": "ipad/autocomplete.png", "caption": "It remembers the items you buy." }
+      {
+        "id": "core",
+        "source": "ipad/list.png",
+        "caption": "Free grocery list. Sorted into aisles for you."
+      },
+      {
+        "id": "josh-approved",
+        "kind": "card"
+      },
+      {
+        "id": "autocomplete",
+        "source": "ipad/autocomplete.png",
+        "caption": "It remembers the items you buy.",
+        "layout": "detail",
+        "crop": "0.05,0.12,0.90,0.34"
+      }
     ],
     "androidTablet": [
-      { "id": "core",          "source": "androidTablet/list.png",         "caption": "Free grocery list. Sorted into aisles for you." },
-      { "id": "josh-approved", "kind": "card" },
-      { "id": "autocomplete",  "source": "androidTablet/autocomplete.png", "caption": "It remembers the items you buy." }
+      {
+        "id": "core",
+        "source": "androidTablet/list.png",
+        "caption": "A grocery list, sorted into aisles for you."
+      },
+      {
+        "id": "josh-approved",
+        "kind": "card"
+      },
+      {
+        "id": "autocomplete",
+        "source": "androidTablet/autocomplete.png",
+        "caption": "It remembers the items you buy.",
+        "layout": "detail",
+        "crop": "0.05,0.12,0.90,0.34"
+      }
     ]
-  }
+  },
+  "style": "signature",
+  "motif": "dots"
 }
