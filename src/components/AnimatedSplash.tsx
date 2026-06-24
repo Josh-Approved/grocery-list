@@ -79,6 +79,18 @@ const ICON = Math.round(Math.min(WIN_W, WIN_H));
 // The wordmark sits in the lower portion of the screen, beneath the icon.
 const WORDMARK_BOTTOM = Math.round(WIN_H * 0.16);
 const CHECK_SIZE = 22;
+// Trailing room so the final glyph's ink can NEVER be clipped. The wordmark uses
+// a NEGATIVE letterSpacing (tracking.mark ≈ -0.5), which narrows iOS's *measured*
+// text frame to just inside where the last glyph ("d" of "approved") actually
+// paints — the well-known RN iOS letterSpacing measurement gap. In the static
+// Settings wordmark that overflow harmlessly overdraws, but HERE the mark is
+// wrapped in a TRANSFORMED layer (the scale/translateY intro animation), and a
+// transform composites the text into a bounds-clipped layer — so without this pad
+// the "d" gets cut on *some* devices/SDKs (sub-pixel rounding at @2x vs @3x, the
+// live mid-animation scale value, or the wider system-fallback font when it wins
+// the load race). That intermittency is exactly the recurring "the d is cut off"
+// splash bug. Do NOT remove — guarded by qa-canonical `rn/splash-wordmark-clip`.
+const WORDMARK_TRAILING_PAD = 6;
 
 type Props = {
   /** App content is mounted and ready (fonts + stores hydrated). */
@@ -193,22 +205,34 @@ export default function AnimatedSplash({ ready, onFinish }: Props) {
   );
 }
 
+// Explicit absolute-fill literal — version-safe across React Native releases.
+// RN 0.85 dropped `StyleSheet.absoluteFillObject` from its types (the New
+// Architecture made `absoluteFill` the object), so spelling it out keeps the
+// canonical splash compiling on every SDK the catalogue spans.
+const ABSOLUTE_FILL = {
+  position: 'absolute' as const,
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+};
+
 const styles = StyleSheet.create({
   layer: {
-    ...StyleSheet.absoluteFillObject,
+    ...ABSOLUTE_FILL,
     backgroundColor: PAPER,
     zIndex: 10,
     elevation: 10,
     pointerEvents: 'none',
   },
   center: {
-    ...StyleSheet.absoluteFillObject,
+    ...ABSOLUTE_FILL,
     alignItems: 'center',
     justifyContent: 'center',
     pointerEvents: 'none',
   },
   wordmarkWrap: {
-    ...StyleSheet.absoluteFillObject,
+    ...ABSOLUTE_FILL,
     alignItems: 'center',
     justifyContent: 'flex-end',
     paddingBottom: WORDMARK_BOTTOM,
@@ -220,5 +244,9 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.sansSemibold,
     fontSize: 19,
     letterSpacing: tracking.mark,
+    // See WORDMARK_TRAILING_PAD: keeps the trailing "d" off the clip boundary of
+    // the animated/transformed layer. paddingRight only — the leading "j" never
+    // clips, so the check↔text gap stays exactly `row.gap`.
+    paddingRight: WORDMARK_TRAILING_PAD,
   },
 });
