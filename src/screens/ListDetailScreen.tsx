@@ -46,6 +46,7 @@ import {
 } from '../data/list';
 import { categoryLabel, type Category } from '../data/categories';
 import { Snackbar } from '../components/Snackbar';
+import { SwipeRow } from '../components/SwipeRow';
 import { useActionMenu, usePrompt } from '../components/Dialogs';
 import { useItemEditor } from '../components/ItemEditor';
 import AddItemsSheet from '../components/AddItemsSheet';
@@ -295,6 +296,11 @@ export default function ListDetailScreen({ route, navigation }: Props) {
       }
       const it = row.item;
       return (
+        <SwipeRow
+          onDelete={() => removeWithUndo(it)}
+          actionLabel={t('common.delete')}
+          accessibilityLabel={t('detail.swipeToDeleteA11y', { name: it.name })}
+        >
         <View style={[s.itemRow, row.divider && s.itemDivider]}>
           <Pressable
             style={s.itemTap}
@@ -341,6 +347,7 @@ export default function ListDetailScreen({ route, navigation }: Props) {
             <Pencil size={18} color={c.fgMuted} strokeWidth={1.5} />
           </Pressable>
         </View>
+        </SwipeRow>
       );
     },
     [s, c, listId, checkedOpen, setChecked, removeWithUndo, openEditor]

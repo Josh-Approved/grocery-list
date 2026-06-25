@@ -31,6 +31,8 @@ type Props = {
   onDismiss: () => void;
   /** Auto-dismiss after this many ms (default 5000). */
   durationMs?: number;
+  /** Extra bottom inset, e.g. the keyboard height, so the bar clears it. */
+  bottomOffset?: number;
 };
 
 export function Snackbar({
@@ -40,6 +42,7 @@ export function Snackbar({
   onAction,
   onDismiss,
   durationMs = 5000,
+  bottomOffset = 0,
 }: Props) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
@@ -56,7 +59,7 @@ export function Snackbar({
   return (
     <View
       pointerEvents="box-none"
-      style={[s.wrap, { paddingBottom: insets.bottom + space.s5 }]}
+      style={[s.wrap, { paddingBottom: insets.bottom + space.s5 + bottomOffset }]}
     >
       <View style={s.bar} accessibilityLiveRegion="polite">
         <Text style={s.message} numberOfLines={2}>

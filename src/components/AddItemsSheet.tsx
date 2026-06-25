@@ -35,10 +35,13 @@ import {
   SafeAreaView,
   initialWindowMetrics,
 } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { Search, Plus, Check, Star, X } from 'lucide-react-native';
 import { useReducedMotion } from './Dialogs';
+import { Snackbar } from './Snackbar';
+import { SwipeRow } from './SwipeRow';
 import { useListsStore } from '../store/lists';
-import { useAccountStore } from '../store/account';
+import { useAccountStore, rankedHistoryNames } from '../store/account';
 import { visibleItems } from '../data/list';
 import type { Category } from '../data/categories';
 import {
@@ -87,6 +90,8 @@ type SheetRow =
       category?: Category;
       onList: boolean;
       isUsual: boolean;
+      /** A Recent (own-history) row — eligible for swipe-to-forget. */
+      recent: boolean;
     };
 
 const RECENT_BROWSE_CAP = 30;
@@ -131,10 +136,23 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
   const addItem = useListsStore((st) => st.addItem);
 
   const recordUse = useAccountStore((st) => st.recordUse);
+  const forgetUse = useAccountStore((st) => st.forgetUse);
+  const restoreUse = useAccountStore((st) => st.restoreUse);
   const staples = useAccountStore((st) => st.staples);
   const history = useAccountStore((st) => st.history);
   const addStaple = useAccountStore((st) => st.addStaple);
   const removeStaple = useAccountStore((st) => st.removeStaple);
+
+  // One snackbar serves two roles: a brief "Added to …" confirmation toast (no
+  // action) and the "Forgot …" Undo after a swipe-to-forget.
+  const [snack, setSnack] = useState<{
+    message: string;
+    durationMs: number;
+    undo?: () => void;
+  } | null>(null);
+  // Lift the toast above the keyboard while it's up, so an add made mid-typing
+  // still shows its confirmation instead of hiding behind the keys.
+  const [kbHeight, setKbHeight] = useState(0);
 
   const { pref } = useLocalePreference();
   const activeLocale =
@@ -157,6 +175,23 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
     if (query.trim()) setShowAllUsuals(false);
   }, [query]);
 
+  // Clear any lingering toast when the sheet closes.
+  useEffect(() => {
+    if (!visible) setSnack(null);
+  }, [visible]);
+
+  // Track keyboard height so the "Added" toast clears it.
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) =>
+      setKbHeight(e.endCoordinates?.height ?? 0)
+    );
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
   const activeSet = useMemo(
     () =>
       new Set(
@@ -169,7 +204,9 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
   const rows = useMemo<SheetRow[]>(() => {
     const q = query.trim();
     const browsing = !q;
-    const historyNames = history.map((h) => h.name);
+    // Recency-weighted order: a frequently-bought item outranks a stale one-off
+    // typo even if the typo's raw count was once higher (see historyScore).
+    const historyNames = rankedHistoryNames(history, Date.now());
     const recentSource = historyNames.filter(
       (n) => !usualSet.has(n.toLowerCase())
     );
@@ -225,6 +262,7 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
         category,
         onList: activeSet.has(lower),
         isUsual: usualSet.has(lower),
+        recent: tier === 'r',
       });
     };
 
@@ -274,8 +312,30 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
       if (!n) return;
       addItem(listId, n, activeLocale, category);
       recordUse(n);
+      // Tangible confirmation: a light selection tick + a brief toast. The
+      // toast doubles as the screen-reader confirmation (Snackbar is a polite
+      // live region) and is reduced-motion-safe (it has no animation).
+      Haptics.selectionAsync().catch(() => {});
+      setSnack({
+        message: t('detail.addedToList', { name: list?.name ?? '' }),
+        durationMs: 1500,
+      });
     },
-    [addItem, recordUse, listId, activeLocale]
+    [addItem, recordUse, listId, activeLocale, list?.name]
+  );
+
+  const forget = useCallback(
+    (name: string) => {
+      const removed = forgetUse(name);
+      if (!removed) return;
+      Haptics.selectionAsync().catch(() => {});
+      setSnack({
+        message: t('detail.forgotSuggestion', { name: removed.name }),
+        durationMs: 5000,
+        undo: () => restoreUse(removed),
+      });
+    },
+    [forgetUse, restoreUse]
   );
 
   const submitTyped = useCallback(() => {
@@ -344,8 +404,8 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
       if (row.t === 'hint') {
         return <Text style={s.hint}>{row.text}</Text>;
       }
-      const { name, category, onList, isUsual } = row;
-      return (
+      const { name, category, onList, isUsual, recent } = row;
+      const body = (
         <View style={s.itemRow}>
           <Pressable
             style={s.itemTap}
@@ -402,8 +462,21 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
           )}
         </View>
       );
+      // Recent rows (the user's own history) can be swiped away to forget the
+      // suggestion for good. Usuals and the built-in catalog aren't forgettable
+      // here — a usual is managed with its ★, and the catalog isn't user data.
+      if (!recent) return body;
+      return (
+        <SwipeRow
+          onDelete={() => forget(name)}
+          actionLabel={t('common.delete')}
+          accessibilityLabel={t('detail.swipeToDeleteA11y', { name })}
+        >
+          {body}
+        </SwipeRow>
+      );
     },
-    [s, c, add, toggleUsual]
+    [s, c, add, toggleUsual, forget]
   );
 
   return (
@@ -478,6 +551,16 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="none"
             contentContainerStyle={s.listContent}
+          />
+
+          <Snackbar
+            visible={!!snack}
+            message={snack?.message ?? ''}
+            durationMs={snack?.durationMs}
+            actionLabel={snack?.undo ? t('common.undo') : undefined}
+            onAction={snack?.undo}
+            onDismiss={() => setSnack(null)}
+            bottomOffset={kbHeight}
           />
         </SafeAreaView>
       </SafeAreaProvider>

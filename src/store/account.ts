@@ -12,12 +12,18 @@ import { create } from 'zustand';
 import {
   loadHistory,
   recordHistory,
+  deleteHistory,
+  putHistory,
   getAppSetting,
   setAppSetting,
   type HistoryRow,
 } from './db';
 
 const STAPLES_KEY = 'staples';
+
+// Re-exported so existing call sites can keep importing from the store; the
+// implementation lives in a dependency-free module for unit-testing.
+export { historyScore, rankedHistoryNames } from './historyRank';
 
 interface AccountState {
   hydrated: boolean;
@@ -29,6 +35,12 @@ interface AccountState {
 
   /** Record that the user added `name` (bumps autocomplete ranking). */
   recordUse: (name: string) => void;
+
+  /** Permanently forget a Recent suggestion. Returns the removed row so the
+   *  caller can offer Undo; undefined if there was nothing to forget. */
+  forgetUse: (name: string) => HistoryRow | undefined;
+  /** Re-insert a forgotten row verbatim (Undo). */
+  restoreUse: (row: HistoryRow) => void;
 
   isStaple: (name: string) => boolean;
   addStaple: (name: string) => void;
@@ -86,6 +98,34 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
     });
     recordHistory(n).catch((err) =>
       console.warn('grocery-list: failed to record history', err)
+    );
+  },
+
+  forgetUse: (name) => {
+    const lower = name.trim().toLowerCase();
+    const removed = get().history.find(
+      (h) => h.name.toLowerCase() === lower
+    );
+    if (!removed) return undefined;
+    set((s) => ({
+      history: s.history.filter((h) => h.name.toLowerCase() !== lower),
+    }));
+    deleteHistory(removed.name).catch((err) =>
+      console.warn('grocery-list: failed to forget history', err)
+    );
+    return removed;
+  },
+
+  restoreUse: (row) => {
+    set((s) => {
+      const lower = row.name.toLowerCase();
+      if (s.history.some((h) => h.name.toLowerCase() === lower)) return s;
+      const next = [...s.history, row];
+      next.sort((a, b) => b.count - a.count || b.lastUsed - a.lastUsed);
+      return { history: next };
+    });
+    putHistory(row).catch((err) =>
+      console.warn('grocery-list: failed to restore history', err)
     );
   },
 

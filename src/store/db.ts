@@ -90,6 +90,26 @@ export async function recordHistory(name: string): Promise<void> {
   );
 }
 
+/** Permanently forget a single autocomplete entry (case-insensitive) — the
+ *  swipe-to-delete on a Recent row. Re-typing the word re-adds it from scratch. */
+export async function deleteHistory(name: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'DELETE FROM item_history WHERE name = ? COLLATE NOCASE',
+    [name]
+  );
+}
+
+/** Re-insert a forgotten row verbatim (Undo) — restores its exact count and
+ *  lastUsed so its ranking is unchanged, not reset to a fresh single use. */
+export async function putHistory(row: HistoryRow): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO item_history (name, count, lastUsed) VALUES (?, ?, ?)`,
+    [row.name, row.count, row.lastUsed]
+  );
+}
+
 interface ListRow {
   id: string;
   name: string;
