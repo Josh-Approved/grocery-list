@@ -4,7 +4,7 @@
       {
         "id": "core",
         "source": "ios/list.png",
-        "caption": "Free grocery list. Sorted into aisles for you."
+        "caption": "A grocery list, sorted into aisles for you."
       },
       {
         "id": "josh-approved",
@@ -40,7 +40,7 @@
       {
         "id": "core",
         "source": "ipad/list.png",
-        "caption": "Free grocery list. Sorted into aisles for you."
+        "caption": "A grocery list, sorted into aisles for you."
       },
       {
         "id": "josh-approved",
