@@ -36,10 +36,9 @@ import {
   initialWindowMetrics,
 } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { Search, Plus, Check, Star, X } from 'lucide-react-native';
-import { useReducedMotion } from './Dialogs';
+import { Search, Pencil, Check, Star, X } from 'lucide-react-native';
+import { useReducedMotion, useActionMenu, usePrompt } from './Dialogs';
 import { Snackbar } from './Snackbar';
-import { SwipeRow } from './SwipeRow';
 import { useListsStore } from '../store/lists';
 import { useAccountStore, rankedHistoryNames } from '../store/account';
 import { visibleItems } from '../data/list';
@@ -127,6 +126,8 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
   const { c } = useTheme();
   const s = makeStyles(c);
   const reduced = useReducedMotion();
+  const menu = useActionMenu();
+  const prompt = usePrompt();
   const inputRef = useRef<TextInput>(null);
   const [query, setQuery] = useState('');
   // Browse-only "Show all usuals" expander (see USUALS_PEEK).
@@ -138,6 +139,7 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
   const recordUse = useAccountStore((st) => st.recordUse);
   const forgetUse = useAccountStore((st) => st.forgetUse);
   const restoreUse = useAccountStore((st) => st.restoreUse);
+  const renameUse = useAccountStore((st) => st.renameUse);
   const staples = useAccountStore((st) => st.staples);
   const history = useAccountStore((st) => st.history);
   const addStaple = useAccountStore((st) => st.addStaple);
@@ -338,6 +340,38 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
     [forgetUse, restoreUse]
   );
 
+  // Pencil on a Recent row: a cross-platform Edit/Delete menu (no swipe). Edit
+  // opens a rename prompt that preserves the suggestion's ranking; Delete is the
+  // old forget-with-Undo. Dismiss the search keyboard first so the bottom menu
+  // (and then the prompt's own keyboard) isn't fighting the keys.
+  const editRecent = useCallback(
+    (name: string) => {
+      Keyboard.dismiss();
+      menu.open({
+        title: name,
+        options: [
+          {
+            label: t('common.edit'),
+            onPress: () =>
+              prompt.open({
+                title: t('detail.editItem'),
+                initialValue: name,
+                selectAll: true,
+                confirmLabel: t('common.save'),
+                onSubmit: (next) => renameUse(name, next),
+              }),
+          },
+          {
+            label: t('common.delete'),
+            destructive: true,
+            onPress: () => forget(name),
+          },
+        ],
+      });
+    },
+    [menu, prompt, renameUse, forget]
+  );
+
   const submitTyped = useCallback(() => {
     const n = query.trim();
     // The search keeps the keyboard up after each add (blurOnSubmit={false}) so
@@ -445,38 +479,34 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
             />
           </Pressable>
 
-          {onList ? (
+          {/*
+           * The whole row adds on tap, so there's no separate + button. Recent
+           * rows (the user's own history) instead carry a pencil that opens an
+           * Edit/Delete menu — modify a typo or forget the suggestion for good.
+           * Usuals and the built-in catalog aren't editable here: a usual is
+           * managed with its ★, and the catalog isn't user data. On-list rows
+           * (only seen while searching) keep a check as a quiet "already added".
+           */}
+          {recent ? (
+            <Pressable
+              onPress={() => editRecent(name)}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={t('detail.editItemA11y', { name })}
+              style={({ pressed }) => [s.editBox, pressed && s.pressed]}
+            >
+              <Pencil size={18} color={c.fgMuted} strokeWidth={1.5} />
+            </Pressable>
+          ) : onList ? (
             <View style={s.checkBox} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
               <Check size={18} color={c.accent} strokeWidth={2} />
             </View>
-          ) : (
-            <Pressable
-              onPress={() => add(name, category)}
-              hitSlop={6}
-              accessibilityRole="button"
-              accessibilityLabel={t('detail.addNamed', { name })}
-              style={({ pressed }) => [s.addBox, pressed && s.pressed]}
-            >
-              <Plus size={20} color={c.fgMuted} strokeWidth={2} />
-            </Pressable>
-          )}
+          ) : null}
         </View>
       );
-      // Recent rows (the user's own history) can be swiped away to forget the
-      // suggestion for good. Usuals and the built-in catalog aren't forgettable
-      // here — a usual is managed with its ★, and the catalog isn't user data.
-      if (!recent) return body;
-      return (
-        <SwipeRow
-          onDelete={() => forget(name)}
-          actionLabel={t('common.delete')}
-          accessibilityLabel={t('detail.swipeToDeleteA11y', { name })}
-        >
-          {body}
-        </SwipeRow>
-      );
+      return body;
     },
-    [s, c, add, toggleUsual, forget]
+    [s, c, add, toggleUsual, editRecent]
   );
 
   return (
@@ -562,6 +592,9 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
             onDismiss={() => setSnack(null)}
             bottomOffset={kbHeight}
           />
+
+          {menu.element}
+          {prompt.element}
         </SafeAreaView>
       </SafeAreaProvider>
     </Modal>
@@ -703,14 +736,11 @@ function makeStyles(c: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    addBox: {
+    editBox: {
       width: target.min,
       height: target.min,
       alignItems: 'center',
       justifyContent: 'center',
-      borderWidth: hairline,
-      borderColor: c.hairlineStrong,
-      borderRadius: radius.md,
     },
     checkBox: {
       width: target.min,
