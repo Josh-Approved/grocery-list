@@ -42,6 +42,11 @@ interface AccountState {
   /** Re-insert a forgotten row verbatim (Undo). */
   restoreUse: (row: HistoryRow) => void;
 
+  /** Rename a Recent suggestion in place, preserving its ranking (count +
+   *  lastUsed). If the new name collides with an existing entry the two merge
+   *  (counts summed, newest lastUsed kept). No-op if nothing meaningful changed. */
+  renameUse: (oldName: string, newName: string) => void;
+
   isStaple: (name: string) => boolean;
   addStaple: (name: string) => void;
   removeStaple: (name: string) => void;
@@ -127,6 +132,47 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
     putHistory(row).catch((err) =>
       console.warn('grocery-list: failed to restore history', err)
     );
+  },
+
+  renameUse: (oldName, newName) => {
+    const next = newName.trim();
+    if (!next) return;
+    const fromLower = oldName.trim().toLowerCase();
+    const toLower = next.toLowerCase();
+
+    const from = get().history.find((h) => h.name.toLowerCase() === fromLower);
+    if (!from) return;
+    // A pure no-op (same name, same case) — nothing to persist.
+    if (from.name === next) return;
+
+    // Merge into any existing entry under the new name (case-insensitive), so a
+    // rename onto a word you already buy stacks rather than forking the ranking.
+    const collision = get().history.find(
+      (h) => h.name.toLowerCase() === toLower && h.name.toLowerCase() !== fromLower
+    );
+    const merged: HistoryRow = {
+      name: next,
+      count: from.count + (collision?.count ?? 0),
+      lastUsed: Math.max(from.lastUsed, collision?.lastUsed ?? 0),
+    };
+
+    set((s) => {
+      const kept = s.history.filter(
+        (h) =>
+          h.name.toLowerCase() !== fromLower && h.name.toLowerCase() !== toLower
+      );
+      const nextHistory = [...kept, merged];
+      nextHistory.sort((a, b) => b.count - a.count || b.lastUsed - a.lastUsed);
+      return { history: nextHistory };
+    });
+
+    // Persist: drop both old rows, then write the merged one.
+    deleteHistory(from.name)
+      .then(() => (collision ? deleteHistory(collision.name) : undefined))
+      .then(() => putHistory(merged))
+      .catch((err) =>
+        console.warn('grocery-list: failed to rename history', err)
+      );
   },
 
   isStaple: (name) =>
