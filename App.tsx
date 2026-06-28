@@ -13,7 +13,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { useColorScheme, Linking } from 'react-native';
+import { useColorScheme, Linking, AppState } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import {
   NavigationContainer,
@@ -35,7 +35,7 @@ import ReorderAislesScreen from './src/screens/ReorderAislesScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import ShareScreen from './src/screens/ShareScreen';
 import Credits from './src/components/Credits';
-import { startSyncEngine, stopSyncEngine } from './src/sync';
+import { startSyncEngine, stopSyncEngine, flushSyncEngine } from './src/sync';
 import { parseShareLink } from './src/sync/share';
 import AnimatedSplash from './src/components/AnimatedSplash';
 import { QA_MODE } from './src/qa/qaMode';
@@ -106,6 +106,22 @@ export default function App() {
     if (!hydrated) return;
     startSyncEngine();
     return () => stopSyncEngine();
+  }, [hydrated]);
+
+  // On the way to the background, durably flush local state and push the latest
+  // copy to peers immediately. Without this, a check made just before switching
+  // apps can be lost (fire-and-forget save not yet landed) or never published
+  // (the 700ms publish debounce is suspended mid-wait). Fires on 'inactive'
+  // (the transition) so it runs before iOS suspends the app.
+  useEffect(() => {
+    if (!hydrated) return;
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'inactive' || next === 'background') {
+        flushSyncEngine();
+        useListsStore.getState().flushPending();
+      }
+    });
+    return () => sub.remove();
   }, [hydrated]);
 
   // Pairing via a tapped share link: join the shared list, open it.

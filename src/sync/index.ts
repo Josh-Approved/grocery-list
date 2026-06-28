@@ -60,7 +60,7 @@ function ensureChannel(secret: string): Channel {
   const transport = new DropBoxTransport(
     channelId(secret),
     (ct) => receive(secret, ct),
-    () => sendHello(secret)
+    () => onReconnect(secret)
   );
   ch = { transport, lastSent: '', timer: null, lastHelloAt: 0 };
   channels.set(secret, ch);
@@ -88,6 +88,16 @@ function receive(secret: string, ct: string): void {
     // mergeRemoteList folds the remote clock in before merging (see clock.ts).
     useListsStore.getState().mergeRemoteList(remote);
   }
+}
+
+/** On (re)connect, both PUSH our current state (so a peer that is already
+ *  online converges to our latest — e.g. the checks we just made) and PULL via
+ *  hello (so peers push us theirs). Both directions are needed: hello alone
+ *  only fetches, so a device that reconnects while its partner is already
+ *  online would never re-share its own state. */
+function onReconnect(secret: string): void {
+  forcePublish(secret);
+  sendHello(secret);
 }
 
 /** Announce ourselves so a peer re-publishes its current state. Debounced. */
@@ -149,6 +159,21 @@ export function startSyncEngine(): void {
   if (unsub) return;
   reconcile(useListsStore.getState().lists);
   unsub = useListsStore.subscribe((state) => reconcile(state.lists));
+}
+
+/** Push current state immediately on every channel, skipping the debounce.
+ *  Call when the app is about to background: the 700ms publish debounce would
+ *  otherwise be suspended mid-wait, so a check made right before switching apps
+ *  never leaves the device. Best-effort — sockets may be closing. */
+export function flushSyncEngine(): void {
+  for (const secret of channels.keys()) {
+    const ch = channels.get(secret);
+    if (ch?.timer) {
+      clearTimeout(ch.timer);
+      ch.timer = null;
+    }
+    forcePublish(secret);
+  }
 }
 
 export function stopSyncEngine(): void {

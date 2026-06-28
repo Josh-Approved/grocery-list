@@ -23,7 +23,7 @@ import { isBuiltinCategory, type Category } from '../data/categories';
 import { makeId } from '../lib/id';
 import { makeShareIdentity } from '../sync/share';
 import { mergeList } from '../sync/merge';
-import { now as clockNow, initClock, observe as observeClock } from '../sync/clock';
+import { now as clockNow, initClock, observe as observeClock, peek as clockPeek } from '../sync/clock';
 import {
   loadAllLists,
   saveList,
@@ -141,6 +141,12 @@ interface ListsState {
 
   /** Reserved generic sync entry (kept for symmetry with other apps). */
   applySync: (changes: { upserts: GroceryList[]; deletes: string[] }) => void;
+
+  /** Durably write all current state, AWAITED. Per-list saves are otherwise
+   *  fire-and-forget, so a check made right before the app is backgrounded can
+   *  be lost if iOS suspends/kills the app before the write lands. The App-level
+   *  AppState handler awaits this on background. */
+  flushPending: () => Promise<void>;
 }
 
 function persist(list: GroceryList): void {
@@ -487,6 +493,16 @@ export const useListsStore = create<ListsState>()((set, get) => {
       for (const id of deletes) {
         deleteListFromDb(id).catch(() => {});
         putTombstone(id, clockNow()).catch(() => {});
+      }
+    },
+
+    flushPending: async () => {
+      const lists = get().lists;
+      await Promise.all(lists.map((l) => saveList(l).catch(() => {})));
+      try {
+        await setSyncMeta('clock', String(clockPeek()));
+      } catch {
+        /* best-effort */
       }
     },
   };
