@@ -9,7 +9,7 @@
  * marketing-ese. "Josh Approved" is a brand proper noun and never translates.
  * The app overlays its OWN domain strings per locale in `locales.ts`.
  *
- * Machine-drafted (Claude, $0 — canon § Translations). A native per-locale
+ * Machine-drafted initial pass (canon § Translations). A native per-locale
  * layout/quality pass rides the Tier-3 capture machinery before these are
  * treated as final; the keys map 1:1 to shellStrings.ts.
  */

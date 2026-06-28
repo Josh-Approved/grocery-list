@@ -12,7 +12,7 @@
  * Yjs / Automerge were considered (the spec named them) and deliberately not
  * used: a list of records needs an LWW-element-set, not a sequence CRDT —
  * fewer deps, smaller bundle, and far more robust on React Native. Recorded
- * as a build decision in the app CLAUDE.md.
+ * as a deliberate build decision in the project's build notes.
  */
 
 import type { GroceryList } from '../data/list';

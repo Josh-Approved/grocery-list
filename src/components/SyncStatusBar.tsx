@@ -17,6 +17,7 @@ import {
   useTheme,
   fontFamily,
   space,
+  target,
   type as ty,
   type Colors,
 } from '../theme';
@@ -44,11 +45,10 @@ export function SyncStatusBar({ secret }: { secret: string }) {
     : status.connected
       ? t('detail.sync.connected')
       : t('detail.sync.offline');
-  const dotColor = syncing
-    ? c.appAccent
-    : status.connected
-      ? c.success
-      : c.fgSubtle;
+  // Accent (not approval-green — that token is reserved for the verified/done
+  // semantic) marks an active connection; muted marks offline. The text label
+  // carries the meaning, so the dot is a secondary indicator, never colour-only.
+  const dotColor = status.connected || syncing ? c.appAccent : c.fgSubtle;
 
   return (
     <Pressable
@@ -57,9 +57,13 @@ export function SyncStatusBar({ secret }: { secret: string }) {
       accessibilityLabel={t('detail.sync.a11y', { status: label })}
       style={({ pressed }) => [s.row, pressed && s.pressed]}
     >
-      <View style={[s.dot, { backgroundColor: dotColor }]} />
+      <View
+        style={[s.dot, { backgroundColor: dotColor }]}
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+      />
       <Text style={s.label}>{label}</Text>
-      <RefreshCw size={13} color={c.fgSubtle} strokeWidth={1.5} />
+      <RefreshCw size={16} color={c.fgSubtle} strokeWidth={1.5} />
     </Pressable>
   );
 }
@@ -70,6 +74,7 @@ function makeStyles(c: Colors) {
       flexDirection: 'row',
       alignItems: 'center',
       gap: space.s2,
+      minHeight: target.min,
       paddingHorizontal: space.s6,
       paddingBottom: space.s3,
     },

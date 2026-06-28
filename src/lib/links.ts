@@ -9,9 +9,9 @@ import * as Application from 'expo-application';
 export const APP_NAME = 'Grocery List - Josh Approved';
 
 /** Numeric App Store Connect id — filled once the ASC record exists (store
- *  setup). Empty is the known pre-store state; the review deep link no-ops
- *  cleanly until then (same posture as other Josh Approved apps). */
-export const IOS_APP_STORE_ID = '';
+ *  setup). The review deep link no-ops cleanly while empty (the pre-store
+ *  state); now that the listing is live, it points at the real record. */
+export const IOS_APP_STORE_ID = '6779417031';
 export const ANDROID_PACKAGE = 'com.joshapproved.grocerylist';
 
 export const BMAC_URL = 'https://buymeacoffee.com/jtysonwilliams';
