@@ -102,6 +102,7 @@ const de = {
     reorderAisles: 'Gänge neu ordnen',
     addUsuals: 'Stammartikel hinzufügen',
     deleteList: 'Liste löschen',
+    sync: { connected: 'Verbunden', offline: 'Offline', syncing: 'Wird synchronisiert…', a11y: 'Synchronisierung der geteilten Liste: {status}. Zum Synchronisieren tippen.' },
   },
   share: {
     shareThis: 'Diese Liste teilen',

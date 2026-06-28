@@ -101,6 +101,7 @@ const ja = {
     reorderAisles: '売り場を並べ替え',
     addUsuals: 'いつもの品を追加',
     deleteList: 'リストを削除',
+    sync: { connected: '接続済み', offline: 'オフライン', syncing: '同期中…', a11y: '共有リストの同期：{status}。タップして今すぐ同期。' },
   },
   share: {
     shareThis: 'このリストを共有',

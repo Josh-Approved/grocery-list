@@ -116,6 +116,12 @@ export const APP_STRINGS = {
     reorderAisles: 'Reorder aisles',
     addUsuals: 'Add usuals',
     deleteList: 'Delete list',
+    sync: {
+      connected: 'Connected',
+      offline: 'Offline',
+      syncing: 'Syncing…',
+      a11y: 'Shared list sync: {status}. Tap to sync now.',
+    },
   },
   share: {
     shareThis: 'Share this list',

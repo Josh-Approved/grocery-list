@@ -100,6 +100,7 @@ const fr = {
     reorderAisles: 'Réorganiser les rayons',
     addUsuals: 'Ajouter les habituels',
     deleteList: 'Supprimer la liste',
+    sync: { connected: 'Connecté', offline: 'Hors ligne', syncing: 'Synchronisation…', a11y: 'Synchronisation de la liste partagée : {status}. Touchez pour synchroniser.' },
   },
   share: {
     shareThis: 'Partager cette liste',

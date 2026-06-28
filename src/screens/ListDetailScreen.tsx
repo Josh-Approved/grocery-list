@@ -47,6 +47,7 @@ import {
 import { categoryLabel, type Category } from '../data/categories';
 import { Snackbar } from '../components/Snackbar';
 import { SwipeRow } from '../components/SwipeRow';
+import { SyncStatusBar } from '../components/SyncStatusBar';
 import { useActionMenu, usePrompt } from '../components/Dialogs';
 import { useItemEditor } from '../components/ItemEditor';
 import AddItemsSheet from '../components/AddItemsSheet';
@@ -417,6 +418,10 @@ export default function ListDetailScreen({ route, navigation }: Props) {
           <MoreHorizontal size={22} color={c.fg} strokeWidth={1.5} />
         </Pressable>
       </View>
+
+      {list.shareIdentity && (
+        <SyncStatusBar secret={list.shareIdentity.secret} />
+      )}
 
       <View style={s.addBar}>
         <Pressable

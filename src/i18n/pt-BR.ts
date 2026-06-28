@@ -101,6 +101,7 @@ const pt_BR = {
     reorderAisles: 'Reordenar corredores',
     addUsuals: 'Adicionar habituais',
     deleteList: 'Excluir lista',
+    sync: { connected: 'Conectado', offline: 'Sem conexão', syncing: 'Sincronizando…', a11y: 'Sincronização da lista compartilhada: {status}. Toque para sincronizar agora.' },
   },
   share: {
     shareThis: 'Compartilhar esta lista',

@@ -31,6 +31,7 @@ import { useListsStore } from '../store/lists';
 import type { GroceryList } from '../data/list';
 import { channelId, seal, open } from './crypto';
 import { DropBoxTransport } from './transport';
+import { markConnected, markReceived, markSent, dropStatus } from './status';
 
 /** A control message asking peers to re-publish their current state. Encrypted
  *  like everything else; distinguished from a state message by `_sync` (a state
@@ -60,7 +61,8 @@ function ensureChannel(secret: string): Channel {
   const transport = new DropBoxTransport(
     channelId(secret),
     (ct) => receive(secret, ct),
-    () => onReconnect(secret)
+    () => onReconnect(secret),
+    (openRelays) => markConnected(secret, openRelays > 0)
   );
   ch = { transport, lastSent: '', timer: null, lastHelloAt: 0 };
   channels.set(secret, ch);
@@ -87,6 +89,7 @@ function receive(secret: string, ct: string): void {
   if (remote?.shareIdentity?.secret === secret) {
     // mergeRemoteList folds the remote clock in before merging (see clock.ts).
     useListsStore.getState().mergeRemoteList(remote);
+    markReceived(secret, Date.now());
   }
 }
 
@@ -123,6 +126,7 @@ function forcePublish(secret: string): void {
   const payload = JSON.stringify(list);
   ch.lastSent = payload;
   ch.transport.publish(seal(secret, payload));
+  markSent(secret, Date.now());
 }
 
 function publish(secret: string, list: GroceryList): void {
@@ -133,7 +137,14 @@ function publish(secret: string, list: GroceryList): void {
   ch.timer = setTimeout(() => {
     ch.lastSent = payload;
     ch.transport.publish(seal(secret, payload));
+    markSent(secret, Date.now());
   }, 700);
+}
+
+/** Force an immediate full exchange for one shared list (the UI's manual
+ *  "resync" affordance): push our state and ask peers for theirs. */
+export function resyncNow(secret: string): void {
+  onReconnect(secret);
 }
 
 function reconcile(lists: GroceryList[]): void {
@@ -150,6 +161,7 @@ function reconcile(lists: GroceryList[]): void {
       if (ch.timer) clearTimeout(ch.timer);
       ch.transport.close();
       channels.delete(secret);
+      dropStatus(secret);
     }
   }
 }

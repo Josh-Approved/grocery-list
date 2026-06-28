@@ -99,6 +99,7 @@ const it = {
     reorderAisles: 'Riordina i reparti',
     addUsuals: 'Aggiungi i soliti',
     deleteList: 'Elimina lista',
+    sync: { connected: 'Connesso', offline: 'Offline', syncing: 'Sincronizzazione…', a11y: 'Sincronizzazione lista condivisa: {status}. Tocca per sincronizzare ora.' },
   },
   share: {
     shareThis: 'Condividi questa lista',

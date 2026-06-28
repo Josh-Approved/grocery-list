@@ -67,11 +67,14 @@ export class DropBoxTransport {
    *   re-publishes current state — relays are ephemeral and don't backfill, so
    *   without this a just-opened / just-reconnected device sees nothing until
    *   the other side happens to make an edit.
+   * @param onStatus  fires with the live relay count whenever it changes — the
+   *   engine surfaces this as a connected/offline indicator in the UI.
    */
   constructor(
     private channel: string,
     private onMessage: (ciphertext: string) => void,
-    private onConnect?: () => void
+    private onConnect?: () => void,
+    private onStatus?: (openRelays: number) => void
   ) {
     this.priv = sha256(nacl.randomBytes(32));
     this.pub = bytesToHex(schnorr.getPublicKey(this.priv));
@@ -102,11 +105,13 @@ export class DropBoxTransport {
       );
       const wasOffline = this.openSockets.size === 0;
       this.openSockets.add(ws);
+      this.onStatus?.(this.openSockets.size);
       if (wasOffline && !this.closed) this.onConnect?.();
     };
     ws.onmessage = (e) => this.onWire(String(e.data));
     ws.onclose = () => {
-      this.openSockets.delete(ws);
+      const had = this.openSockets.delete(ws);
+      if (had) this.onStatus?.(this.openSockets.size);
       this.sockets = this.sockets.filter((s) => s !== ws);
       if (!this.closed) setTimeout(() => this.connect(url), 4000);
     };
@@ -186,5 +191,6 @@ export class DropBoxTransport {
     }
     this.sockets = [];
     this.openSockets.clear();
+    this.onStatus?.(0);
   }
 }
