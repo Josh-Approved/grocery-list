@@ -14,6 +14,11 @@
     --ink-200: #C8C8CC;
     --ink-100: #E5E5E2;
     --green-600: #1F8A4C;
+    /* Defaults overridden by the script from query params (accent/style/theme). */
+    --ac: #6E4A63;
+    --device-shadow: none;
+    --motif: none;
+    --kl-w: 0; --kl-h: 0; --kl-mt: 0;
   }
 
   * { box-sizing: border-box; }
@@ -27,18 +32,21 @@
     overflow: hidden;
   }
 
-  body[data-bg="paper"] { --bg: var(--paper); --fg: var(--ink-1000); --bezel: var(--ink-1000); }
-  body[data-bg="ink"]   { --bg: var(--ink-1000); --fg: var(--paper);    --bezel: var(--paper); }
+  /* Theme = light|dark. In `flat` style --bg is a solid; richer styles overwrite
+     --bg with a gradient (+ motif) from the script. --fg/--bezel always follow
+     the theme so captions + device chrome stay legible on whatever ground. */
+  body[data-theme="light"] { --bg: var(--paper);    --fg: var(--ink-1000); --bezel: var(--ink-1000); }
+  body[data-theme="dark"]  { --bg: var(--ink-1000); --fg: var(--paper);    --bezel: var(--paper);    }
 
   .stage {
     width: 100vw;
     height: 100vh;
     display: grid;
-    grid-template-rows: auto 1fr;
-    /* Caption centered in its auto row; the frame row STRETCHES so #frame gets a
-       definite height to bound the device against. Without the stretch the device
-       (now as tall as the capture) overflows and its bottom bezel bleeds off the
-       canvas — what cropped the cut-off FABs we're fixing. */
+    /* caption · keyline · frame. The keyline row collapses to 0 unless the
+       editorial style turns it on. The frame row STRETCHES so #frame gets a
+       definite height to bound the device against (without the stretch a
+       capture-tall device overflows and its bottom bezel bleeds off-canvas). */
+    grid-template-rows: auto auto 1fr;
     justify-items: center;
     align-items: stretch;
     padding: var(--pad-y) var(--pad-x);
@@ -53,6 +61,10 @@
     max-width: 90%;
     align-self: center;
   }
+
+  /* Editorial: caption sits left with an accent keyline beneath it. */
+  body[data-style="editorial"] .caption { text-align: left; justify-self: start; align-self: start; max-width: 100%; }
+  .keyline { width: var(--kl-w); height: var(--kl-h); margin-top: var(--kl-mt); background: var(--ac); border-radius: 999px; justify-self: start; align-self: start; }
 
   /* The frame row's stretched cell — centers the device/window/card and gives it
      a definite box to shrink-to-fit within (height + width). */
@@ -72,15 +84,16 @@
     place-items: center;
     /* Shrink-to-fit BOTH axes (mirrors .window): width:100% + height:auto sizes
        height from the aspect ratio; when that would exceed the cell, max-height
-       clamps and aspect-ratio pulls width back in. Using height:100% instead
-       forces full cell height and fights the aspect ratio, overflowing the
-       bottom bezel off the canvas. */
+       clamps and aspect-ratio pulls width back in. */
     width: 100%;
     height: auto;
     aspect-ratio: var(--device-aspect);
     max-height: 100%;
     max-width: 100%;
   }
+  /* Float the device on every style except flat (flat = the original look). */
+  body:not([data-style="flat"]) .device { box-shadow: var(--device-shadow); }
+
   .screen {
     width: 100%;
     height: 100%;
@@ -88,16 +101,14 @@
     overflow: hidden;
     background: var(--paper);
     display: block;
+    background-repeat: no-repeat;
   }
   .screen img {
     width: 100%;
     height: 100%;
     /* contain, never cover — the WHOLE capture must show. A cover-crop silently
        eats whatever sits at the screen edges, and bottom-anchored CTAs (the "+"
-       FAB, a sticky Save bar) are exactly what gets lost. The device aperture's
-       aspect ratio is set from the capture's own pixels at load time (see the
-       script below), so a matched contain has no visible letterbox — and an
-       unexpectedly-shaped capture letterboxes onto Paper rather than losing UI. */
+       FAB, a sticky Save bar) are exactly what gets lost. */
     object-fit: contain;
     display: block;
   }
@@ -114,170 +125,94 @@
     aspect-ratio: var(--window-aspect);
     max-height: 100%;
   }
-  .window .titlebar {
-    background: var(--ink-100);
-    display: flex;
-    align-items: center;
-    padding: 0 12px;
-    gap: 6px;
-  }
-  .window .dot {
-    width: 10px; height: 10px; border-radius: 999px;
-    background: var(--ink-200);
-  }
-  .window .urlbar {
-    flex: 1;
-    margin-left: 12px;
-    height: 22px;
-    background: var(--paper);
-    border: 1px solid var(--ink-200);
-    border-radius: 6px;
-  }
-  .window .body {
-    background: var(--paper);
-    display: grid;
-    place-items: center;
-    overflow: hidden;
-  }
-  .window .body img {
-    max-width: 90%;
-    max-height: 90%;
-    object-fit: contain;
-    display: block;
-  }
+  .window .titlebar { background: var(--ink-100); display: flex; align-items: center; padding: 0 12px; gap: 6px; }
+  .window .dot { width: 10px; height: 10px; border-radius: 999px; background: var(--ink-200); }
+  .window .urlbar { flex: 1; margin-left: 12px; height: 22px; background: var(--paper); border: 1px solid var(--ink-200); border-radius: 6px; }
+  .window .body { background: var(--paper); display: grid; place-items: center; overflow: hidden; }
+  .window .body img { max-width: 90%; max-height: 90%; object-fit: contain; display: block; }
 
   /* ---------- Surface-specific layout ---------- */
 
   body[data-surface="iphone"] {
-    --pad-x: 96px; --pad-y: 96px; --gap: 64px;
+    --pad-x: 96px; --pad-y: 96px; --gap: 56px;
     --bezel-thickness: 14px;
     --bezel-radius: 96px;
     --screen-radius: 84px;
-    --device-aspect: 1320 / 2868; /* pre-load fallback; overridden by the capture's own aspect at load */
+    --device-aspect: 1320 / 2868;
   }
-  body[data-surface="iphone"] .caption {
-    font-size: 88px;
-  }
+  body[data-surface="iphone"] .caption { font-size: 88px; }
+  body[data-surface="iphone"][data-style="editorial"] .caption { font-size: 96px; }
 
   body[data-surface="ipad"] {
-    --pad-x: 144px; --pad-y: 144px; --gap: 80px;
+    --pad-x: 144px; --pad-y: 144px; --gap: 72px;
     --bezel-thickness: 18px;
     --bezel-radius: 56px;
     --screen-radius: 40px;
-    --device-aspect: 2064 / 2752; /* pre-load fallback; overridden by the capture's own aspect at load */
+    --device-aspect: 2064 / 2752;
   }
-  body[data-surface="ipad"] .caption {
-    font-size: 96px;
-  }
+  body[data-surface="ipad"] .caption { font-size: 96px; }
+  body[data-surface="ipad"][data-style="editorial"] .caption { font-size: 104px; }
 
   body[data-surface="android"] {
-    --pad-x: 72px; --pad-y: 72px; --gap: 48px;
+    --pad-x: 72px; --pad-y: 72px; --gap: 44px;
     --bezel-thickness: 12px;
     --bezel-radius: 64px;
     --screen-radius: 52px;
-    --device-aspect: 1080 / 2400; /* pre-load fallback; overridden by the capture's own aspect at load */
+    --device-aspect: 1080 / 2400;
   }
-  body[data-surface="android"] .caption {
-    font-size: 72px;
-  }
+  body[data-surface="android"] .caption { font-size: 72px; }
+  body[data-surface="android"][data-style="editorial"] .caption { font-size: 80px; }
 
   body[data-surface="android-tablet"] {
-    --pad-x: 120px; --pad-y: 120px; --gap: 64px;
+    --pad-x: 120px; --pad-y: 120px; --gap: 56px;
     --bezel-thickness: 16px;
     --bezel-radius: 48px;
     --screen-radius: 32px;
-    --device-aspect: 1600 / 2560; /* pre-load fallback; overridden by the capture's own aspect at load. Shared by both the 7" and 10" Play tablet render sizes. */
+    --device-aspect: 1600 / 2560;
   }
-  body[data-surface="android-tablet"] .caption {
-    font-size: 84px;
-  }
+  body[data-surface="android-tablet"] .caption { font-size: 84px; }
+  body[data-surface="android-tablet"][data-style="editorial"] .caption { font-size: 92px; }
 
   body[data-surface="chrome"] {
     --pad-x: 80px; --pad-y: 64px; --gap: 32px;
     --window-aspect: 1280 / 600;
   }
-  body[data-surface="chrome"] .caption {
-    font-size: 36px;
-  }
+  body[data-surface="chrome"] .caption { font-size: 36px; }
 
   /* ---------- Josh Approved card (slot 2 of every listing) ----------
-     Generated card, identical across every app. No app screen, no device chrome —
-     a Paper-background card explaining what a Josh Approved app is. Type sizes use
-     vmin so the layout adapts to whichever store dimensions are rendering it
-     (iPhone portrait, Android portrait, iPad portrait, Chrome landscape). */
+     Generated card, identical across every app. No app screen, no device chrome.
+     In `flat` it's the original Paper/Ink card; richer styles let it inherit the
+     branded ground (accent gradient + motif) computed by the script, with the
+     content lifted onto a floating Paper panel. Green checks ALWAYS stay green —
+     approval green keeps its semantic meaning and is never replaced by accent. */
   body[data-surface="josh-card"] .stage { display: block; padding: 0; }
-  body[data-surface="josh-card"] .caption { display: none; }
-  .josh-card {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 0 6vmin 6vmin;
+  body[data-surface="josh-card"] .caption, body[data-surface="josh-card"] .keyline { display: none; }
+  .josh-card { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; padding: 0 6vmin 6vmin; }
+  .josh-card__panel {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 7vmin; width: 100%;
   }
-  .josh-card__main {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 7vmin;
-    width: 100%;
+  /* On a branded ground, set the content on a soft floating paper panel. */
+  body[data-surface="josh-card"]:not([data-style="flat"]) .josh-card { padding: 8vmin 6vmin; }
+  body[data-surface="josh-card"]:not([data-style="flat"]) .josh-card__panel {
+    background: var(--panel, var(--paper));
+    border-radius: 6vmin;
+    box-shadow: var(--device-shadow);
+    flex: 1; width: 100%; margin: 2vmin 0;
   }
-  .josh-card__title {
-    font-weight: 600;
-    font-size: 8.5vmin;
-    line-height: 1.1;
-    letter-spacing: -0.02em;
-    text-align: center;
-    color: var(--fg);
-  }
-  .josh-card__list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 4.5vmin;
-    font-weight: 500;
-    font-size: 7vmin;
-    letter-spacing: -0.01em;
-    color: var(--fg);
-  }
-  .josh-card__item {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    align-items: center;
-    gap: 3.5vmin;
-  }
-  .josh-card__check {
-    color: var(--green-600);
-    font-weight: 700;
-    font-size: 7.5vmin;
-    line-height: 1;
-  }
-  /* Brand lockup — matches FWT's <Wordmark/> on the settings screen.
-     Lucide-style outline check (stroke 3, rounded), lowercase "josh approved"
-     in IBM Plex Sans SemiBold with tight tracking (mirrors tokens.ts: tracking.mark = -0.6 at base 16). */
-  .josh-card__wordmark {
-    display: flex;
-    align-items: center;
-    gap: 1.4vmin;
-    font-weight: 600;
-    font-size: 3.2vmin;
-    letter-spacing: -0.0375em;
-    color: var(--fg);
-  }
-  .josh-card__wordmark-check {
-    width: 3vmin;
-    height: 3vmin;
-    color: var(--green-600);
-    flex-shrink: 0;
-  }
+  .josh-card__main { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7vmin; width: 100%; flex: 1; }
+  .josh-card__title { font-weight: 600; font-size: 8.5vmin; line-height: 1.1; letter-spacing: -0.02em; text-align: center; color: var(--card-fg, var(--fg)); }
+  .josh-card__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4.5vmin; font-weight: 500; font-size: 7vmin; letter-spacing: -0.01em; color: var(--card-fg, var(--fg)); }
+  .josh-card__item { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 3.5vmin; }
+  .josh-card__check { color: var(--green-600); font-weight: 700; font-size: 7.5vmin; line-height: 1; }
+  .josh-card__wordmark { display: flex; align-items: center; gap: 1.4vmin; font-weight: 600; font-size: 3.2vmin; letter-spacing: -0.0375em; color: var(--card-fg, var(--fg)); padding-bottom: 1vmin; }
+  .josh-card__wordmark-check { width: 3vmin; height: 3vmin; color: var(--green-600); flex-shrink: 0; }
 </style>
 </head>
 <body>
   <div class="stage">
     <div class="caption" id="caption"></div>
+    <div class="keyline" id="keyline"></div>
     <div id="frame"></div>
   </div>
 
@@ -286,11 +221,99 @@
   const surface = params.get('surface') || 'iphone';
   const screen  = params.get('screen')  || '';
   const caption = params.get('caption') || '';
-  const bg      = params.get('bg')      || 'paper';
+  // Back-compat: old callers pass bg=paper|ink. New callers pass theme=light|dark.
+  const bg      = params.get('bg') || 'paper';
+  const theme   = params.get('theme') || (bg === 'ink' ? 'dark' : 'light');
+  const style   = params.get('style') || 'flat';
+  const layout  = params.get('layout') || 'hero';
+  const motif   = params.get('motif') || 'none';
+  const accent  = params.get('accent') || '';
+  const crop    = (params.get('crop') || '').split(',').map(Number).filter((n) => !Number.isNaN(n));
 
   document.body.dataset.surface = surface;
-  document.body.dataset.bg = bg;
+  document.body.dataset.theme = theme;
+  document.body.dataset.style = style;
+  document.body.dataset.layout = layout;
+  document.body.dataset.motif = motif;
   document.getElementById('caption').textContent = caption;
+
+  // ---------- colour helpers (zero-dep, deterministic) ----------
+  const PAPER = [250, 250, 247];
+  const INK   = [14, 14, 15];
+  function toRgb(h) {
+    h = (h || '').replace('#', '');
+    if (h.length !== 6) return null;
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+  function mix(a, b, t) { return a.map((v, i) => Math.round(v + (b[i] - v) * t)); } // t: 0=a … 1=b
+  function css(a, alpha) { return alpha == null ? `rgb(${a[0]},${a[1]},${a[2]})` : `rgba(${a[0]},${a[1]},${a[2]},${alpha})`; }
+
+  const ac = toRgb(accent) || toRgb('#6E4A63');
+  document.documentElement.style.setProperty('--ac', css(ac));
+
+  // Background per (style, theme). flat keeps the solid --bg from the theme rule.
+  // canvas/signature = a calm 2-stop accent gradient; signature adds a faint motif
+  // tinted from the accent. editorial = a near-paper accent whisper (the drama is
+  // typographic, not chromatic). Motif sits ON TOP of the gradient (first layer).
+  function groundGradient() {
+    if (theme === 'dark') {
+      const top = mix(ac, INK, 0.80), bot = mix(ac, INK, 0.60);
+      return `linear-gradient(180deg, ${css(top)}, ${css(bot)})`;
+    }
+    if (style === 'editorial') {
+      return css(mix(ac, PAPER, 0.93)); // solid whisper of accent
+    }
+    const top = mix(ac, PAPER, 0.90), bot = mix(ac, PAPER, 0.74);
+    return `linear-gradient(180deg, ${css(top)}, ${css(bot)})`;
+  }
+  function motifLayer() {
+    if (motif === 'none' || style === 'flat') return '';
+    const w = window.innerWidth || 1320;
+    const sp = Math.round(w / 15);                       // pattern pitch scales with surface
+    const tint = theme === 'dark' ? css(mix(ac, PAPER, 0.45), 0.10) : css(mix(ac, INK, 0.10), 0.10);
+    if (motif === 'dots') {
+      const r = Math.max(4, Math.round(sp * 0.085));
+      return `radial-gradient(circle, ${tint} ${r}px, transparent ${r + 1}px) 0 0 / ${sp}px ${sp}px`;
+    }
+    if (motif === 'lines') {
+      return `repeating-linear-gradient(180deg, ${tint} 0 2px, transparent 2px ${sp}px)`;
+    }
+    if (motif === 'rings') {
+      return `repeating-radial-gradient(circle at 50% 38%, ${tint} 0 2px, transparent 2px ${sp}px)`;
+    }
+    return '';
+  }
+  if (style !== 'flat') {
+    const ground = groundGradient();
+    const m = motifLayer();
+    document.body.style.background = m ? `${m}, ${ground}` : ground;
+    // Branded josh-card panel: a hair of accent so it reads as part of the family.
+    document.documentElement.style.setProperty('--panel', theme === 'dark' ? css(mix(ac, INK, 0.62)) : css(mix(ac, PAPER, 0.97)));
+    document.documentElement.style.setProperty('--card-fg', theme === 'dark' ? css(PAPER) : css(INK));
+  }
+
+  // Floating-device shadow — one soft, accent-tinted drop. Dark theme = a glow so
+  // the device reads off the deep ground. Scaled to the surface (these canvases
+  // are 1080–2064px wide, so the blur/offset are large by screen-pixel standards).
+  if (style !== 'flat') {
+    const w = window.innerWidth || 1320;
+    const k = w / 1320;
+    if (theme === 'dark') {
+      const glow = css(mix(ac, PAPER, 0.35), 0.55);
+      document.documentElement.style.setProperty('--device-shadow', `0 0 ${Math.round(150 * k)}px ${Math.round(-20 * k)}px ${glow}`);
+    } else {
+      const sh = css(mix(ac, INK, 0.50), 0.42);
+      document.documentElement.style.setProperty('--device-shadow', `0 ${Math.round(54 * k)}px ${Math.round(130 * k)}px ${Math.round(-44 * k)}px ${sh}`);
+    }
+  }
+
+  // Editorial keyline geometry (scaled to surface width).
+  if (style === 'editorial') {
+    const w = window.innerWidth || 1320;
+    document.documentElement.style.setProperty('--kl-w', `${Math.round(w * 0.18)}px`);
+    document.documentElement.style.setProperty('--kl-h', `${Math.max(8, Math.round(w * 0.009))}px`);
+    document.documentElement.style.setProperty('--kl-mt', `${Math.round(w * 0.02)}px`);
+  }
 
   const frame = document.getElementById('frame');
   if (surface === 'chrome') {
@@ -303,22 +326,22 @@
         <div class="body"><img src="${screen}" alt=""></div>
       </div>`;
   } else if (surface === 'josh-card') {
-    // Slot 2 of every Josh Approved listing. Identical across every app —
-    // edit the wording here and re-render every app to propagate.
     frame.innerHTML = `
       <div class="josh-card">
-        <div class="josh-card__main">
-          <div class="josh-card__title">What's a<br>Josh Approved app?</div>
-          <ul class="josh-card__list">
-            <li class="josh-card__item"><span class="josh-card__check">&#10003;</span><span>No ads, ever</span></li>
-            <li class="josh-card__item"><span class="josh-card__check">&#10003;</span><span>No tracking</span></li>
-            <li class="josh-card__item"><span class="josh-card__check">&#10003;</span><span>Open source</span></li>
-            <li class="josh-card__item"><span class="josh-card__check">&#10003;</span><span>Pay what you want</span></li>
-          </ul>
-        </div>
-        <div class="josh-card__wordmark">
-          <svg class="josh-card__wordmark-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
-          <span>josh approved</span>
+        <div class="josh-card__panel">
+          <div class="josh-card__main">
+            <div class="josh-card__title">What's a<br>Josh Approved app?</div>
+            <ul class="josh-card__list">
+              <li class="josh-card__item"><span class="josh-card__check">&#10003;</span><span>No ads, ever</span></li>
+              <li class="josh-card__item"><span class="josh-card__check">&#10003;</span><span>No tracking</span></li>
+              <li class="josh-card__item"><span class="josh-card__check">&#10003;</span><span>Open source</span></li>
+              <li class="josh-card__item"><span class="josh-card__check">&#10003;</span><span>Pay what you want</span></li>
+            </ul>
+            <div class="josh-card__wordmark">
+              <svg class="josh-card__wordmark-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>josh approved</span>
+            </div>
+          </div>
         </div>
       </div>`;
   } else {
@@ -328,43 +351,61 @@
       </div>`;
   }
 
-  // Shape the device aperture to the capture itself, then size it in pixels to
-  // fit the available frame box on BOTH axes. The per-surface --device-aspect
-  // above is only a pre-load fallback; the real aspect is the capture's own
-  // width/height. Matching them means the whole captured screen (status bar to
-  // bottom FAB) always shows — never cropped — and a contain-fit lands edge to
-  // edge with no visible letterbox.
-  //
-  // Why size in JS instead of CSS max-height:100%? The frame's grid cell height
-  // isn't treated as definite for percentage resolution in headless Chrome, so
-  // max-height:100% silently fails to clamp and a tall (capture-shaped) device
-  // overflows — its bottom bezel bleeds off the canvas. Measuring the cell and
-  // doing the fit math here is deterministic.
-  function fitDeviceToImage(img) {
-    if (!img.naturalWidth || !img.naturalHeight) return;
+  // Size the device to fit the available frame box on BOTH axes. For a normal
+  // shot the aperture aspect = the capture's own pixels (so the whole screen
+  // shows, never cropped). For layout=detail the aperture aspect = the CROP's
+  // pixels and the capture is shown as a magnified background window.
+  function fitDevice(aspectRatioPx) {
     const device = document.querySelector('.device');
-    const frame = document.getElementById('frame');
-    if (!device || !frame) return;
-    const r = img.naturalWidth / img.naturalHeight;        // capture aspect
-    const availW = frame.clientWidth;
-    const availH = frame.clientHeight;
+    const frameEl = document.getElementById('frame');
+    if (!device || !frameEl) return;
+    const r = aspectRatioPx;
+    let availW = frameEl.clientWidth;
+    let availH = frameEl.clientHeight;
+    // layout=bleed: let the device run to the bottom edge (implied "there's more").
+    // Width-bound and tall, with the bottom bezel clipped by the stage — the
+    // SCREEN stays whole because contain-fit keeps the capture inside the aperture.
+    if (layout === 'bleed') {
+      availH = availH * 1.16;
+    }
     let w, h;
-    if (availW / availH > r) { h = availH; w = h * r; }    // height-bound
-    else { w = availW; h = w / r; }                        // width-bound
-    device.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
+    if (availW / availH > r) { h = availH; w = h * r; }
+    else { w = availW; h = w / r; }
+    device.style.aspectRatio = `${r}`;
     device.style.width = `${w}px`;
     device.style.height = `${h}px`;
     device.style.maxWidth = 'none';
     device.style.maxHeight = 'none';
+    if (layout === 'bleed') { document.querySelector('.stage').style.overflow = 'hidden'; device.style.alignSelf = 'end'; }
   }
 
-  // Signal readiness for the renderer.
+  function applyDetailCrop(img) {
+    const sc = document.querySelector('.screen');
+    if (!sc || crop.length !== 4) return null;
+    const [cx, cy, cw, ch] = crop;
+    sc.style.backgroundImage = `url("${screen}")`;
+    sc.style.backgroundSize = `${100 / cw}% ${100 / ch}%`;
+    sc.style.backgroundPosition = `${(cx / (1 - cw)) * 100}% ${(cy / (1 - ch)) * 100}%`;
+    img.style.display = 'none';
+    return (cw * img.naturalWidth) / (ch * img.naturalHeight); // aperture aspect
+  }
+
   Promise.all([
     document.fonts.ready,
-    new Promise(res => {
-      const img = document.querySelector('img');
+    new Promise((res) => {
+      const img = document.querySelector('.screen img') || document.querySelector('img');
       if (!img) return res();
-      const done = () => { fitDeviceToImage(img); res(); };
+      const done = () => {
+        if (img.naturalWidth && img.naturalHeight) {
+          let r = img.naturalWidth / img.naturalHeight;
+          if (layout === 'detail' && crop.length === 4) {
+            const cr = applyDetailCrop(img);
+            if (cr) r = cr;
+          }
+          fitDevice(r);
+        }
+        res();
+      };
       if (img.complete) return done();
       img.addEventListener('load', done);
       img.addEventListener('error', res);

@@ -217,10 +217,56 @@ function applyAndroidAxes(adb) {
   run(`device — apply axes (appearance=${appearance || '-'} font=${fontScale || '-'})`, 'bash', ['-lc', cmds.join('; ')], { allowFail: true });
 }
 
+// eas `build --output X.apk` for an Android build that emits MULTIPLE apks
+// (release + debug) actually writes a GZIPPED TAR (release/app-release.apk,
+// debug/app-debug.apk) at that path — not a raw apk. Installing it directly fails
+// with INSTALL_PARSE_FAILED_NOT_APK. Detect the gzip magic and extract the release
+// apk; a real apk (PK-zip magic) is returned untouched. (iOS already extracts its
+// tar.gz; this is the Android analogue.)
+function resolveAndroidApk(artifact) {
+  if (dry) return artifact;
+  let magic;
+  try {
+    const fd = fs.openSync(artifact, 'r');
+    const b = Buffer.alloc(2);
+    fs.readSync(fd, b, 0, 2, 0);
+    fs.closeSync(fd);
+    magic = b;
+  } catch { return artifact; }
+  if (!(magic[0] === 0x1f && magic[1] === 0x8b)) return artifact; // not gzip -> real apk
+  const outDir = path.join(appDir, 'qa', 'captures', `.apk-${storeKey}`);
+  fs.rmSync(outDir, { recursive: true, force: true });
+  fs.mkdirSync(outDir, { recursive: true });
+  run('device — extract apk from build archive', 'bash', ['-lc',
+    `tar -xzf ${JSON.stringify(artifact)} -C ${JSON.stringify(outDir)}`]);
+  const found = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.apk$/i.test(e.name)) found.push(p);
+    }
+  };
+  walk(outDir);
+  const apk = found.find((f) => /release/i.test(f) && !/debug/i.test(f)) || found[0];
+  if (!apk) throw new Error('no .apk found inside the gzipped Android build archive');
+  return apk;
+}
+
 function androidPrepare(artifact) {
   const dev = device ? ['-s', device] : [];
   const adb = (sub) => ['bash', ['-lc', `adb ${dev.join(' ')} ${sub}`]];
-  run('install — apk on emulator', ...adb(`install -r ${JSON.stringify(artifact)}`));
+  // Uninstall any prior build first. `install -r` fails with
+  // INSTALL_FAILED_UPDATE_INCOMPATIBLE when a previously-installed build (a prior
+  // capture, or a debug vs release apk) was signed with a different key. The QA
+  // boot re-seeds deterministic fixtures on launch, so wiping app data is correct.
+  // Best-effort: a clean device (nothing installed) just no-ops.
+  if (!dry) {
+    let pkg = null;
+    try { pkg = JSON.parse(fs.readFileSync(path.join(appDir, 'app.json'), 'utf8'))?.expo?.android?.package; } catch {}
+    if (pkg) run('device — uninstall prior build', ...adb(`uninstall ${pkg}`), { allowFail: true });
+  }
+  run('install — apk on emulator', ...adb(`install -r ${JSON.stringify(resolveAndroidApk(artifact))}`));
   if (store.kind === 'tablet') {
     // The Pixel-tablet AVD boots LANDSCAPE; the app then renders a letterboxed
     // portrait column and Maestro taps miss. Force portrait first.

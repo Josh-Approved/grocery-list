@@ -516,11 +516,13 @@ const ruleAppNameSpotlightSafe = () => {
 // no-op AND the keyboard never dismisses, so the field is stuck with no
 // on-keyboard way out (you must navigate away to escape). A real, device-only
 // defect — grocery-list's add-item box, caught by hand 2026-06-13. The remedy
-// is always an explicit escape on the empty/idle submit (Keyboard.dismiss() or
-// .blur()), so we flag any file that persists the keyboard without one. Fires
-// on both platforms equally — this is a UX dead-end, not an iOS quirk.
+// is always an explicit escape on the empty/idle submit — Keyboard.dismiss() /
+// .blur(), OR closing the surface the input lives on (onClose() / navigation
+// .goBack()), which unmounts the field and takes the keyboard with it. We flag
+// any file that persists the keyboard without ANY of these. Fires on both
+// platforms equally — this is a UX dead-end, not an iOS quirk.
 const KB_PERSIST_RE = /blurOnSubmit\s*=\s*\{\s*false\s*\}|submitBehavior\s*=\s*\{?\s*['"]submit['"]/;
-const KB_ESCAPE_RE = /Keyboard\s*\.\s*dismiss\s*\(|\.\s*blur\s*\(/;
+const KB_ESCAPE_RE = /Keyboard\s*\.\s*dismiss\s*\(|\.\s*blur\s*\(|onClose\s*\(|\.\s*goBack\s*\(/;
 
 const ruleKeyboardDismissEscape = () => {
   if (surface !== 'rn') return skip('rn/keyboard-dismiss-escape', 'Not an RN app');
@@ -540,6 +542,74 @@ const ruleKeyboardDismissEscape = () => {
       'Keyboard can get stuck: a persistent-keyboard TextInput has no empty/idle dismiss escape — submitting an empty field must call Keyboard.dismiss() so the user is never trapped with the keyboard open', hits);
   }
   return pass('rn/keyboard-dismiss-escape', 'No persistent-keyboard inputs without a dismiss escape');
+};
+
+// A React Native <Modal> renders in its OWN native view hierarchy, detached
+// from the app's root <SafeAreaProvider>. So <SafeAreaView> / useSafeAreaInsets()
+// used INSIDE a full-screen Modal read ZERO insets — the modal's chrome slides
+// under the status bar (title over the clock, a Done action over the battery)
+// and under the home indicator. A real, device-only defect: grocery-list's
+// full-screen Add-items sheet, caught by hand 2026-06-21. The remedy is to nest
+// a <SafeAreaProvider> (seed it with initialWindowMetrics so there's no 0-inset
+// first frame) INSIDE the Modal, so the SafeAreaView beneath it measures real
+// insets. We flag any file that presents a presentationStyle="fullScreen" Modal
+// AND consumes safe-area insets but nests no provider of its own. A file that
+// uses no insets has nothing to misplace; one that already nests a provider is
+// correct. Fires on both platforms — statusBarTranslucent makes Android draw
+// under the bar too, so the 0-inset overlap is not iOS-only.
+const MODAL_FULLSCREEN_RE = /presentationStyle\s*=\s*\{?\s*['"]fullScreen['"]/;
+const SAFE_AREA_CONSUMER_RE = /<\s*SafeAreaView|useSafeAreaInsets\s*\(/;
+const SAFE_AREA_PROVIDER_RE = /<\s*SafeAreaProvider/;
+
+const ruleModalSafeAreaProvider = () => {
+  if (surface !== 'rn') return skip('rn/modal-safe-area-provider', 'Not an RN app');
+  const files = srcSourceFiles();
+  if (!files.length) return skip('rn/modal-safe-area-provider', 'No src/ source files');
+  const hits = [];
+  for (const f of files) {
+    const raw = readText(f);
+    if (!raw) continue;
+    const code = stripComments(raw);
+    if (!MODAL_FULLSCREEN_RE.test(code)) continue;
+    if (!SAFE_AREA_CONSUMER_RE.test(code)) continue; // no insets used → nothing to misplace
+    if (!SAFE_AREA_PROVIDER_RE.test(code)) {
+      hits.push(`${relative(appDir, f)}: a presentationStyle="fullScreen" <Modal> consumes safe-area insets (<SafeAreaView>/useSafeAreaInsets) but nests no <SafeAreaProvider> — insets read 0 inside a Modal's detached native hierarchy, so the modal's top/bottom chrome overlaps the status bar / home indicator`);
+    }
+  }
+  if (hits.length) {
+    return warn('rn/modal-safe-area-provider',
+      'Safe area ignored inside a full-screen Modal: a presentationStyle="fullScreen" Modal reads safe-area insets but nests no SafeAreaProvider — wrap the modal content in <SafeAreaProvider initialMetrics={initialWindowMetrics}> so the title/actions clear the notch and home indicator', hits);
+  }
+  return pass('rn/modal-safe-area-provider', 'No full-screen Modals consuming safe-area without their own provider');
+};
+
+// The cold-start splash renders the "josh approved" wordmark with a NEGATIVE
+// letterSpacing (tracking.mark ≈ -0.5) inside a TRANSFORMED, animated layer
+// (scale/translateY intro). Negative letterSpacing narrows iOS's measured text
+// frame to just inside where the final glyph ("d" of "approved") paints; a
+// transform then composites that text into a bounds-clipped layer, so the "d"
+// gets cut on some devices/SDKs (sub-pixel rounding, the live animation scale,
+// the wider system-fallback font). The permanent fix is trailing horizontal room
+// on the wordmark Text (paddingRight / paddingHorizontal / paddingEnd) so the
+// glyph's ink can never reach the layer's clip boundary. This guards against the
+// fix being stripped out and the recurring "the d is cut off" bug reopening.
+// FAIL, not WARN: the canonical AnimatedSplash already carries the pad, so any
+// app missing it is genuinely regressed (re-sync via `sync.mjs splash`).
+const ruleSplashWordmarkClip = () => {
+  if (surface !== 'rn') return skip('rn/splash-wordmark-clip', 'Not an RN app');
+  const f = join(appDir, 'src', 'components', 'AnimatedSplash.tsx');
+  if (!exists(f)) return skip('rn/splash-wordmark-clip', 'No AnimatedSplash.tsx');
+  const code = stripComments(readText(f) || '');
+  if (!/letterSpacing/.test(code)) {
+    // No tracking on the wordmark → no negative-letterSpacing clip to guard.
+    return pass('rn/splash-wordmark-clip', 'Splash wordmark uses no letterSpacing');
+  }
+  if (/padding(?:Right|Horizontal|End)\b/.test(code)) {
+    return pass('rn/splash-wordmark-clip', 'Splash wordmark has trailing room (no last-glyph clip)');
+  }
+  return fail('rn/splash-wordmark-clip',
+    'Splash wordmark can clip its last glyph: AnimatedSplash.tsx sets letterSpacing on the transformed/animated wordmark but gives the Text no trailing horizontal room — the "d" of "approved" gets cut on some devices/SDKs. Add paddingRight (see WORDMARK_TRAILING_PAD) and re-sync: `node josh-approved-factory/scripts/sync.mjs splash ' + (relative(process.cwd(), appDir) || '<app>') + '`',
+    [`${relative(appDir, f)}: letterSpacing present, no paddingRight/paddingHorizontal/paddingEnd on the wordmark Text`]);
 };
 
 // ---------- rules: Chrome-extension-specific (manifest.json) ----------
@@ -923,6 +993,43 @@ const ruleContrastPairing = () => {
   return pass('theme/contrast-pairing', 'No dark-mode contrast-inversion pairs (matched inkButton/inkButtonText + fg/bg)');
 };
 
+// ---------- rule: no price/promo text baked into store screenshots ----------
+
+// Both Apple AND Google Play reject price/promo words baked into a screenshot.
+// Apple rejected grocery-list's production build 2026-06-24 for "Free" in the
+// slot-1 caption; Play's metadata policy bars the same in screenshot graphics.
+// The cost claim belongs in the description, never the image (canon
+// § Screenshot principles, § Long description structure). We scan every per-slot
+// `caption` across all stores in qa/screenshots.config.json. The slot-2 Josh
+// Approved card (kind: "card") has no caption and is the deliberate brand
+// exception (it carries the wedge by design), so it never trips this rule.
+const CAPTION_PRICE_RE = /\bfree\b|\bpaywall\b|\bno ads\b|\bfor free\b|\bon sale\b|\bdiscount(?:ed)?\b|\b\d+%\s*off\b|\$\s*\d/i;
+
+const ruleScreenshotCaptionNoPrice = () => {
+  const cfgPath = join(appDir, 'qa', 'screenshots.config.json');
+  if (!exists(cfgPath)) return skip('store/caption-no-price', 'No qa/screenshots.config.json');
+  const cfg = readJson(cfgPath);
+  if (!cfg || !cfg.stores || typeof cfg.stores !== 'object') {
+    return skip('store/caption-no-price', 'screenshots.config.json has no stores map');
+  }
+  const hits = [];
+  for (const [store, slots] of Object.entries(cfg.stores)) {
+    if (!Array.isArray(slots)) continue;
+    for (const slot of slots) {
+      const cap = slot && typeof slot.caption === 'string' ? slot.caption : '';
+      if (!cap) continue;
+      const m = cap.match(CAPTION_PRICE_RE);
+      if (m) hits.push(`${store}/${slot.id || '?'}: "${cap}" — price/promo word: "${m[0].trim()}"`);
+    }
+  }
+  if (hits.length) {
+    return fail('store/caption-no-price',
+      'Screenshot caption carries a price/promo word — both Apple and Google Play reject price text baked into a screenshot (canon § Screenshot principles). Move the cost claim to the description ("free to use", near the top); keep captions function-only.',
+      hits);
+  }
+  return pass('store/caption-no-price', 'No price/promo words in any screenshot caption');
+};
+
 // ---------- runner ----------
 
 const CANONICAL_RULES = [
@@ -945,6 +1052,8 @@ const CANONICAL_RULES = [
   ruleLanguageControl,
   ruleAppNameSpotlightSafe,
   ruleKeyboardDismissEscape,
+  ruleModalSafeAreaProvider,
+  ruleSplashWordmarkClip,
   ruleManifestMv3,
   ruleManifestPermissionsTight,
   ruleTestScriptPresent,
@@ -952,6 +1061,7 @@ const CANONICAL_RULES = [
   ruleFlowHasAssertions,
   ruleFlowDrift,
   ruleNoHardcodedStrings,
+  ruleScreenshotCaptionNoPrice,
 ];
 
 async function loadAppRules() {

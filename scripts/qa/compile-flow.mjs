@@ -175,6 +175,23 @@ export function compileJourney(journey, selectors, appDir = '.', opts = {}) {
       const dir = step.swipe; // "up" | "down" | "left" | "right"
       out.push('- swipe:');
       out.push(`    direction: ${String(dir).toUpperCase()}`);
+    } else if ('scrollUntilVisible' in step) {
+      // Idempotent reveal: scroll (default DOWN) until the anchor is on screen.
+      // A NO-OP when the element is already visible, so it can't regress captures
+      // on larger devices — only the smallest screens (e.g. iPhone SE) actually
+      // scroll. Use before a `tap` whose target can sit below the fold on the
+      // smallest device. Optional `scrollDirection: "up"|"down"|"left"|"right"`.
+      const sel = resolveSelector(step.scrollUntilVisible, anchors, ctx);
+      out.push('- scrollUntilVisible:');
+      out.push(`    element: ${selInline(sel)}`);
+      out.push(`    direction: ${String(step.scrollDirection || 'DOWN').toUpperCase()}`);
+      // Maestro defaults to requiring the element 100% on-screen. On a short
+      // device a target in the last row can sit partly under a pinned bottom CTA
+      // and never reach 100%, so allow a lower threshold (the element is still
+      // tappable when partially visible). `scrollVisibility: <1-100>`.
+      if (step.scrollVisibility != null) {
+        out.push(`    visibilityPercentage: ${Number(step.scrollVisibility)}`);
+      }
     } else if ('wait' in step) {
       out.push('- waitForAnimationToEnd:');
       out.push(`    timeout: ${step.wait}`);

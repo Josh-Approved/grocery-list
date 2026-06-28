@@ -42,11 +42,28 @@ const valueOf = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] 
 const appDir = path.resolve(args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--profile') || process.cwd());
 const profile = valueOf('--profile') || 'full';
 
-const matrixDir = path.join(appDir, 'qa', 'captures', 'matrix');
-if (!fs.existsSync(matrixDir)) {
-  console.error('matrix-review: no qa/captures/matrix — run matrix.mjs first.');
+// Source resolution: prefer the fresh full-res captures, but fall back to the
+// tracked qa/baselines when captures are absent or sparse. Captures are
+// gitignored + cleaned between runs; baselines are the committed canonical set,
+// so the release-gate reviewer pass must be able to assemble its one sheet off
+// committed state alone (token-free, no device). `--source captures|baselines`
+// forces one; default = auto.
+const cellCount = (d) => fs.existsSync(d)
+  ? fs.readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith('.')).length
+  : 0;
+const capturesDir = path.join(appDir, 'qa', 'captures', 'matrix');
+const baselinesDir = path.join(appDir, 'qa', 'baselines');
+const forced = valueOf('--source');
+let matrixDir;
+if (forced === 'captures') matrixDir = capturesDir;
+else if (forced === 'baselines') matrixDir = baselinesDir;
+else matrixDir = cellCount(capturesDir) >= cellCount(baselinesDir) && cellCount(capturesDir) > 0
+  ? capturesDir : baselinesDir;
+if (cellCount(matrixDir) === 0) {
+  console.error('matrix-review: no cells in qa/captures/matrix or qa/baselines — run matrix.mjs first.');
   process.exit(1);
 }
+if (matrixDir === baselinesDir) console.log('matrix-review: building sheet from qa/baselines (tracked canonical set).');
 
 const cells = fs.readdirSync(matrixDir, { withFileTypes: true })
   .filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name).sort();
@@ -97,7 +114,10 @@ const html = `<!doctype html><meta charset="utf-8"><style>
 
 const htmlPath = path.join(os.tmpdir(), `matrix-sheet-${process.pid}.html`);
 fs.writeFileSync(htmlPath, html);
-const outPath = path.join(matrixDir, 'contact-sheet.png');
+// Always write the sheet into the gitignored captures dir — never into the
+// tracked baselines dir, even when baselines were the source.
+fs.mkdirSync(capturesDir, { recursive: true });
+const outPath = path.join(capturesDir, 'contact-sheet.png');
 const chromePath = findChrome();
 const r = spawnSync(chromePath, [
   '--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-sandbox',
