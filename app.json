@@ -2,7 +2,7 @@
   "expo": {
     "name": "Grocery List",
     "slug": "grocery-list",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "scheme": "grocerylist",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
