@@ -11,6 +11,19 @@
  * user ("pair once, synced forever"). Devices have different local list ids;
  * the shared secret — not the id — is the join key.
  *
+ * COLD-START BACKFILL. Relays are ephemeral couriers — they don't store, so a
+ * device that just opened (or just reconnected, or just joined a link) hears
+ * nothing until the OTHER side happens to edit. That made shared lists look
+ * empty/stale until someone touched them. Fixed with a tiny "hello" handshake:
+ * on each (re)connect a device announces itself; any peer that hears a hello
+ * force-republishes its current full state, so the newcomer converges within
+ * seconds instead of waiting for an edit. Hello carries no list data; old app
+ * versions simply ignore it (no `shareIdentity`), so it is wire-compatible.
+ *
+ * Merge correctness across skewed device clocks is handled by the logical
+ * clock (see ./clock.ts); `mergeRemoteList` folds the peer's timestamps in
+ * before merging.
+ *
  * NOT DEVICE-VERIFIED end-to-end (see transport.ts / crypto.ts headers).
  */
 
@@ -19,10 +32,19 @@ import type { GroceryList } from '../data/list';
 import { channelId, seal, open } from './crypto';
 import { DropBoxTransport } from './transport';
 
+/** A control message asking peers to re-publish their current state. Encrypted
+ *  like everything else; distinguished from a state message by `_sync` (a state
+ *  message is a bare GroceryList, which has `shareIdentity` and no `_sync`). */
+const HELLO = JSON.stringify({ _sync: 'hello' });
+/** Don't re-announce more than this often per channel (relays may report
+ *  several sockets opening near-simultaneously). */
+const HELLO_DEBOUNCE_MS = 3000;
+
 interface Channel {
   transport: DropBoxTransport;
   lastSent: string;
   timer: ReturnType<typeof setTimeout> | null;
+  lastHelloAt: number;
 }
 
 const channels = new Map<string, Channel>();
@@ -35,22 +57,62 @@ function sharedSecret(l: GroceryList): string | undefined {
 function ensureChannel(secret: string): Channel {
   let ch = channels.get(secret);
   if (ch) return ch;
-  const transport = new DropBoxTransport(channelId(secret), (ct) => {
-    const json = open(secret, ct);
-    if (!json) return;
-    try {
-      const remote = JSON.parse(json) as GroceryList;
-      if (remote?.shareIdentity?.secret === secret) {
-        useListsStore.getState().mergeRemoteList(remote);
-      }
-    } catch {
-      /* malformed payload — ignore, next publish re-converges */
-    }
-  });
-  ch = { transport, lastSent: '', timer: null };
+  const transport = new DropBoxTransport(
+    channelId(secret),
+    (ct) => receive(secret, ct),
+    () => sendHello(secret)
+  );
+  ch = { transport, lastSent: '', timer: null, lastHelloAt: 0 };
   channels.set(secret, ch);
   transport.start();
   return ch;
+}
+
+/** Handle one decrypted peer message: a hello (→ re-publish our state) or a
+ *  state copy (→ merge it). */
+function receive(secret: string, ct: string): void {
+  const json = open(secret, ct);
+  if (!json) return;
+  let obj: unknown;
+  try {
+    obj = JSON.parse(json);
+  } catch {
+    return; // malformed — next publish re-converges
+  }
+  if (obj && typeof obj === 'object' && (obj as { _sync?: string })._sync === 'hello') {
+    forcePublish(secret);
+    return;
+  }
+  const remote = obj as GroceryList;
+  if (remote?.shareIdentity?.secret === secret) {
+    // mergeRemoteList folds the remote clock in before merging (see clock.ts).
+    useListsStore.getState().mergeRemoteList(remote);
+  }
+}
+
+/** Announce ourselves so a peer re-publishes its current state. Debounced. */
+function sendHello(secret: string): void {
+  const ch = channels.get(secret);
+  if (!ch) return;
+  const t = Date.now();
+  if (t - ch.lastHelloAt < HELLO_DEBOUNCE_MS) return;
+  ch.lastHelloAt = t;
+  ch.transport.publish(seal(secret, HELLO));
+}
+
+/** Publish our current full state immediately, bypassing the change-dedupe —
+ *  used to answer a peer's hello (its copy may be empty/stale even though ours
+ *  hasn't changed since we last sent). */
+function forcePublish(secret: string): void {
+  const ch = channels.get(secret);
+  if (!ch) return;
+  const list = useListsStore
+    .getState()
+    .lists.find((l) => sharedSecret(l) === secret);
+  if (!list) return;
+  const payload = JSON.stringify(list);
+  ch.lastSent = payload;
+  ch.transport.publish(seal(secret, payload));
 }
 
 function publish(secret: string, list: GroceryList): void {

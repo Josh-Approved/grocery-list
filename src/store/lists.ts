@@ -23,12 +23,15 @@ import { isBuiltinCategory, type Category } from '../data/categories';
 import { makeId } from '../lib/id';
 import { makeShareIdentity } from '../sync/share';
 import { mergeList } from '../sync/merge';
+import { now as clockNow, initClock, observe as observeClock } from '../sync/clock';
 import {
   loadAllLists,
   saveList,
   deleteListFromDb,
   putTombstone,
   removeTombstone,
+  getSyncMeta,
+  setSyncMeta,
 } from './db';
 import { QA_MODE } from '../qa/qaMode';
 import { qaLists } from '../qa/fixtures';
@@ -153,7 +156,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
     set((s) => ({
       lists: s.lists.map((l) => {
         if (l.id !== id) return l;
-        updated = { ...fn(l), updatedAt: Date.now() };
+        updated = { ...fn(l), updatedAt: clockNow() };
         return updated;
       }),
     }));
@@ -169,7 +172,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
     mutate(listId, (l) => ({
       ...l,
       items: l.items.map((it) =>
-        it.id === itemId ? { ...fn(it), updatedAt: Date.now() } : it
+        it.id === itemId ? { ...fn(it), updatedAt: clockNow() } : it
       ),
     }));
   }
@@ -179,8 +182,27 @@ export const useListsStore = create<ListsState>()((set, get) => {
     hydrated: false,
 
     hydrate: async () => {
+      const persistClock = (v: number) => {
+        setSyncMeta('clock', String(v)).catch(() => {});
+      };
       try {
-        const loaded = await loadAllLists();
+        const [persistedClock, loaded] = await Promise.all([
+          getSyncMeta('clock'),
+          loadAllLists(),
+        ]);
+        // Initialise the skew-resistant clock above both the persisted
+        // high-water mark and anything already on disk, so a post-update /
+        // post-restore install never stamps an edit below its own stored data
+        // (which would let stale local state lose to — or beat — a peer wrongly).
+        let maxTs = persistedClock ? Number(persistedClock) || 0 : 0;
+        for (const l of loaded) {
+          maxTs = Math.max(maxTs, l.updatedAt, l.nameUpdatedAt);
+          for (const it of l.items) {
+            maxTs = Math.max(maxTs, it.updatedAt, it.deletedAt ?? 0);
+          }
+        }
+        initClock(maxTs, persistClock);
+
         // QA capture boots cleared (clearState:true); seed deterministic data so
         // every screen is screenshot-ready without typing live. Compile-time
         // false in production (EXPO_PUBLIC_QA_MODE unset) → tree-shaken out.
@@ -193,6 +215,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
         for (const l of changed) persist(l);
       } catch (err) {
         console.warn('grocery-list: failed to load lists from disk', err);
+        initClock(Date.now(), persistClock);
         set({ hydrated: true });
       }
     },
@@ -211,13 +234,13 @@ export const useListsStore = create<ListsState>()((set, get) => {
       if (!trimmed) return;
       // Stamp the name's own clock so this explicit rename wins the merge on
       // every paired device, no matter what they last called the list.
-      mutate(id, (l) => ({ ...l, name: trimmed, nameUpdatedAt: Date.now() }));
+      mutate(id, (l) => ({ ...l, name: trimmed, nameUpdatedAt: clockNow() }));
     },
 
     duplicateList: (id) => {
       const original = get().lists.find((l) => l.id === id);
       if (!original) return null;
-      const now = Date.now();
+      const now = clockNow();
       const dup: GroceryList = {
         ...original,
         id: makeId('l'),
@@ -249,7 +272,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
       deleteListFromDb(id).catch((err) =>
         console.warn('grocery-list: failed to delete list', err)
       );
-      putTombstone(id, Date.now()).catch((err) =>
+      putTombstone(id, clockNow()).catch((err) =>
         console.warn('grocery-list: failed to write tombstone', err)
       );
     },
@@ -287,7 +310,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
       mutateItem(listId, itemId, (it) => ({
         ...it,
         checked,
-        checkedAt: checked ? Date.now() : undefined,
+        checkedAt: checked ? clockNow() : undefined,
       }));
     },
 
@@ -339,7 +362,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
     removeCategory: (listId, category) => {
       // Built-ins are permanent — only user-created aisles can be removed.
       if (isBuiltinCategory(category)) return;
-      const at = Date.now();
+      const at = clockNow();
       mutate(listId, (l) => ({
         ...l,
         categoryOrder: l.categoryOrder.filter((cat) => cat !== category),
@@ -352,7 +375,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
     },
 
     deleteItem: (listId, itemId) => {
-      mutateItem(listId, itemId, (it) => ({ ...it, deletedAt: Date.now() }));
+      mutateItem(listId, itemId, (it) => ({ ...it, deletedAt: clockNow() }));
     },
 
     finishShop: (listId) => {
@@ -364,7 +387,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
       if (bought.length === 0) return [];
       const snapshots = bought.map((it) => ({ ...it }));
       const boughtIds = new Set(bought.map((it) => it.id));
-      const at = Date.now();
+      const at = clockNow();
       mutate(listId, (l) => ({
         ...l,
         items: l.items.map((it) =>
@@ -379,7 +402,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
     restoreItems: (listId, items) => {
       if (items.length === 0) return;
       const byId = new Map(items.map((it) => [it.id, it]));
-      const at = Date.now();
+      const at = clockNow();
       mutate(listId, (l) => ({
         ...l,
         items: l.items.map((it) =>
@@ -412,7 +435,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
         // the list is actually called, so joining never renames the other
         // person's list — they keep the name they chose.
         nameUpdatedAt: 0,
-        shareIdentity: { secret, createdAt: Date.now() },
+        shareIdentity: { secret, createdAt: clockNow() },
       };
       set((s) => ({ lists: [list, ...s.lists] }));
       persist(list);
@@ -426,6 +449,14 @@ export const useListsStore = create<ListsState>()((set, get) => {
         (l) => l.shareIdentity?.secret === secret
       );
       if (!local) return;
+      // Advance our clock past every timestamp in the incoming copy, so our
+      // NEXT local edit out-clocks whatever the peer last did — this is what
+      // turns "fastest wall clock wins" into "last action in causal order wins".
+      let remoteMax = Math.max(remote.updatedAt, remote.nameUpdatedAt);
+      for (const it of remote.items) {
+        remoteMax = Math.max(remoteMax, it.updatedAt, it.deletedAt ?? 0);
+      }
+      observeClock(remoteMax);
       const merged = mergeList(local, remote);
       set((s) => ({
         lists: s.lists.map((l) => (l.id === local.id ? merged : l)),
@@ -455,7 +486,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
       }
       for (const id of deletes) {
         deleteListFromDb(id).catch(() => {});
-        putTombstone(id, Date.now()).catch(() => {});
+        putTombstone(id, clockNow()).catch(() => {});
       }
     },
   };

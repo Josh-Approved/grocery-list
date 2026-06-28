@@ -10,6 +10,7 @@
  */
 
 import { makeId } from '../lib/id';
+import { now as clockNow } from '../sync/clock';
 import {
   type Category,
   DEFAULT_CATEGORY_ORDER,
@@ -71,7 +72,7 @@ export interface GroceryList {
 // ---------------------------------------------------------------------------
 
 export function makeList(name?: string): GroceryList {
-  const now = Date.now();
+  const now = clockNow();
   return {
     id: makeId('l'),
     name: (name ?? '').trim() || DEFAULT_LIST_NAME,
@@ -88,7 +89,7 @@ export function makeItem(
   locale: string = 'en',
   category?: Category
 ): GroceryItem {
-  const now = Date.now();
+  const now = clockNow();
   return {
     id: makeId('i'),
     name: name.trim(),

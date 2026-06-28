@@ -51,6 +51,7 @@ interface NostrEvent {
 
 export class DropBoxTransport {
   private sockets: WebSocket[] = [];
+  private openSockets = new Set<WebSocket>();
   private seen = new Set<string>();
   private mine = new Set<string>();
   private closed = false;
@@ -58,9 +59,19 @@ export class DropBoxTransport {
   private pub: string;
   private subId: string;
 
+  /**
+   * @param onMessage  delivers each peer ciphertext (already deduped).
+   * @param onConnect  fires when the transport goes from fully-offline to
+   *   having at least one live relay (initial connect AND every reconnect after
+   *   a full drop). The engine uses this to announce itself ("hello") so a peer
+   *   re-publishes current state — relays are ephemeral and don't backfill, so
+   *   without this a just-opened / just-reconnected device sees nothing until
+   *   the other side happens to make an edit.
+   */
   constructor(
     private channel: string,
-    private onMessage: (ciphertext: string) => void
+    private onMessage: (ciphertext: string) => void,
+    private onConnect?: () => void
   ) {
     this.priv = sha256(nacl.randomBytes(32));
     this.pub = bytesToHex(schnorr.getPublicKey(this.priv));
@@ -89,9 +100,13 @@ export class DropBoxTransport {
           { kinds: [KIND], '#t': [this.channel], since },
         ])
       );
+      const wasOffline = this.openSockets.size === 0;
+      this.openSockets.add(ws);
+      if (wasOffline && !this.closed) this.onConnect?.();
     };
     ws.onmessage = (e) => this.onWire(String(e.data));
     ws.onclose = () => {
+      this.openSockets.delete(ws);
       this.sockets = this.sockets.filter((s) => s !== ws);
       if (!this.closed) setTimeout(() => this.connect(url), 4000);
     };
@@ -170,5 +185,6 @@ export class DropBoxTransport {
       }
     }
     this.sockets = [];
+    this.openSockets.clear();
   }
 }
