@@ -11,10 +11,11 @@ import {
   View,
   Text,
   Pressable,
-  FlatList,
   StyleSheet,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { usePullRevealFooter } from '../components/usePullRevealFooter';
 import { Plus, MoreHorizontal, ChevronRight, Settings, Link2 } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
@@ -52,6 +53,7 @@ export default function ListsHomeScreen({ navigation }: Props) {
   const menu = useActionMenu();
   const prompt = usePrompt();
   const [tipVisible, setTipVisible] = useState(false);
+  const { pullToReveal, reveal, onScroll } = usePullRevealFooter();
 
   const newList = useCallback(() => {
     prompt.open({
@@ -186,11 +188,14 @@ export default function ListsHomeScreen({ navigation }: Props) {
         </Pressable>
       </View>
 
-      <FlatList
+      <Animated.FlatList
         style={s.flex}
         data={lists}
-        keyExtractor={(l) => l.id}
+        keyExtractor={(l: GroceryList) => l.id}
         renderItem={renderItem}
+        onScroll={pullToReveal ? onScroll : undefined}
+        scrollEventThrottle={16}
+        alwaysBounceVertical={pullToReveal}
         contentContainerStyle={
           lists.length === 0 ? s.emptyWrap : s.listContent
         }
@@ -210,9 +215,13 @@ export default function ListsHomeScreen({ navigation }: Props) {
           </View>
         }
         ListFooterComponent={
-          <FundingFooter
-            onSupport={TIP_JAR_ENABLED ? () => setTipVisible(true) : undefined}
-          />
+          <View style={s.footerHolder}>
+            <FundingFooter
+              onSupport={TIP_JAR_ENABLED ? () => setTipVisible(true) : undefined}
+              reveal={reveal}
+              pullToReveal={pullToReveal}
+            />
+          </View>
         }
       />
 
@@ -271,7 +280,12 @@ function makeStyles(c: Colors) {
       color: c.fg,
     },
 
-    listContent: { ...boundedContent, paddingHorizontal: space.s6, paddingBottom: space.s8 },
+    // flexGrow lets a short list fill the screen so the footer (the list's
+    // ListFooterComponent) rests at the BOTTOM of the scroll.
+    listContent: { ...boundedContent, flexGrow: 1, paddingHorizontal: space.s6, paddingBottom: space.s8 },
+    // Pushed to the bottom of the scroll when the list is short; flows after the
+    // last row when the list is long. Over-pull reveals the wordmark.
+    footerHolder: { marginTop: 'auto' },
     sep: { height: space.s4 },
     row: {
       flexDirection: 'row',
