@@ -38,7 +38,12 @@
  */
 
 import { useCallback, useState } from 'react';
-import { Platform, type LayoutChangeEvent } from 'react-native';
+import {
+  Platform,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import {
   useSharedValue,
   useAnimatedScrollHandler,
@@ -53,8 +58,13 @@ export type PullRevealFooter = {
   pullToReveal: boolean;
   /** 0→1 reveal progress; pass to <FundingFooter reveal=… />. */
   reveal: SharedValue<number>;
-  /** Reanimated scroll handler — attach to the Animated.* scroll component. */
+  /** UI-thread scroll handler — attach to an Animated.* scroll component
+   *  (Animated.FlatList / Animated.ScrollView) or a SortableList. */
   onScroll: ReturnType<typeof useAnimatedScrollHandler>;
+  /** Plain onScroll callback — use on a stock RN scroll component (SectionList /
+   *  FlatList / ScrollView) when wrapping it in Animated.* is awkward; needs
+   *  scrollEventThrottle={16}. Drives the same reveal value from the JS thread. */
+  onScrollJS: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
   /** Measured footer height — offset a floating action button by this. */
   footerHeight: number;
   /** onLayout for the footer holder; feeds footerHeight. */
@@ -72,11 +82,28 @@ export function usePullRevealFooter(): PullRevealFooter {
       reveal.value = p < 0 ? 0 : p > 1 ? 1 : p;
     },
   });
+  const onScrollJS = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+      const over =
+        contentOffset.y + layoutMeasurement.height - contentSize.height;
+      const p = over / REVEAL_DISTANCE;
+      reveal.value = p < 0 ? 0 : p > 1 ? 1 : p;
+    },
+    [reveal]
+  );
   const [footerHeight, setFooterHeight] = useState(96);
   const onFooterLayout = useCallback(
     (e: LayoutChangeEvent) =>
       setFooterHeight(Math.round(e.nativeEvent.layout.height)),
     []
   );
-  return { pullToReveal, reveal, onScroll, footerHeight, onFooterLayout };
+  return {
+    pullToReveal,
+    reveal,
+    onScroll,
+    onScrollJS,
+    footerHeight,
+    onFooterLayout,
+  };
 }
