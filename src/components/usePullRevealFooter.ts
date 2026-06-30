@@ -138,8 +138,13 @@ export function usePullRevealFooter(): PullRevealFooter {
   const androidPull = pullToReveal && Platform.OS === 'android';
 
   const reveal = useSharedValue(0);
-  // All on the UI thread — the pan worklet reads atBottom directly, no bridge.
-  const atBottom = useSharedValue(0);
+  // Raw metrics as plain numbers (not a derived boolean) — the pan worklet
+  // decides at-bottom from these live on the UI thread, so there's no
+  // cross-thread boolean to go stale. `scrollOver` = last value of
+  // (offset + viewport − content): 0 at the bottom, negative above it, and far
+  // negative until the first scroll (so a scrollable list reads "not at bottom"
+  // at the top). content/viewport feed the short-list (non-scrollable) case.
+  const scrollOver = useSharedValue(-1e7);
   const contentH = useSharedValue(0);
   const viewportH = useSharedValue(0);
   // translationY captured when the drag first reaches the bottom, so the reveal
@@ -150,7 +155,7 @@ export function usePullRevealFooter(): PullRevealFooter {
     onScroll: (e) => {
       const over =
         e.contentOffset.y + e.layoutMeasurement.height - e.contentSize.height;
-      atBottom.value = over >= -BOTTOM_EPS ? 1 : 0;
+      scrollOver.value = over;
       // iOS reads the reveal straight off the resisted native bounce. On Android
       // `over` clamps at 0, so the pan owns the reveal — don't fight it.
       if (Platform.OS === 'ios') {
@@ -165,37 +170,26 @@ export function usePullRevealFooter(): PullRevealFooter {
       const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
       const over =
         contentOffset.y + layoutMeasurement.height - contentSize.height;
-      atBottom.value = over >= -BOTTOM_EPS ? 1 : 0;
+      scrollOver.value = over;
       if (Platform.OS === 'ios') {
         const p = over / REVEAL_DISTANCE;
         reveal.value = p < 0 ? 0 : p > 1 ? 1 : p;
       }
     },
-    [reveal, atBottom]
+    [reveal, scrollOver]
   );
 
-  // A short list that fits the viewport never fires onScroll, so seed at-bottom
-  // from the content vs. viewport heights: non-scrollable ⇒ always at bottom.
-  const reseedAtBottom = useCallback(() => {
-    console.log('[PRF] reseed vp=', viewportH.value, 'content=', contentH.value);
-    if (viewportH.value > 0 && contentH.value > 0) {
-      atBottom.value = contentH.value <= viewportH.value + BOTTOM_EPS ? 1 : 0;
-      console.log('[PRF] reseed -> atBottom=', atBottom.value);
-    }
-  }, [atBottom, contentH, viewportH]);
   const onScrollViewLayout = useCallback(
     (e: LayoutChangeEvent) => {
       viewportH.value = e.nativeEvent.layout.height;
-      reseedAtBottom();
     },
-    [viewportH, reseedAtBottom]
+    [viewportH]
   );
   const onContentSizeChange = useCallback(
     (_w: number, h: number) => {
       contentH.value = h;
-      reseedAtBottom();
     },
-    [contentH, reseedAtBottom]
+    [contentH]
   );
 
   // The pan recognises simultaneously with the scroll view's own gesture, so
@@ -206,11 +200,14 @@ export function usePullRevealFooter(): PullRevealFooter {
       .enabled(androidPull)
       .onBegin(() => {
         anchorY.value = -1;
-        console.log('[PRF] pan begin');
       })
       .onUpdate((e) => {
-        console.log('[PRF] pan update ty=', Math.round(e.translationY), 'atBot=', atBottom.value);
-        if (atBottom.value !== 1) {
+        // Decide at-bottom live on the UI thread from raw metrics: a short
+        // (non-scrollable) list is always at the bottom; a scrollable one is at
+        // the bottom only when the last scroll-over reached the edge.
+        const scrollable = contentH.value > viewportH.value + BOTTOM_EPS;
+        const atBottom = !scrollable || scrollOver.value >= -BOTTOM_EPS;
+        if (!atBottom) {
           anchorY.value = -1;
           reveal.value = 0;
           return;
