@@ -12,7 +12,9 @@ Anyone who runs a household off a shared list and is tired of the texts, the dup
 
 ## How to get it
 
-Coming soon to the App Store and Google Play. Until then you can run it locally.
+Free on the [App Store](https://apps.apple.com/us/app/id6779417031) and [Google Play](https://play.google.com/store/apps/details?id=com.joshapproved.grocerylist) — no account, nothing to sign up for. One link picks the right store for your phone: [joshapproved.com/apps/grocery-list](https://joshapproved.com/apps/grocery-list).
+
+Or run it locally — see below.
 
 ## Run it locally
 
