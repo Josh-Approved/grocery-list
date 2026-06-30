@@ -45,4 +45,7 @@ yarn-error.*
 *.apk
 *.aab
 build-*.tar.gz
+build-*.log
+submit-*.log
+/build/
 google-play-key.json
