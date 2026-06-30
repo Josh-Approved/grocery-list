@@ -41,7 +41,6 @@ import {
   PRIVACY_URL,
   REPO_URL,
   STUDIO_URL,
-  openFeedbackMail,
   openReview,
   openUrl,
   versionLabel,
@@ -56,12 +55,14 @@ import {
   AppearanceToggle,
 } from '../theme';
 import { boundedContent } from '../theme';
+import { useFeedback } from '../feedback/FeedbackProvider';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
 export default function SettingsScreen({ navigation }: Props) {
   const { c } = useTheme();
   const s = makeStyles(c);
+  const { open: openFeedback } = useFeedback();
   const lists = useListsStore((st) => st.lists);
   const importLists = useListsStore((st) => st.importLists);
   const [status, setStatus] = useState<string | null>(null);
@@ -119,7 +120,7 @@ export default function SettingsScreen({ navigation }: Props) {
 
         <Text style={s.sectionLabel}>{t('settings.about')}</Text>
         {TIP_JAR_ENABLED && <AboutRow label={t('about.support')} icon={HandHeart} onPress={() => setTipVisible(true)} />}
-        <AboutRow label={t('about.feedback')} icon={Mail} onPress={openFeedbackMail} />
+        <AboutRow label={t('about.feedback')} icon={Mail} onPress={() => openFeedback()} />
         <AboutRow label={t('about.review')} icon={Star} onPress={openReview} />
         <AboutRow label={t('about.privacy')} icon={Shield} onPress={() => openUrl(PRIVACY_URL)} />
         <AboutRow label={t('about.source')} icon={Code2} onPress={() => openUrl(REPO_URL)} />

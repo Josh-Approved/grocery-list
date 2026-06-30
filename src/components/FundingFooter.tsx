@@ -26,7 +26,8 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { HandHeart, Mail } from 'lucide-react-native';
-import { BMAC_URL, openUrl, openFeedbackMail } from '../lib/links';
+import { BMAC_URL, openUrl } from '../lib/links';
+import { useFeedback } from '../feedback/FeedbackProvider';
 import { Wordmark } from './Wordmark';
 import { t } from '../i18n';
 import {
@@ -56,6 +57,7 @@ type Props = {
 export function FundingFooter({ onSupport, reveal, pullToReveal }: Props = {}) {
   const { c } = useTheme();
   const s = makeStyles(c);
+  const { open: openFeedback } = useFeedback();
 
   // The exact splash pop, re-keyed to the pull instead of a timeline: opacity +
   // a small rise (14→0) + a scale-settle (0.85→1), the single ease-out curve.
@@ -86,7 +88,7 @@ export function FundingFooter({ onSupport, reveal, pullToReveal }: Props = {}) {
         </Pressable>
         <Pressable
           style={({ pressed }) => [s.btn, pressed && s.pressed]}
-          onPress={openFeedbackMail}
+          onPress={() => openFeedback()}
           accessibilityRole="button"
           accessibilityLabel={t('about.feedback')}
         >

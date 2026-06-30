@@ -30,6 +30,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import AnimatedSplash from '../components/AnimatedSplash';
+import { FeedbackProvider } from '../feedback/FeedbackProvider';
 import { buildNavTheme } from './navTheme';
 import { useApplyThemePreference } from '../theme';
 import { useApplyLocalePreference, useLocaleVersion } from '../i18n/localePreference';
@@ -65,7 +66,7 @@ export function AppShell({ ready, children, navigationRef }: Props) {
           {ready && (
             <NavigationContainer key={localeVersion} ref={navigationRef} theme={buildNavTheme(isDark)}>
               <StatusBar style={isDark ? 'light' : 'dark'} />
-              {children}
+              <FeedbackProvider>{children}</FeedbackProvider>
             </NavigationContainer>
           )}
           {!QA_MODE && !splashDone && (

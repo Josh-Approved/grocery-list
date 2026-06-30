@@ -48,7 +48,8 @@
           "recordAudioAndroid": false
         }
       ],
-      "./plugins/withGradleJvmArgs"
+      "./plugins/withGradleJvmArgs",
+      "expo-mail-composer"
     ],
     "extra": {
       "eas": {

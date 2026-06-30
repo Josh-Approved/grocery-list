@@ -52,6 +52,9 @@ export const SHELL_STRINGS = {
       'Privacy-first replacements for paywalled utility apps. Open source. Pay what you want.',
     learnMore: 'Learn more',
     learnMoreA11y: 'Learn more at joshapproved.com',
+    // Cross-promo section label (MoreFromJA). "Josh Approved" stays inline as the
+    // brand; the surrounding words translate per locale.
+    moreFrom: 'More from Josh Approved',
   },
   // Donation prompt (DonationModal). The button label reuses about.support.
   donate: {
@@ -86,5 +89,72 @@ export const SHELL_STRINGS = {
   credits: {
     footnote: "Full license texts live in each project's repository.",
     linkHint: 'Opens the project page in your browser',
+  },
+  // Send-feedback flow (FeedbackSheet) — the guided bug / feature / general report
+  // that opens the user's email with the environment auto-filled and, for bugs, the
+  // diagnostic log attached. Voice canon: calm, plain, no urgency. The bug fields
+  // mirror the standard good-report checklist; the feature prompts draw out the WHY.
+  feedback: {
+    title: 'Send feedback',
+    lead: 'What would you like to share?',
+    type: {
+      bug: 'Report a bug',
+      bugDesc: 'Something is broken or not working right',
+      feature: 'Request a feature',
+      featureDesc: 'Suggest something the app could do',
+      general: 'General feedback',
+      generalDesc: 'Share a thought, a question, or thanks',
+    },
+    bug: {
+      title: 'Report a bug',
+      guidanceTitle: 'A clear report helps us fix it faster',
+      guidance:
+        "Tell us what happened, what you expected instead, and the steps to see it again. Be specific — we can't see your screen.",
+      whatHappened: 'What happened?',
+      whatHappenedHint: 'e.g. The app closed when I tapped Save',
+      expected: 'What did you expect to happen?',
+      expectedHint: 'e.g. It should have saved and gone back to the list',
+      steps: 'Steps to reproduce',
+      stepsHint: '1. Open a list\n2. Tap the + button\n3. …',
+      frequency: 'How often does it happen?',
+      frequencyHint: 'Every time, sometimes, or just once?',
+      placeholder: '[Describe the bug here]',
+    },
+    feature: {
+      title: 'Request a feature',
+      want: 'What would you like to be able to do?',
+      wantHint: 'e.g. Sort my list by aisle',
+      goal: 'What are you trying to get done?',
+      goalHint: 'The goal behind it — what would this help you accomplish?',
+      workaround: 'How do you handle this today?',
+      workaroundHint: 'e.g. I keep a separate note, or do it by hand',
+      placeholder: '[Describe your idea here]',
+    },
+    general: {
+      title: 'General feedback',
+      message: 'Your feedback',
+      messageHint: 'Anything you want to share',
+      placeholder: '[Your feedback here]',
+    },
+    logs: {
+      label: 'Share diagnostic logs',
+      hint: 'A short technical record of what the app did and any errors. No names, notes, or list contents.',
+      view: "View what's shared",
+      previewTitle: "What's shared",
+      previewLead:
+        'This is the exact text attached to your email. Nothing leaves your device until you send it.',
+    },
+    body: {
+      autoIncluded: 'Included automatically',
+      envHeader: 'App & device',
+      logHeader: 'Diagnostic log',
+      logTruncatedNote:
+        '(Your mail app could not attach the full log file, so a short excerpt is included above.)',
+    },
+    send: {
+      action: 'Continue to email',
+      note: 'This opens your email with everything filled in. You can review and edit before sending.',
+      failed: "Couldn't open your email app. You can reach us at feedback@joshapproved.com.",
+    },
   },
 } as const;
