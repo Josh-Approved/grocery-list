@@ -1,32 +1,22 @@
 /**
  * App root.
  *
- * Two-screen stack: ListsHome (root) + ListDetail. State lives in
- * useListsStore (Zustand) over SQLite (src/store/db.ts); the store loads
- * lists on mount and persists every change in the background.
+ * Two top-level tabs (Lists | Kits) inside a stack that also holds ListDetail,
+ * KitDetail, Settings, Share, and Acknowledgements. State lives in Zustand
+ * stores over SQLite; the stores hydrate on mount and persist in the background.
  *
- * Render gates on useAppFonts (IBM Plex loaded before first paint) AND the
- * store's hydrated flag (so a populated database doesn't flash an empty
- * "no lists yet" state on launch).
- *
- * Settings + the shared-sync entry points land at build steps 6 and 4.
+ * The shell (<AppShell/>) owns the chrome — gesture root, safe area, error
+ * boundary, themed NavigationContainer, status bar, and the cold-start splash.
+ * App.tsx owns the readiness gate, the screen list, and this app's startup
+ * effects (hydrate, live sync, background-durability flush, share-link pairing).
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useColorScheme, Linking, AppState } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
-import {
-  NavigationContainer,
-  createNavigationContainerRef,
-  DefaultTheme,
-  DarkTheme,
-  type Theme,
-} from '@react-navigation/native';
+import { createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ListChecks, Boxes } from 'lucide-react-native';
 import {
   useAppFonts,
@@ -34,9 +24,8 @@ import {
   darkColors,
   typography,
   hairline,
-  useApplyThemePreference,
 } from './src/theme';
-import { useApplyLocalePreference, useLocaleVersion } from './src/i18n/localePreference';
+import { AppShell } from './src/shell/AppShell';
 import { useListsStore } from './src/store/lists';
 import { useKitsStore } from './src/store/kits';
 import { useAccountStore } from './src/store/account';
@@ -51,7 +40,6 @@ import Credits from './src/components/Credits';
 import { startSyncEngine, stopSyncEngine, flushSyncEngine } from './src/sync';
 import { parseShareLink } from './src/sync/share';
 import { t } from './src/i18n';
-import AnimatedSplash from './src/components/AnimatedSplash';
 import { QA_MODE } from './src/qa/qaMode';
 
 // Hold the native launch screen until the JS splash takes over (no icon blink).
@@ -126,38 +114,7 @@ function MainTabs() {
   );
 }
 
-function buildNavTheme(isDark: boolean): Theme {
-  const c = isDark ? darkColors : lightColors;
-  const base = isDark ? DarkTheme : DefaultTheme;
-  return {
-    ...base,
-    colors: {
-      ...base.colors,
-      background: c.bg,
-      card: c.bg,
-      text: c.fg,
-      border: c.hairline,
-      primary: c.fg,
-    },
-    fonts: {
-      regular: { fontFamily: typography.body, fontWeight: '400' },
-      medium: { fontFamily: typography.bodyEmphasis, fontWeight: '500' },
-      bold: { fontFamily: typography.heading, fontWeight: '600' },
-      heavy: { fontFamily: typography.heading, fontWeight: '600' },
-    },
-  };
-}
-
 export default function App() {
-  // Restore + apply the saved appearance preference (System/Light/Dark) before
-  // first paint; drives useColorScheme() here and in every screen.
-  useApplyThemePreference();
-  // Restore + apply the saved language; the version keys <NavigationContainer>
-  // below so a switch re-renders the whole app in the new language (canon
-  // § Translations).
-  useApplyLocalePreference();
-  const localeVersion = useLocaleVersion();
-  const isDark = useColorScheme() === 'dark';
   const [fontsLoaded] = useAppFonts();
   const hydrated = useListsStore((s) => s.hydrated);
   const hydrate = useListsStore((s) => s.hydrate);
@@ -218,46 +175,34 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
-  // Content is ready once fonts AND both stores have hydrated. The animated
-  // splash overlays until its intro has played and content is ready, then
-  // crossfades out.
+  // Content is ready once fonts AND every store has hydrated (so a populated
+  // database doesn't flash an empty "no lists yet" state on launch).
   const ready = fontsLoaded && hydrated && accountHydrated && kitsHydrated;
-  const [splashDone, setSplashDone] = useState(false);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-    <SafeAreaProvider>
-      {ready && (
-        <NavigationContainer key={localeVersion} ref={navigationRef} theme={buildNavTheme(isDark)}>
-          <StatusBar style={isDark ? 'light' : 'dark'} />
-          <Stack.Navigator
-            initialRouteName="Tabs"
-            screenOptions={{ headerShown: false, animation: QA_MODE ? 'none' : undefined }}
-          >
-            <Stack.Screen name="Tabs" component={MainTabs} />
-            <Stack.Screen name="ListDetail" component={ListDetailScreen} />
-            <Stack.Screen name="KitDetail" component={KitDetailScreen} />
-            <Stack.Screen
-              name="ReorderAisles"
-              component={ReorderAislesScreen}
-              options={{ presentation: 'modal' }}
-            />
-            <Stack.Screen name="Settings" component={SettingsScreen} />
-            <Stack.Screen
-              name="Share"
-              component={ShareScreen}
-              options={{ presentation: 'modal' }}
-            />
-            <Stack.Screen name="Acknowledgements">
-              {(props) => <Credits onBack={() => props.navigation.goBack()} />}
-            </Stack.Screen>
-          </Stack.Navigator>
-        </NavigationContainer>
-      )}
-      {!QA_MODE && !splashDone && (
-        <AnimatedSplash ready={ready} onFinish={() => setSplashDone(true)} />
-      )}
-    </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <AppShell ready={ready} navigationRef={navigationRef}>
+      <Stack.Navigator
+        initialRouteName="Tabs"
+        screenOptions={{ headerShown: false, animation: QA_MODE ? 'none' : undefined }}
+      >
+        <Stack.Screen name="Tabs" component={MainTabs} />
+        <Stack.Screen name="ListDetail" component={ListDetailScreen} />
+        <Stack.Screen name="KitDetail" component={KitDetailScreen} />
+        <Stack.Screen
+          name="ReorderAisles"
+          component={ReorderAislesScreen}
+          options={{ presentation: 'modal' }}
+        />
+        <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen
+          name="Share"
+          component={ShareScreen}
+          options={{ presentation: 'modal' }}
+        />
+        <Stack.Screen name="Acknowledgements">
+          {(props) => <Credits onBack={() => props.navigation.goBack()} />}
+        </Stack.Screen>
+      </Stack.Navigator>
+    </AppShell>
   );
 }
