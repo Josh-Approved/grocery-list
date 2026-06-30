@@ -7,32 +7,61 @@
  * wordmark's splash pop when the user over-pulls past the bottom edge (the same
  * mark + motion as the cold-start splash, re-keyed to the pull).
  *
- * iOS drives the reveal from the native bottom-bounce. Android has no bottom
- * bounce, so `pullToReveal` is false there and FundingFooter shows the wordmark
- * statically — the lockup is present on both platforms; the pop is an iOS
- * enhancement (a presentation difference, never a gated feature).
+ * The SAME gesture on both platforms (canon § Cross-platform functional parity):
  *
- * Canonical, app-agnostic — synced by `sync.mjs app-shell`; do not fork.
+ * - iOS drives the reveal from the native bottom-bounce, read off the scroll
+ *   handler (`over = contentOffset.y + layoutMeasurement.height - contentSize`).
+ * - Android scroll views don't report over-pull past the bottom — there's no
+ *   native bounce, and the stretch/glow overscroll clamps `contentOffset` (it
+ *   fires no scroll events at all past the edge — verified on-device). A plain
+ *   PanResponder can't help either: at the bottom of a *scrollable* list the
+ *   native scroll view owns the touch and refuses to relinquish it, so the JS
+ *   responder is never granted. So Android drives the reveal from a
+ *   react-native-gesture-handler `Gesture.Pan()` composed *simultaneously* with
+ *   the scroll view's own `Gesture.Native()` — both recognise at once, so when
+ *   the list is at the bottom (scroll clamped, nothing left to move) the pan
+ *   keeps reporting the extra downward drag. We accumulate that past-bottom drag
+ *   into `reveal` with rubber-band resistance and spring it back to 0 on
+ *   release, mirroring the iOS bounce. No responder is stolen and normal
+ *   scrolling is untouched (the pan only feeds `reveal` while `atBottom`).
+ *
+ * Reduced-motion falls back to `pullToReveal = false`, where FundingFooter shows
+ * the wordmark statically — the lockup is always present; the pop is the
+ * enhancement, never a gated feature. The pan is `.enabled(false)` on iOS and
+ * under reduced-motion, so the GestureDetector is inert there.
+ *
+ * Canonical, app-agnostic — synced by `sync.mjs app-shell`; do not fork. The
+ * Android path needs react-native-gesture-handler (a peer of every app shell)
+ * and a `<GestureHandlerRootView>` at the app root.
  *
  * Usage on a scrollable main screen (the scroll component must be an Animated.*
- * variant so the reanimated handler attaches — Animated.FlatList /
+ * variant so the reanimated `onScroll` handler attaches — Animated.FlatList /
  * Animated.ScrollView / Animated.createAnimatedComponent(SectionList); the
- * SortableList already takes a reanimated onScroll):
+ * SortableList already takes a reanimated onScroll; use `onScrollJS` on a stock
+ * RN scroll component). Wrap the scroll component in the GestureDetector and
+ * feed it the layout/content size so the pull engages even on a short list:
  *
- *   const { pullToReveal, reveal, onScroll, footerHeight, onFooterLayout } =
- *     usePullRevealFooter();
+ *   const {
+ *     pullToReveal, reveal, gesture, onScroll,
+ *     onScrollViewLayout, onContentSizeChange, footerHeight, onFooterLayout,
+ *   } = usePullRevealFooter();
  *   ...
- *   <Animated.FlatList
- *     onScroll={pullToReveal ? onScroll : undefined}
- *     scrollEventThrottle={16}
- *     alwaysBounceVertical={pullToReveal}        // bounce a short list so the pull is reachable
- *     contentContainerStyle={[s.list, { flexGrow: 1 }]}
- *     ListFooterComponent={
- *       <View style={{ marginTop: 'auto' }} onLayout={onFooterLayout}>
- *         <FundingFooter reveal={reveal} pullToReveal={pullToReveal} onSupport={...} />
- *       </View>
- *     }
- *   />
+ *   <GestureDetector gesture={gesture}>
+ *     <Animated.FlatList
+ *       onScroll={pullToReveal ? onScroll : undefined}
+ *       scrollEventThrottle={16}
+ *       alwaysBounceVertical={pullToReveal}       // bounce a short list (iOS)
+ *       overScrollMode="never"                     // no competing stretch (Android)
+ *       onLayout={onScrollViewLayout}              // viewport height
+ *       onContentSizeChange={onContentSizeChange}  // ⇒ at-bottom on a short list
+ *       contentContainerStyle={[s.list, { flexGrow: 1 }]}
+ *       ListFooterComponent={
+ *         <View style={{ marginTop: 'auto' }} onLayout={onFooterLayout}>
+ *           <FundingFooter reveal={reveal} pullToReveal={pullToReveal} onSupport={...} />
+ *         </View>
+ *       }
+ *     />
+ *   </GestureDetector>
  *   // Any floating action button lifts to sit just above the footer:
  *   <Pressable style={[s.fab, { bottom: footerHeight + space.s4 }]} ... />
  */
@@ -45,26 +74,58 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import {
+  Gesture,
+  type ComposedGesture,
+} from 'react-native-gesture-handler';
+import {
+  Easing,
+  useReducedMotion,
   useSharedValue,
   useAnimatedScrollHandler,
+  withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
 
-// Pixels of over-pull past the bottom for the wordmark to fully pop in.
+// Pixels of over-pull past the bottom for the wordmark to fully pop in (iOS,
+// read off the resisted native bounce).
 const REVEAL_DISTANCE = 88;
+// Android: raw finger travel past the bottom is unresisted, so we apply our own
+// rubber-band. RESIST_SCALE sets how far you pull before fully revealed — at
+// 2.2 you drag ~190px of finger for the last of the reveal, matching the feel
+// of the iOS resisted bounce rather than a 1:1 drag.
+const RESIST_SCALE = 2.2;
+// Ignore sub-finger jitter before treating a drag as an over-pull.
+const PULL_SLOP = 6;
+// You're "at the bottom" within this many px of the content's end.
+const BOTTOM_EPS = 2;
+// Single ease-out curve (design-system motion.easingStandard) — matches the
+// splash pop; the wordmark recedes on the same curve it arrived on.
+const RELEASE = { duration: 320, easing: Easing.bezier(0.2, 0, 0, 1) };
 
 export type PullRevealFooter = {
-  /** True on iOS (native bottom-bounce drives the reveal); false on Android. */
+  /** True when the pull-to-reveal pop should play (both platforms); false under
+   *  reduced-motion, where FundingFooter shows the wordmark statically. */
   pullToReveal: boolean;
   /** 0→1 reveal progress; pass to <FundingFooter reveal=… />. */
   reveal: SharedValue<number>;
+  /** Gesture for a <GestureDetector> wrapping the scroll component — the Android
+   *  over-pull. Inert on iOS / under reduced-motion (the pan is disabled), so
+   *  the GestureDetector can wrap unconditionally. */
+  gesture: ComposedGesture;
   /** UI-thread scroll handler — attach to an Animated.* scroll component
-   *  (Animated.FlatList / Animated.ScrollView) or a SortableList. */
+   *  (Animated.FlatList / Animated.ScrollView) or a SortableList. Drives the
+   *  reveal from bottom-overscroll on iOS; feeds at-bottom detection on both. */
   onScroll: ReturnType<typeof useAnimatedScrollHandler>;
   /** Plain onScroll callback — use on a stock RN scroll component (SectionList /
    *  FlatList / ScrollView) when wrapping it in Animated.* is awkward; needs
-   *  scrollEventThrottle={16}. Drives the same reveal value from the JS thread. */
+   *  scrollEventThrottle={16}. */
   onScrollJS: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  /** onLayout for the scroll component — its height is the scroll viewport, used
+   *  to tell a short (non-scrollable) list from a scrollable one. */
+  onScrollViewLayout: (e: LayoutChangeEvent) => void;
+  /** onContentSizeChange for the scroll component — feeds at-bottom detection so
+   *  the pull engages on a short list that never fires onScroll. */
+  onContentSizeChange: (w: number, h: number) => void;
   /** Measured footer height — offset a floating action button by this. */
   footerHeight: number;
   /** onLayout for the footer holder; feeds footerHeight. */
@@ -72,37 +133,121 @@ export type PullRevealFooter = {
 };
 
 export function usePullRevealFooter(): PullRevealFooter {
-  const pullToReveal = Platform.OS === 'ios';
+  const reduceMotion = useReducedMotion();
+  const pullToReveal = !reduceMotion;
+  const androidPull = pullToReveal && Platform.OS === 'android';
+
   const reveal = useSharedValue(0);
+  // All on the UI thread — the pan worklet reads atBottom directly, no bridge.
+  const atBottom = useSharedValue(0);
+  const contentH = useSharedValue(0);
+  const viewportH = useSharedValue(0);
+  // translationY captured when the drag first reaches the bottom, so the reveal
+  // measures only the drag PAST the bottom (not the scroll that got us there).
+  const anchorY = useSharedValue(-1);
+
   const onScroll = useAnimatedScrollHandler({
     onScroll: (e) => {
       const over =
         e.contentOffset.y + e.layoutMeasurement.height - e.contentSize.height;
-      const p = over / REVEAL_DISTANCE;
-      reveal.value = p < 0 ? 0 : p > 1 ? 1 : p;
+      atBottom.value = over >= -BOTTOM_EPS ? 1 : 0;
+      // iOS reads the reveal straight off the resisted native bounce. On Android
+      // `over` clamps at 0, so the pan owns the reveal — don't fight it.
+      if (Platform.OS === 'ios') {
+        const p = over / REVEAL_DISTANCE;
+        reveal.value = p < 0 ? 0 : p > 1 ? 1 : p;
+      }
     },
   });
+
   const onScrollJS = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
       const over =
         contentOffset.y + layoutMeasurement.height - contentSize.height;
-      const p = over / REVEAL_DISTANCE;
-      reveal.value = p < 0 ? 0 : p > 1 ? 1 : p;
+      atBottom.value = over >= -BOTTOM_EPS ? 1 : 0;
+      if (Platform.OS === 'ios') {
+        const p = over / REVEAL_DISTANCE;
+        reveal.value = p < 0 ? 0 : p > 1 ? 1 : p;
+      }
     },
-    [reveal]
+    [reveal, atBottom]
   );
+
+  // A short list that fits the viewport never fires onScroll, so seed at-bottom
+  // from the content vs. viewport heights: non-scrollable ⇒ always at bottom.
+  const reseedAtBottom = useCallback(() => {
+    console.log('[PRF] reseed vp=', viewportH.value, 'content=', contentH.value);
+    if (viewportH.value > 0 && contentH.value > 0) {
+      atBottom.value = contentH.value <= viewportH.value + BOTTOM_EPS ? 1 : 0;
+      console.log('[PRF] reseed -> atBottom=', atBottom.value);
+    }
+  }, [atBottom, contentH, viewportH]);
+  const onScrollViewLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      viewportH.value = e.nativeEvent.layout.height;
+      reseedAtBottom();
+    },
+    [viewportH, reseedAtBottom]
+  );
+  const onContentSizeChange = useCallback(
+    (_w: number, h: number) => {
+      contentH.value = h;
+      reseedAtBottom();
+    },
+    [contentH, reseedAtBottom]
+  );
+
+  // The pan recognises simultaneously with the scroll view's own gesture, so
+  // normal scrolling is untouched; the pan only feeds `reveal` while at bottom.
+  const gesture = Gesture.Simultaneous(
+    Gesture.Native(),
+    Gesture.Pan()
+      .enabled(androidPull)
+      .onBegin(() => {
+        anchorY.value = -1;
+        console.log('[PRF] pan begin');
+      })
+      .onUpdate((e) => {
+        console.log('[PRF] pan update ty=', Math.round(e.translationY), 'atBot=', atBottom.value);
+        if (atBottom.value !== 1) {
+          anchorY.value = -1;
+          reveal.value = 0;
+          return;
+        }
+        if (anchorY.value < 0) anchorY.value = e.translationY;
+        const d = anchorY.value - e.translationY - PULL_SLOP;
+        if (d <= 0) {
+          reveal.value = 0;
+          return;
+        }
+        // Rubber-band: ~linear for a small pull, compressing as it grows, so the
+        // mark tracks the finger but resists like the iOS bounce.
+        const resisted = d / (1 + d / (REVEAL_DISTANCE * RESIST_SCALE));
+        const p = resisted / REVEAL_DISTANCE;
+        reveal.value = p > 1 ? 1 : p;
+      })
+      .onFinalize(() => {
+        anchorY.value = -1;
+        reveal.value = withTiming(0, RELEASE);
+      })
+  );
+
   const [footerHeight, setFooterHeight] = useState(96);
   const onFooterLayout = useCallback(
     (e: LayoutChangeEvent) =>
       setFooterHeight(Math.round(e.nativeEvent.layout.height)),
     []
   );
+
   return {
     pullToReveal,
     reveal,
+    gesture,
     onScroll,
     onScrollJS,
+    onScrollViewLayout,
+    onContentSizeChange,
     footerHeight,
     onFooterLayout,
   };
