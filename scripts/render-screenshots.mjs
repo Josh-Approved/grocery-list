@@ -270,17 +270,23 @@ if (!fs.existsSync(configPath)) {
 
 const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
-// Per-app look. The accent is read from the app's own appAccent.ts (one source
-// of truth) unless the config overrides it. style/motif are app-wide defaults
-// any per-slot field can override. Default style "flat" reproduces the original
-// output exactly, so an un-migrated app renders byte-for-byte as before.
-function readAppAccent(dir) {
-  try {
-    const m = fs.readFileSync(path.join(dir, 'src', 'theme', 'appAccent.ts'), 'utf8').match(/#[0-9A-Fa-f]{6}/);
-    return m ? m[0] : null;
-  } catch { return null; }
+// Per-app look. Store screenshots are a MARKETING surface — design-system canon
+// (§ Color) reserves the marketing palette (terracotta / ochre / dusty blue) for
+// them and forbids the per-app *in-app* accent here ("accent in-app, marketing
+// palette on marketing"). So the frame's ground / motif / keyline use a marketing
+// hue, while the phone *content* still shows the app's own accent (that's the
+// product, not the frame). The hue is config.ground (preferred) or config.accent
+// (back-compat), else a deterministic per-app pick so the lineup has variety.
+// (Earlier the ground read the per-app accent from appAccent.ts — a canon
+// violation that also rendered muted accents as a washed near-cream; fixed
+// 2026-06-28 so every app's store ground is a real marketing color.)
+const MARKETING_PALETTE = ['#B0654B', '#A37430', '#5E7691']; // terracotta, ochre, dusty blue
+function pickMarketingHue(key) {
+  let h = 0;
+  for (const ch of String(key)) h = ((h * 31 + ch.charCodeAt(0)) >>> 0);
+  return MARKETING_PALETTE[h % MARKETING_PALETTE.length];
 }
-const appAccent = config.accent || readAppAccent(appDir);
+const appAccent = config.ground || config.accent || pickMarketingHue(path.basename(appDir));
 const appStyle = config.style || 'flat';
 const appMotif = config.motif || (appStyle === 'signature' ? 'dots' : 'none');
 

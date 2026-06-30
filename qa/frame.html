@@ -263,7 +263,10 @@
     if (style === 'editorial') {
       return css(mix(ac, PAPER, 0.93)); // solid whisper of accent
     }
-    const top = mix(ac, PAPER, 0.90), bot = mix(ac, PAPER, 0.74);
+    // signature/canvas light: a clearly-coloured marketing ground (NOT a near-paper
+    // whisper — that read as cream). Soft top → more saturated bottom so the floating
+    // device still reads as the hero. Marketing palette only (see render-screenshots).
+    const top = mix(ac, PAPER, 0.72), bot = mix(ac, PAPER, 0.46);
     return `linear-gradient(180deg, ${css(top)}, ${css(bot)})`;
   }
   function motifLayer() {
