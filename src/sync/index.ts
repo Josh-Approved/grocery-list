@@ -28,7 +28,9 @@
  */
 
 import { useListsStore } from '../store/lists';
+import { useKitsStore } from '../store/kits';
 import type { GroceryList } from '../data/list';
+import type { Kit } from '../data/kit';
 import { channelId, seal, open } from './crypto';
 import { DropBoxTransport } from './transport';
 import { markConnected, markReceived, markSent, dropStatus } from './status';
@@ -50,6 +52,21 @@ interface Channel {
 
 const channels = new Map<string, Channel>();
 let unsub: (() => void) | null = null;
+
+// --- Kits ride the same channels as a separate control message ----------------
+// Kits are a global collection (not owned by one list), so they can't live in a
+// per-list payload. Instead the whole kit collection is broadcast on EVERY open
+// channel as `{_sync:'kits', kits:[…]}`. A device that shares any list with you
+// therefore converges on the same kits; a solo user (no channels) keeps kits
+// purely local. Wire-compatible: a state message is a bare GroceryList (no
+// `_sync`), and old app versions ignore anything carrying `_sync`.
+let unsubKits: (() => void) | null = null;
+let kitsTimer: ReturnType<typeof setTimeout> | null = null;
+let lastKitsPayload = '';
+
+function kitsPayload(): string {
+  return JSON.stringify({ _sync: 'kits', kits: useKitsStore.getState().kits });
+}
 
 function sharedSecret(l: GroceryList): string | undefined {
   return l.shareIdentity?.secret;
@@ -81,9 +98,22 @@ function receive(secret: string, ct: string): void {
   } catch {
     return; // malformed — next publish re-converges
   }
-  if (obj && typeof obj === 'object' && (obj as { _sync?: string })._sync === 'hello') {
-    forcePublish(secret);
-    return;
+  if (obj && typeof obj === 'object') {
+    const sync = (obj as { _sync?: string })._sync;
+    if (sync === 'hello') {
+      // A newcomer: re-publish both our list state AND our kits so they converge.
+      forcePublish(secret);
+      forcePublishKitsOn(secret);
+      return;
+    }
+    if (sync === 'kits') {
+      const kits = (obj as { kits?: Kit[] }).kits;
+      if (Array.isArray(kits)) {
+        useKitsStore.getState().mergeRemoteKits(kits);
+        markReceived(secret, Date.now());
+      }
+      return;
+    }
   }
   const remote = obj as GroceryList;
   if (remote?.shareIdentity?.secret === secret) {
@@ -100,6 +130,7 @@ function receive(secret: string, ct: string): void {
  *  online would never re-share its own state. */
 function onReconnect(secret: string): void {
   forcePublish(secret);
+  forcePublishKitsOn(secret);
   sendHello(secret);
 }
 
@@ -127,6 +158,36 @@ function forcePublish(secret: string): void {
   ch.lastSent = payload;
   ch.transport.publish(seal(secret, payload));
   markSent(secret, Date.now());
+}
+
+/** Publish the full kit collection immediately on ONE channel — used to answer
+ *  a peer's hello (its kit copy may be empty/stale even if ours is unchanged). */
+function forcePublishKitsOn(secret: string): void {
+  const ch = channels.get(secret);
+  if (!ch) return;
+  ch.transport.publish(seal(secret, kitsPayload()));
+  markSent(secret, Date.now());
+}
+
+/** Broadcast the current kit collection on every open channel, now. */
+function publishKitsNow(): void {
+  const payload = kitsPayload();
+  lastKitsPayload = payload;
+  for (const [secret, ch] of channels) {
+    ch.transport.publish(seal(secret, payload));
+    markSent(secret, Date.now());
+  }
+}
+
+/** Debounced kit broadcast — called when the local kit collection changes.
+ *  Skips a no-op (same serialized collection as last sent). */
+function scheduleKitsPublish(): void {
+  if (kitsPayload() === lastKitsPayload) return;
+  if (kitsTimer) clearTimeout(kitsTimer);
+  kitsTimer = setTimeout(() => {
+    kitsTimer = null;
+    publishKitsNow();
+  }, 700);
 }
 
 function publish(secret: string, list: GroceryList): void {
@@ -171,6 +232,9 @@ export function startSyncEngine(): void {
   if (unsub) return;
   reconcile(useListsStore.getState().lists);
   unsub = useListsStore.subscribe((state) => reconcile(state.lists));
+  // Kit edits broadcast on every open channel (debounced). The initial push to
+  // already-connected peers is handled by onReconnect's forcePublishKitsOn.
+  unsubKits = useKitsStore.subscribe(() => scheduleKitsPublish());
 }
 
 /** Push current state immediately on every channel, skipping the debounce.
@@ -186,6 +250,13 @@ export function flushSyncEngine(): void {
     }
     forcePublish(secret);
   }
+  // Push kit edits too — the 700ms kit debounce would otherwise be suspended
+  // mid-wait when the app backgrounds, stranding a just-made kit change.
+  if (kitsTimer) {
+    clearTimeout(kitsTimer);
+    kitsTimer = null;
+  }
+  if (channels.size > 0) publishKitsNow();
 }
 
 export function stopSyncEngine(): void {
@@ -193,6 +264,15 @@ export function stopSyncEngine(): void {
     unsub();
     unsub = null;
   }
+  if (unsubKits) {
+    unsubKits();
+    unsubKits = null;
+  }
+  if (kitsTimer) {
+    clearTimeout(kitsTimer);
+    kitsTimer = null;
+  }
+  lastKitsPayload = '';
   for (const ch of channels.values()) {
     if (ch.timer) clearTimeout(ch.timer);
     ch.transport.close();

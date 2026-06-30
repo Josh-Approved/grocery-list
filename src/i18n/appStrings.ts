@@ -37,6 +37,11 @@ export const APP_STRINGS = {
     personalCare: 'Personal care',
     other: 'Other',
   },
+  // Bottom tab bar.
+  tabs: {
+    lists: 'Lists',
+    kits: 'Kits',
+  },
   home: {
     title: 'Grocery List',
     subtitle: 'Shop together, off one list.',
@@ -65,6 +70,9 @@ export const APP_STRINGS = {
     // Full-screen Add-items sheet (your usuals + recent history + a built-in
     // "common items" seed list). All copy routes through here — no hardcoding.
     addItemsTitle: 'Add items',
+    // The Items / Kits segmented control at the top of the Add-items sheet.
+    tabItems: 'Items',
+    tabKits: 'Kits',
     searchOrAdd: 'Search or add an item',
     yourUsuals: 'Your usuals',
     recent: 'Recent',
@@ -145,6 +153,43 @@ export const APP_STRINGS = {
     remove: 'Remove',
     decrease: 'Decrease',
     increase: 'Increase',
+  },
+  // Kits — reusable bundles of items you buy together for one thing you make.
+  kits: {
+    title: 'Kits',
+    subtitle: 'Bundles you add to a list in one tap.',
+    newKit: 'New kit',
+    newKitPlaceholder: 'Chicken salad',
+    renameKit: 'Rename kit',
+    renameA11y: '{name}, rename',
+    deleteKit: 'Delete kit',
+    duplicate: 'Duplicate',
+    kitOptions: 'Kit options',
+    kitSummary: '{name}, {count} items',
+    itemsOne: '{count} item',
+    itemsOther: '{count} items',
+    emptyTitle: 'No kits yet',
+    emptyBody:
+      'A kit is a bundle of items you buy together — like everything for chicken salad, minus the staples you always have. Build one, then add it to any list in one tap.',
+    createFirst: 'Create your first kit',
+    createKit: 'Create a kit',
+    // Kit detail — adding/editing ingredients.
+    addIngredient: 'Add an ingredient',
+    addIngredientsTitle: 'Add ingredients',
+    inKit: 'In kit',
+    inKitItemA11y: '{name}, in this kit',
+    detailEmptyTitle: 'Nothing in this kit yet',
+    detailEmptyBody:
+      'Add the few things this kit needs — skip the staples you always have.',
+    // The Kits tab inside the Add-items sheet (selecting a kit onto a list).
+    pickHint: 'Tap a kit to add its items to your list.',
+    previewMore: '{names} +{count}',
+    addKitA11y: 'Add {name}, {count} items',
+    emptyInSheet: 'Build kits in the Kits tab, then add them here.',
+    kitEmpty: 'This kit has no items yet.',
+    allPresent: "Everything in this kit is already on your list.",
+    addedOne: 'Added {count} item',
+    addedOther: 'Added {count} items',
   },
   // Extends the shell settings namespace (title/appearance/theme*/language*/
   // yourData/about/export/import/nothingImported/couldntExport/couldntRead).

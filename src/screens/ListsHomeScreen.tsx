@@ -14,11 +14,11 @@ import {
   StyleSheet,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
+import { GestureDetector } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { usePullRevealFooter } from '../components/usePullRevealFooter';
 import { Plus, MoreHorizontal, ChevronRight, Settings, Link2 } from 'lucide-react-native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../App';
+import type { ListsTabProps } from './navTypes';
 import { useListsStore } from '../store/lists';
 import { listStats, type GroceryList } from '../data/list';
 import { useActionMenu, usePrompt } from '../components/Dialogs';
@@ -39,7 +39,7 @@ import {
 } from '../theme';
 import { boundedContent } from '../theme';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'ListsHome'>;
+type Props = ListsTabProps;
 
 export default function ListsHomeScreen({ navigation }: Props) {
   const { c } = useTheme();
@@ -53,7 +53,14 @@ export default function ListsHomeScreen({ navigation }: Props) {
   const menu = useActionMenu();
   const prompt = usePrompt();
   const [tipVisible, setTipVisible] = useState(false);
-  const { pullToReveal, reveal, onScroll } = usePullRevealFooter();
+  const {
+    pullToReveal,
+    reveal,
+    gesture,
+    onScroll,
+    onScrollViewLayout,
+    onContentSizeChange,
+  } = usePullRevealFooter();
 
   const newList = useCallback(() => {
     prompt.open({
@@ -161,7 +168,7 @@ export default function ListsHomeScreen({ navigation }: Props) {
   );
 
   return (
-    <SafeAreaView style={s.safe} edges={['top', 'left', 'right', 'bottom']}>
+    <SafeAreaView style={s.safe} edges={['top', 'left', 'right']}>
       <View style={s.header}>
         <View style={s.headerText}>
           <Text style={s.title}>{t('home.title')}</Text>
@@ -188,42 +195,51 @@ export default function ListsHomeScreen({ navigation }: Props) {
         </Pressable>
       </View>
 
-      <Animated.FlatList
-        style={s.flex}
-        data={lists}
-        keyExtractor={(l: GroceryList) => l.id}
-        renderItem={renderItem}
-        onScroll={pullToReveal ? onScroll : undefined}
-        scrollEventThrottle={16}
-        alwaysBounceVertical={pullToReveal}
-        contentContainerStyle={
-          lists.length === 0 ? s.emptyWrap : s.listContent
-        }
-        ItemSeparatorComponent={() => <View style={s.sep} />}
-        ListEmptyComponent={
-          <View style={s.empty}>
-            <Text style={s.emptyTitle}>{t('home.emptyTitle')}</Text>
-            <Text style={s.emptyBody}>{t('home.emptyBody')}</Text>
-            <Pressable
-              onPress={newList}
-              accessibilityRole="button"
-              accessibilityLabel={t('home.createFirst')}
-              style={({ pressed }) => [s.emptyBtn, pressed && s.rowPressed]}
-            >
-              <Text style={s.emptyBtnText}>{t('home.createList')}</Text>
-            </Pressable>
-          </View>
-        }
-        ListFooterComponent={
-          <View style={s.footerHolder}>
-            <FundingFooter
-              onSupport={TIP_JAR_ENABLED ? () => setTipVisible(true) : undefined}
-              reveal={reveal}
-              pullToReveal={pullToReveal}
-            />
-          </View>
-        }
-      />
+      {/* GestureDetector carries the Android over-pull (inert on iOS); the pan
+          recognises simultaneously with the list's own scroll. */}
+      <GestureDetector gesture={gesture}>
+        <Animated.FlatList
+          style={s.flex}
+          data={lists}
+          keyExtractor={(l: GroceryList) => l.id}
+          renderItem={renderItem}
+          onScroll={pullToReveal ? onScroll : undefined}
+          scrollEventThrottle={16}
+          alwaysBounceVertical={pullToReveal}
+          overScrollMode={pullToReveal ? 'never' : 'auto'}
+          onLayout={onScrollViewLayout}
+          onContentSizeChange={onContentSizeChange}
+          contentContainerStyle={
+            lists.length === 0 ? s.emptyWrap : s.listContent
+          }
+          ItemSeparatorComponent={() => <View style={s.sep} />}
+          ListEmptyComponent={
+            <View style={s.empty}>
+              <Text style={s.emptyTitle}>{t('home.emptyTitle')}</Text>
+              <Text style={s.emptyBody}>{t('home.emptyBody')}</Text>
+              <Pressable
+                onPress={newList}
+                accessibilityRole="button"
+                accessibilityLabel={t('home.createFirst')}
+                style={({ pressed }) => [s.emptyBtn, pressed && s.rowPressed]}
+              >
+                <Text style={s.emptyBtnText}>{t('home.createList')}</Text>
+              </Pressable>
+            </View>
+          }
+          ListFooterComponent={
+            <View style={s.footerHolder}>
+              <FundingFooter
+                onSupport={
+                  TIP_JAR_ENABLED ? () => setTipVisible(true) : undefined
+                }
+                reveal={reveal}
+                pullToReveal={pullToReveal}
+              />
+            </View>
+          }
+        />
+      </GestureDetector>
 
       {tipVisible && (
         <TipJarSheet

@@ -4,6 +4,7 @@
 // screenshots, so their randomness is harmless. Names span aisles to fill the
 // categorized list nicely.
 import { makeList, makeItem, type GroceryList } from '../data/list';
+import { makeKit, makeKitItem, type Kit } from '../data/kit';
 
 export function qaLists(): GroceryList[] {
   const list = makeList('Weekly shop');
@@ -19,4 +20,25 @@ export function qaLists(): GroceryList[] {
     list.items[i].checkedAt = list.items[i].updatedAt;
   }
   return [list];
+}
+
+export function qaKits(): Kit[] {
+  // A couple of kits so the Kits tab reads as a real, lived-in collection.
+  const chickenSalad = makeKit('Chicken salad');
+  chickenSalad.items = [
+    makeKitItem('Rotisserie chicken'),
+    makeKitItem('Celery'),
+    makeKitItem('Mayonnaise'),
+    makeKitItem('Red grapes'),
+    makeKitItem('Sliced almonds'),
+  ];
+  const tacoNight = makeKit('Taco night');
+  tacoNight.items = [
+    makeKitItem('Ground beef'),
+    makeKitItem('Taco shells'),
+    makeKitItem('Cheddar'),
+    makeKitItem('Salsa'),
+    makeKitItem('Sour cream'),
+  ];
+  return [chickenSalad, tacoNight];
 }

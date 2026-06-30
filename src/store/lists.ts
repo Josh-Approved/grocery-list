@@ -18,6 +18,7 @@ import {
   findActiveByName,
   makeItem,
   makeList,
+  visibleItems,
 } from '../data/list';
 import { isBuiltinCategory, type Category } from '../data/categories';
 import { makeId } from '../lib/id';
@@ -102,6 +103,17 @@ interface ListsState {
     locale?: string,
     category?: Category
   ) => void;
+  /** Add a kit's items to a list in one shot. Skips any item already active on
+   *  the list (by name) — selecting a kit never doubles up what you already
+   *  have. Items arrive with their remembered quantity + pre-assigned aisle, so
+   *  they land sorted instantly. Returns the items actually added (for the
+   *  "Added N items" toast and its Undo). */
+  addKitItems: (
+    listId: string,
+    items: { name: string; quantity: number; category: Category }[]
+  ) => GroceryItem[];
+  /** Soft-delete a batch of items in a single mutate — the Undo for a kit add. */
+  removeItems: (listId: string, itemIds: string[]) => void;
   setChecked: (listId: string, itemId: string, checked: boolean) => void;
   setQuantity: (listId: string, itemId: string, qty: number) => void;
   setNote: (listId: string, itemId: string, note: string) => void;
@@ -309,6 +321,42 @@ export const useListsStore = create<ListsState>()((set, get) => {
       mutate(listId, (l) => ({
         ...l,
         items: [...l.items, makeItem(trimmed, locale, category)],
+      }));
+    },
+
+    addKitItems: (listId, kitItems) => {
+      const list = get().lists.find((l) => l.id === listId);
+      if (!list) return [];
+      // Skip anything already on the list (by name), and de-dupe within the kit
+      // itself, so one tap can't double up a row.
+      const present = new Set(
+        visibleItems(list).map((it) => it.name.toLowerCase())
+      );
+      const added: GroceryItem[] = [];
+      for (const ki of kitItems) {
+        const name = ki.name.trim();
+        if (!name) continue;
+        const lower = name.toLowerCase();
+        if (present.has(lower)) continue;
+        present.add(lower);
+        const item = makeItem(name, 'en', ki.category);
+        item.quantity = clampQty(ki.quantity);
+        added.push(item);
+      }
+      if (added.length === 0) return [];
+      mutate(listId, (l) => ({ ...l, items: [...l.items, ...added] }));
+      return added;
+    },
+
+    removeItems: (listId, itemIds) => {
+      if (itemIds.length === 0) return;
+      const idSet = new Set(itemIds);
+      const at = clockNow();
+      mutate(listId, (l) => ({
+        ...l,
+        items: l.items.map((it) =>
+          idSet.has(it.id) ? { ...it, deletedAt: at, updatedAt: at } : it
+        ),
       }));
     },
 

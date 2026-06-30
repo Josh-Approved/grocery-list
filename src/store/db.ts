@@ -17,6 +17,7 @@
 import * as SQLite from 'expo-sqlite';
 import type { Category } from '../data/categories';
 import type { GroceryItem, GroceryList, ShareIdentity } from '../data/list';
+import type { Kit, KitItem } from '../data/kit';
 
 const DB_NAME = 'grocery-list.db';
 
@@ -52,6 +53,15 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
       name     TEXT PRIMARY KEY NOT NULL,
       count    INTEGER NOT NULL,
       lastUsed INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS kits (
+      id            TEXT PRIMARY KEY NOT NULL,
+      name          TEXT NOT NULL,
+      nameUpdatedAt INTEGER,
+      items         TEXT NOT NULL,
+      createdAt     INTEGER NOT NULL,
+      updatedAt     INTEGER NOT NULL,
+      deletedAt     INTEGER
     );
   `);
   // Migration: `nameUpdatedAt` (the name's own merge clock) was added after
@@ -180,6 +190,60 @@ export async function saveList(list: GroceryList): Promise<void> {
 export async function deleteListFromDb(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM lists WHERE id = ?', [id]);
+}
+
+// ---------- Kits (reusable item bundles) ----------
+// Same blob-per-row shape as lists. Soft-deleted kits stay in the table with
+// `deletedAt` set so a delete converges across devices (the kit collection is a
+// record set, like list items); loadAllKits returns them and the store filters
+// for the UI but keeps them for merge.
+
+interface KitRow {
+  id: string;
+  name: string;
+  nameUpdatedAt: number | null;
+  items: string;
+  createdAt: number;
+  updatedAt: number;
+  deletedAt: number | null;
+}
+
+function rowToKit(row: KitRow): Kit {
+  return {
+    id: row.id,
+    name: row.name,
+    nameUpdatedAt: row.nameUpdatedAt ?? row.createdAt,
+    items: JSON.parse(row.items) as KitItem[],
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    deletedAt: row.deletedAt ?? undefined,
+  };
+}
+
+export async function loadAllKits(): Promise<Kit[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<KitRow>(
+    'SELECT * FROM kits ORDER BY updatedAt DESC'
+  );
+  return rows.map(rowToKit);
+}
+
+export async function saveKit(kit: Kit): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO kits
+       (id, name, nameUpdatedAt, items, createdAt, updatedAt, deletedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      kit.id,
+      kit.name,
+      kit.nameUpdatedAt,
+      JSON.stringify(kit.items),
+      kit.createdAt,
+      kit.updatedAt,
+      kit.deletedAt ?? null,
+    ]
+  );
 }
 
 // ---------- Cross-device sync support (consumed at build step 4) ----------
