@@ -13,6 +13,7 @@
  */
 
 import { Linking } from 'react-native';
+import * as MailComposer from 'expo-mail-composer';
 import { t } from '../i18n';
 import { collectDiagnostics, formatDiagnostics, type Diagnostics } from './diagnostics';
 import { serialize, writeReportFile } from './log';
@@ -99,15 +100,6 @@ function buildEmailBody(input: FeedbackInput, d: Diagnostics, opts: { inlineLog:
   return sections.join('\n\n');
 }
 
-function resolveMailComposer(): any | null {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return require('expo-mail-composer');
-  } catch {
-    return null;
-  }
-}
-
 async function openMailto(input: FeedbackInput, d: Diagnostics, inlineLog: boolean): Promise<SendResult> {
   const subject = buildSubject(input.type, d);
   const body = buildEmailBody(input, d, { inlineLog });
@@ -134,15 +126,13 @@ export async function sendFeedback(input: FeedbackInput): Promise<SendResult> {
     attachmentUri = await writeReportFile(buildLogReport(d), name);
   }
 
-  const MailComposer = resolveMailComposer();
-  if (MailComposer && typeof MailComposer.composeAsync === 'function') {
+  const mc = MailComposer as any;
+  if (typeof mc.composeAsync === 'function') {
     try {
       const available =
-        typeof MailComposer.isAvailableAsync === 'function'
-          ? await MailComposer.isAvailableAsync()
-          : true;
+        typeof mc.isAvailableAsync === 'function' ? await mc.isAvailableAsync() : true;
       if (available) {
-        await MailComposer.composeAsync({
+        await mc.composeAsync({
           recipients: [FEEDBACK_EMAIL],
           subject: buildSubject(input.type, d),
           body: buildEmailBody(input, d, { inlineLog: false }),

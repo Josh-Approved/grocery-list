@@ -8,13 +8,16 @@
  *
  * This is device metadata the user can see and chooses to send — not user data
  * and not telemetry (canon § Privacy & data: device/version info the user
- * includes when filing feedback is the sanctioned case). Every native source is
- * resolved DEFENSIVELY (optional require) so the snapshot degrades to a
- * placeholder rather than crashing in an app that lacks a given module or reads
- * its version a different way.
+ * includes when filing feedback is the sanctioned case).
+ *
+ * IMPORTANT (React Native / Metro): every dependency here is a STATIC import of a
+ * module the feedback flow REQUIRES (expo-application + expo-device, installed
+ * alongside expo-mail-composer). A dynamic `require(variable)` does not bundle.
  */
 
 import { Platform } from 'react-native';
+import * as Application from 'expo-application';
+import * as Device from 'expo-device';
 import { getLocale } from '../i18n';
 
 export type Diagnostics = {
@@ -27,58 +30,32 @@ export type Diagnostics = {
   when: string; // ISO timestamp
 };
 
-/** Optional native module — required only here, resolved without a static import
- *  so a missing dependency degrades instead of breaking the build/runtime. */
-function opt(mod: string): any | null {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return require(mod);
-  } catch {
-    return null;
-  }
-}
-
-/** App name + "version (build)" from whatever the app happens to ship — prefers
- *  expo-application, falls back to expo-constants, then a placeholder. */
-function appMeta(): { name: string; version: string } {
-  const App = opt('expo-application');
-  const Constants = opt('expo-constants');
-  const name =
-    (App && App.applicationName) || (Constants && Constants.expoConfig && Constants.expoConfig.name) || 'App';
-  let version = '';
-  if (App) {
-    const v = App.nativeApplicationVersion;
-    const b = App.nativeBuildVersion;
-    if (v) version = b ? `${v} (${b})` : String(v);
-  }
-  if (!version && Constants && Constants.expoConfig && Constants.expoConfig.version) {
-    version = String(Constants.expoConfig.version);
-  }
-  return { name: String(name), version: version || 'unknown' };
-}
-
-/** The app's display name without the " - Josh Approved" identity suffix. */
+/** The app's display name (from the native bundle) without the " - Josh Approved"
+ *  identity suffix, for a tidy subject line. */
 export function shortAppName(): string {
-  const raw = appMeta().name.trim();
+  const raw = (Application.applicationName || '').trim();
   return raw.replace(/\s*-\s*Josh Approved\s*$/i, '').trim() || raw || 'App';
 }
 
-/** Device model via expo-device when present; a neutral placeholder otherwise. */
+/** "1.2.0 (47)" read from the native bundle; "unknown" if unavailable. */
+function appVersion(): string {
+  const v = Application.nativeApplicationVersion || '';
+  const b = Application.nativeBuildVersion || '';
+  if (!v) return 'unknown';
+  return b ? `${v} (${b})` : v;
+}
+
+/** Device model via expo-device; a neutral placeholder if it can't be read. */
 function deviceModel(): string {
-  const Device = opt('expo-device');
-  if (Device) {
-    const name = Device.modelName || Device.deviceName;
-    if (name) return String(name);
-  }
-  return 'unknown device';
+  const name = Device.modelName || Device.deviceName;
+  return name ? String(name) : 'unknown device';
 }
 
 export function collectDiagnostics(): Diagnostics {
   const platform = Platform.OS === 'ios' ? 'iOS' : Platform.OS === 'android' ? 'Android' : Platform.OS;
-  const meta = appMeta();
   return {
-    app: meta.name.replace(/\s*-\s*Josh Approved\s*$/i, '').trim() || 'App',
-    version: meta.version,
+    app: shortAppName(),
+    version: appVersion(),
     platform,
     osVersion: String(Platform.Version),
     device: deviceModel(),
