@@ -35,6 +35,14 @@
       "store": "androidTablet",
       "avd": "Pixel_Tablet",
       "label": "Pixel tablet"
+    },
+    "aosp-nogms": {
+      "$comment": "De-Googled dogfood cell (uplevel2-u6). A bare AOSP image with NO Google Play Services / Play Store — the class of device Aurora-store users run. Proves the core flows work with zero Google services and the tip jar degrades to a calm 'unavailable' instead of hanging/crashing. Josh owns no Android hardware, so this cell IS his de-Googled dogfood. Uses the emulator's `default` (AOSP) system image, not `google_apis`; the repro AVD is `aosp_nogms_api34` (see docs/degoogled-repro.md) — remap the generic `avd` below in a gitignored qa/devices.local.json per machine. Not booted in CI => skipped-with-note (no cost); booted locally => runs the standard journey on no-GMS. Consumes the 6th and final device slot.",
+      "platform": "android",
+      "kind": "phone",
+      "store": "android",
+      "avd": "aosp_nogms",
+      "label": "Android no-GMS (AOSP)"
     }
   },
   "axes": {
@@ -48,8 +56,8 @@
   },
   "profiles": {
     "smoke": {
-      "$comment": "Per-PR gate. Identical cost to today's CI: one phone per platform, light appearance, default font, portrait. Adding nothing here keeps the PR gate cheap.",
-      "devices": ["iphone", "pixel-phone"],
+      "$comment": "Per-PR gate. One phone per platform + the de-Googled AOSP cell, light appearance, default font, portrait — one cell each. CI cost is unchanged: the AOSP AVD is not booted in CI, so its cell is skipped-with-note; it runs only where a no-GMS emulator is booted (Josh's local dogfood). Scoped to smoke on purpose so the de-Googled check is a single functional cell, never crossed with the appearance x font axes.",
+      "devices": ["iphone", "pixel-phone", "aosp-nogms"],
       "appearance": ["light"],
       "fontScale": [1.0]
     },

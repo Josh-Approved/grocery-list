@@ -21,7 +21,9 @@ import type { Product, Purchase } from 'expo-iap';
  * loading     — connected, fetching the tip products
  * ready       — products loaded, tiers shown
  * unavailable — store/products couldn't load (offline, sandbox, products not
- *               yet created in the console) — the sheet degrades gracefully
+ *               yet created in the console, or no billing store on the device
+ *               at all — e.g. a de-Googled Android with no Play Store) — the
+ *               sheet degrades gracefully
  * purchasing  — a purchase is in flight (a tier is being tapped through)
  * thanks      — a purchase completed; show the thank-you state
  */
@@ -43,12 +45,37 @@ export interface UseTipJar {
   tip: (sku: string) => void;
 }
 
-// How long after connecting we wait for products before declaring the jar
-// unavailable, so the UI never hangs on a spinner.
-const FETCH_TIMEOUT_MS = 6000;
+// How long we wait for the store to connect AND return products before
+// declaring the jar unavailable, so the UI degrades fast instead of hanging on
+// a spinner. Kept short: on a device with no billing store (a de-Googled
+// Android with no Play Store / Play Services, or any offline store) the tiers
+// will never arrive, and a long spinner on the prominent "Support" button reads
+// as a broken app. A store that is merely slow still recovers — late-arriving
+// products promote straight back to 'ready' (see the products effect below).
+const FETCH_TIMEOUT_MS = 2500;
+
+// Session-scoped memory of whether a billing store is reachable at all.
+//   null  — not yet determined this launch
+//   false — we tried and no billing service answered (no Play Store / no
+//           StoreKit) — so re-opening the sheet must NOT re-open a connection,
+//           which on a no-GMS device otherwise re-emits a native
+//           "Google Play Store is missing" log line every single time
+//   true  — the store answered with products at least once this launch
+let storeReachable: boolean | null = null;
+
+/**
+ * True once this launch we've learned no billing store is reachable. The sheet
+ * uses this to render an instant, calm "unavailable" state WITHOUT mounting the
+ * IAP hook again — no repeat billing connection, no repeat native log.
+ */
+export function isStoreKnownUnavailable(): boolean {
+  return storeReachable === false;
+}
 
 export function useTipJar(productIds: readonly string[]): UseTipJar {
-  const [status, setStatus] = useState<TipStatus>('connecting');
+  const [status, setStatus] = useState<TipStatus>(() =>
+    storeReachable === false ? 'unavailable' : 'connecting'
+  );
   const [pendingSku, setPendingSku] = useState<string | null>(null);
   const productsRef = useRef<Product[]>([]);
 
@@ -80,34 +107,43 @@ export function useTipJar(productIds: readonly string[]): UseTipJar {
     if (!connected) return;
     setStatus((s) => (s === 'ready' || s === 'thanks' ? s : 'loading'));
     fetchProducts({ skus: [...productIds], type: 'in-app' }).catch(() =>
-      setStatus('unavailable')
+      setStatus((s) => (productsRef.current.length ? 'ready' : 'unavailable'))
     );
     // productIds is a stable module constant; intentionally not a dep.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected]);
 
-  // Promote to "ready" as soon as products arrive.
+  // Promote to "ready" as soon as products arrive, and remember the store
+  // works. Recovers even from 'unavailable' — a merely-slow store that beat the
+  // timeout still shows its tiers rather than staying stuck on the fallback.
   useEffect(() => {
-    if (products.length && (status === 'loading' || status === 'connecting')) {
-      setStatus('ready');
-    }
+    if (!products.length) return;
+    storeReachable = true;
+    setStatus((s) =>
+      s === 'loading' || s === 'connecting' || s === 'unavailable' ? 'ready' : s
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products.length]);
 
-  // Fallback: never hang on the spinner — if nothing loaded, show unavailable.
+  // Fallback: never hang on the spinner. Armed on mount (NOT gated on
+  // `connected`) so a device where the store never connects — a de-Googled
+  // Android with no Play Store, where `initConnection` never resolves — still
+  // resolves to 'unavailable' instead of spinning forever. If we time out with
+  // no products, no billing store is reachable this launch: remember that so
+  // the sheet stops re-opening a connection (and re-logging) on every visit.
   useEffect(() => {
-    if (!connected) return;
+    if (storeReachable === false) return;
     const id = setTimeout(() => {
-      setStatus((s) =>
-        s === 'loading' || s === 'connecting'
-          ? productsRef.current.length
-            ? 'ready'
-            : 'unavailable'
-          : s
-      );
+      setStatus((s) => {
+        if (s !== 'connecting' && s !== 'loading') return s;
+        if (productsRef.current.length) return 'ready';
+        storeReachable = false;
+        return 'unavailable';
+      });
     }, FETCH_TIMEOUT_MS);
     return () => clearTimeout(id);
-  }, [connected]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const tip = useCallback(
     (sku: string) => {

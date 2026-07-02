@@ -32,7 +32,8 @@ import {
   Colors,
 } from '../theme';
 import { t } from '../i18n';
-import { useTipJar } from '../lib/tipJar';
+import { useTipJar, isStoreKnownUnavailable, type TipStatus } from '../lib/tipJar';
+import type { Product } from 'expo-iap';
 
 interface Props {
   visible: boolean;
@@ -41,11 +42,66 @@ interface Props {
   productIds: readonly string[];
 }
 
+/**
+ * The tip sheet. We only open a billing connection (mount `useTipJar`) while the
+ * sheet is actually visible AND the store isn't already known-unavailable this
+ * launch. On a device with no billing store — a de-Googled Android with no Play
+ * Store — that means the native billing stack is never touched again after the
+ * first miss: no repeat "Google Play Store is missing" log, and an instant calm
+ * "unavailable" state instead of a spinner. Everything the app offers stays free
+ * and fully functional regardless; only this optional tip surface is affected.
+ */
 export default function TipJarSheet({ visible, onDismiss, productIds }: Props) {
+  if (!visible || isStoreKnownUnavailable()) {
+    return (
+      <SheetShell
+        visible={visible}
+        onDismiss={onDismiss}
+        status={isStoreKnownUnavailable() ? 'unavailable' : 'connecting'}
+        products={[]}
+        pendingSku={null}
+        onTip={() => {}}
+      />
+    );
+  }
+  return <ConnectedSheet visible onDismiss={onDismiss} productIds={productIds} />;
+}
+
+/** Mounts the IAP hook and drives the shell — only rendered when we intend to connect. */
+function ConnectedSheet({ visible, onDismiss, productIds }: Props) {
+  const { status, products, pendingSku, tip } = useTipJar(productIds);
+  return (
+    <SheetShell
+      visible={visible}
+      onDismiss={onDismiss}
+      status={status}
+      products={products}
+      pendingSku={pendingSku}
+      onTip={tip}
+    />
+  );
+}
+
+interface ShellProps {
+  visible: boolean;
+  onDismiss: () => void;
+  status: TipStatus;
+  products: Product[];
+  pendingSku: string | null;
+  onTip: (sku: string) => void;
+}
+
+function SheetShell({
+  visible,
+  onDismiss,
+  status,
+  products,
+  pendingSku,
+  onTip,
+}: ShellProps) {
   const { c } = useTheme();
   const s = makeStyles(c);
   const [reduceMotion, setReduceMotion] = useState(false);
-  const { status, products, pendingSku, tip } = useTipJar(productIds);
 
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
@@ -114,7 +170,7 @@ export default function TipJarSheet({ visible, onDismiss, productIds }: Props) {
                           pressed && s.pressed,
                           purchasing && !isPending && s.tierBtnDimmed,
                         ]}
-                        onPress={() => tip(p.id)}
+                        onPress={() => onTip(p.id)}
                         disabled={purchasing}
                         accessibilityRole="button"
                         accessibilityLabel={t('tip.tierA11y', {
