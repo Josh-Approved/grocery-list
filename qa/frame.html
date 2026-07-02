@@ -207,6 +207,22 @@
   .josh-card__check { color: var(--green-600); font-weight: 700; font-size: 7.5vmin; line-height: 1; }
   .josh-card__wordmark { display: flex; align-items: center; gap: 1.4vmin; font-weight: 600; font-size: 3.2vmin; letter-spacing: -0.0375em; color: var(--card-fg, var(--fg)); padding-bottom: 1vmin; }
   .josh-card__wordmark-check { width: 3vmin; height: 3vmin; color: var(--green-600); flex-shrink: 0; }
+
+  /* ---------- Video-frame mode (demo GIFs) ----------
+     A DEMO GIF can't be a single Chrome screenshot, so demo-capture.mjs composites
+     a recorded video into a device frame with ffmpeg. This engine renders the two
+     STATIC plates it needs, sharing the exact signature look (marketing ground,
+     accent shadow, bezel radii) as the still-screenshot frames above:
+       vmode=back  → the ground + accent drop-shadow the device floats on (opaque).
+       vmode=front → the device bezel as an SVG with a TRUE transparent screen hole
+                     (even-odd fill) + the caption, on a transparent canvas.
+     ffmpeg layers: back → scaled video at the screen rect → front. The front's
+     rounded hole masks the video's square corners, so the screen reads as a real,
+     rounded phone display. All geometry is computed in Node and passed as px. */
+  body[data-vmode] .stage { display: none; }
+  body[data-vmode="front"] { background: transparent !important; }
+  .vsvg { position: absolute; inset: 0; }
+  .vshadow { position: absolute; background: transparent; }
 </style>
 </head>
 <body>
@@ -229,7 +245,9 @@
   const motif   = params.get('motif') || 'none';
   const accent  = params.get('accent') || '';
   const crop    = (params.get('crop') || '').split(',').map(Number).filter((n) => !Number.isNaN(n));
+  const vmode   = params.get('vmode') || '';   // '' | 'back' | 'front' — video-frame plates
 
+  if (vmode) document.body.dataset.vmode = vmode;
   document.body.dataset.surface = surface;
   document.body.dataset.theme = theme;
   document.body.dataset.style = style;
@@ -286,7 +304,74 @@
     }
     return '';
   }
-  if (style !== 'flat') {
+
+  // ---------- video-frame plates (shares the ground/motif/shadow look above) ----------
+  // Geometry is computed in Node (demo-capture.mjs) and passed as px, so both
+  // plates and the ffmpeg overlay agree on the screen rect to the pixel.
+  function renderVideoFrame() {
+    const num = (k) => Number(params.get(k) || 0);
+    const W = window.innerWidth, H = window.innerHeight;
+    const capSize = num('capsize'), capCy = num('capcy');
+    const isDark = theme === 'dark';
+    const k = W / 1320;
+
+    // One device per rect. The single-phone caller passes dx/dy/…; the --dual
+    // caller passes a SECOND rect as dx2/dy2/… so both phones share one ground,
+    // one shadow language, and one caption. Collect whichever are present.
+    const rectAt = (sfx) => {
+      if (!params.has('dx' + sfx)) return null;
+      return {
+        dx: num('dx' + sfx), dy: num('dy' + sfx), dw: num('dw' + sfx), dh: num('dh' + sfx),
+        sx: num('sx' + sfx), sy: num('sy' + sfx), sw: num('sw' + sfx), sh: num('sh' + sfx),
+        br: num('br' + sfx), sr: num('sr' + sfx),
+      };
+    };
+    const devices = [rectAt(''), rectAt('2')].filter(Boolean);
+
+    if (vmode === 'back') {
+      // The ground + motif the devices float on (opaque plate; ffmpeg's base layer).
+      if (style !== 'flat') {
+        const ground = groundGradient();
+        const m = motifLayer();
+        document.body.style.background = m ? `${m}, ${ground}` : ground;
+      }
+      // One soft accent-tinted drop shadow per device, scaled to the surface.
+      const shadow = isDark
+        ? `0 0 ${Math.round(150 * k)}px ${Math.round(-20 * k)}px ${css(mix(ac, PAPER, 0.35), 0.55)}`
+        : `0 ${Math.round(54 * k)}px ${Math.round(130 * k)}px ${Math.round(-44 * k)}px ${css(mix(ac, INK, 0.50), 0.42)}`;
+      for (const d of devices) {
+        const el = document.createElement('div');
+        el.className = 'vshadow';
+        el.style.cssText = `left:${d.dx}px;top:${d.dy}px;width:${d.dw}px;height:${d.dh}px;border-radius:${d.br}px;box-shadow:${shadow}`;
+        document.body.appendChild(el);
+      }
+      document.body.dataset.ready = '1';
+      return;
+    }
+
+    // vmode === 'front': each bezel as an SVG path with a TRUE transparent screen
+    // hole (even-odd fill) + the caption, on a transparent canvas.
+    const bezelColor = css(isDark ? PAPER : INK);
+    const fgColor = css(isDark ? PAPER : INK);
+    const rr = (x, y, w, h, r) => {
+      r = Math.min(r, w / 2, h / 2);
+      return `M${x + r},${y} h${w - 2 * r} a${r},${r} 0 0 1 ${r},${r} v${h - 2 * r} a${r},${r} 0 0 1 ${-r},${r} h${-(w - 2 * r)} a${r},${r} 0 0 1 ${-r},${-r} v${-(h - 2 * r)} a${r},${r} 0 0 1 ${r},${-r} z`;
+    };
+    const paths = devices
+      .map((d) => `${rr(d.dx, d.dy, d.dw, d.dh, d.br)} ${rr(d.sx, d.sy, d.sw, d.sh, d.sr)}`)
+      .join(' ');
+    const capEl = caption
+      ? `<text x="${W / 2}" y="${capCy + capSize * 0.34}" text-anchor="middle" font-size="${capSize}" font-weight="600" letter-spacing="-0.02em" fill="${fgColor}" font-family="IBM Plex Sans, -apple-system, Segoe UI, Roboto, sans-serif">${caption.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>`
+      : '';
+    document.body.insertAdjacentHTML('beforeend',
+      `<svg class="vsvg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
+      `<path fill-rule="evenodd" fill="${bezelColor}" d="${paths}"/>` +
+      capEl + `</svg>`);
+    document.fonts.ready.then(() => { document.body.dataset.ready = '1'; });
+  }
+
+  if (vmode) { renderVideoFrame(); }
+  else if (style !== 'flat') {
     const ground = groundGradient();
     const m = motifLayer();
     document.body.style.background = m ? `${m}, ${ground}` : ground;
@@ -319,7 +404,8 @@
   }
 
   const frame = document.getElementById('frame');
-  if (surface === 'chrome') {
+  if (vmode) { /* device plates already rendered by renderVideoFrame() */ }
+  else if (surface === 'chrome') {
     frame.innerHTML = `
       <div class="window">
         <div class="titlebar">

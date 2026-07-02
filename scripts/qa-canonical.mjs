@@ -612,6 +612,45 @@ const ruleSplashWordmarkClip = () => {
     [`${relative(appDir, f)}: letterSpacing present, no paddingRight/paddingHorizontal/paddingEnd on the wordmark Text`]);
 };
 
+// The tip jar (expo-iap) is the only surface in the fleet that reaches for
+// Google Play Billing, so it's the only thing that can misbehave on a
+// de-Googled / no-GMS Android (the Aurora field report, 2026-07-01). The
+// canonical fix (templates/tip-jar/) degrades without GMS: tipJar.ts remembers,
+// per launch, that no billing store answered (a session `storeReachable` flag
+// exported as `isStoreKnownUnavailable()`), and TipJarSheet.tsx mounts the IAP
+// hook (useTipJar → initConnection) ONLY while the sheet is visible AND the
+// store isn't already known-unavailable — so the native "Google Play Store is
+// missing" log is emitted at most once and re-opens are an instant, calm
+// "unavailable" instead of a spinner. This rule guards against an app carrying
+// a tip jar that regressed to (or predates) that fix: it fires when tipJar.ts
+// exists but omits `isStoreKnownUnavailable`, or when TipJarSheet.tsx never
+// gates its hook on it. WARN (not FAIL) — the remedy is a mechanical re-sync,
+// and an app with no tip jar simply skips. Fix: `sync.mjs tip-jar <app>`.
+const TIPJAR_GUARD_EXPORT_RE = /isStoreKnownUnavailable/;
+const ruleTipJarNoGmsGuard = () => {
+  if (surface !== 'rn') return skip('rn/tip-jar-nogms-guard', 'Not an RN app');
+  const hook = join(appDir, 'src', 'lib', 'tipJar.ts');
+  if (!exists(hook)) return skip('rn/tip-jar-nogms-guard', 'No tip jar (src/lib/tipJar.ts absent)');
+  const hits = [];
+  const hookCode = stripComments(readText(hook) || '');
+  if (!TIPJAR_GUARD_EXPORT_RE.test(hookCode)) {
+    hits.push(`${relative(appDir, hook)}: no isStoreKnownUnavailable session guard — the pre-fix tip jar re-opens a Play Billing connection on every visit (loud "Google Play Store is missing" log) and can spin on a no-GMS device`);
+  }
+  const sheet = join(appDir, 'src', 'components', 'TipJarSheet.tsx');
+  if (exists(sheet)) {
+    const sheetCode = stripComments(readText(sheet) || '');
+    if (!TIPJAR_GUARD_EXPORT_RE.test(sheetCode)) {
+      hits.push(`${relative(appDir, sheet)}: mounts useTipJar without gating on isStoreKnownUnavailable() — the IAP hook (initConnection) fires on a de-Googled device on every open`);
+    }
+  }
+  if (hits.length) {
+    return warn('rn/tip-jar-nogms-guard',
+      'Tip jar not de-Googled-safe: the expo-iap tip jar is missing the no-GMS degradation guard (isStoreKnownUnavailable), so on an Android without Google Play Services it re-connects Billing every open (loud log, slow spinner) instead of degrading calmly. Re-sync: `node josh-approved-factory/scripts/sync.mjs tip-jar ' + (relative(process.cwd(), appDir) || '<app>') + '`',
+      hits);
+  }
+  return pass('rn/tip-jar-nogms-guard', 'Tip jar degrades gracefully without Google Play Services');
+};
+
 // ---------- rules: Chrome-extension-specific (manifest.json) ----------
 
 const KNOWN_PERMISSIONS_TIGHT = new Set(['activeTab', 'scripting', 'storage', 'sidePanel', 'offscreen']);
@@ -1054,6 +1093,7 @@ const CANONICAL_RULES = [
   ruleKeyboardDismissEscape,
   ruleModalSafeAreaProvider,
   ruleSplashWordmarkClip,
+  ruleTipJarNoGmsGuard,
   ruleManifestMv3,
   ruleManifestPermissionsTight,
   ruleTestScriptPresent,

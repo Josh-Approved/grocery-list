@@ -15,7 +15,7 @@
  * round-trip through real relays has not been exercised on a device. Shipping
  * code-only is the documented, committed Layer-2 deferral (canon
  * § Backup & restore "when each layer is required"); device-verify is gated
- * before public release in the project's build notes.
+ * before public release.
  */
 
 import nacl from 'tweetnacl';
