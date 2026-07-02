@@ -1,0 +1,42 @@
+# Hand-authored DEMO flow for the store/README hero GIF — NOT the generated
+# screenshot journey (qa/flows/mobile.yaml). Kept short and human-paced so the
+# recording reads as a real add → check loop:
+#   open the weekly list → type a new item → it lands → tap it to check it off.
+# Driven headless by josh-approved-factory/scripts/demo-capture.mjs (which
+# records the run and composites it into a device frame). Runs against the
+# QA_MODE build, which seeds the "Weekly shop" list.
+appId: com.joshapproved.grocerylist
+---
+- launchApp:
+    clearState: true
+- waitForAnimationToEnd:
+    timeout: 4000
+- extendedWaitUntil:
+    visible:
+      text: "Weekly shop.*"
+    timeout: 20000
+- tapOn:
+    text: "Weekly shop.*"
+- extendedWaitUntil:
+    visible:
+      text: "Bananas"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn:
+    text: "Add an item"
+- inputText: "Avocado"
+- waitForAnimationToEnd:
+    timeout: 800
+- pressKey: Enter
+- extendedWaitUntil:
+    visible:
+      text: "Avocado"
+    timeout: 8000
+- hideKeyboard
+- waitForAnimationToEnd:
+    timeout: 1200
+- tapOn:
+    text: "Avocado"
+- waitForAnimationToEnd:
+    timeout: 2000
