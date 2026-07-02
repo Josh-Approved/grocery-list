@@ -246,19 +246,10 @@ export async function saveKit(kit: Kit): Promise<void> {
   );
 }
 
-// ---------- Cross-device sync support (consumed at build step 4) ----------
+// ---------- Cross-device sync support ----------
 // Tombstones let a list delete propagate: without "list X deleted at T" a
-// pull would re-adopt X from a paired device.
-
-interface TombstoneRow {
-  id: string;
-  deletedAt: number;
-}
-
-export async function loadTombstones(): Promise<TombstoneRow[]> {
-  const db = await getDb();
-  return db.getAllAsync<TombstoneRow>('SELECT id, deletedAt FROM tombstones');
-}
+// pull would re-adopt X from a paired device. Written on delete (putTombstone)
+// and cleared when a list is re-imported (removeTombstone).
 
 export async function putTombstone(id: string, deletedAt: number): Promise<void> {
   const db = await getDb();
