@@ -43,8 +43,38 @@ const HELLO = JSON.stringify({ _sync: 'hello' });
  *  several sockets opening near-simultaneously). */
 const HELLO_DEBOUNCE_MS = 3000;
 
+/** The slice of DropBoxTransport the engine drives. Named so a test can inject
+ *  a fake (see __setTransportFactory) — the production transport is created and
+ *  torn down entirely inside this module, so the wiring is otherwise unreachable. */
+export interface EngineTransport {
+  start(): void;
+  publish(ciphertext: string): void;
+  close(): void;
+}
+
+type TransportFactory = (
+  channel: string,
+  onMessage: (ciphertext: string) => void,
+  onReconnect: () => void,
+  onStatus: (openRelays: number) => void
+) => EngineTransport;
+
+let makeTransport: TransportFactory = (channel, onMessage, onReconnect, onStatus) =>
+  new DropBoxTransport(channel, onMessage, onReconnect, onStatus);
+
+/** TEST-ONLY seam: swap the transport factory (e.g. for a recording fake) and
+ *  get back a restore fn. Production never calls this — the default factory
+ *  builds the real DropBoxTransport. */
+export function __setTransportFactory(factory: TransportFactory): () => void {
+  const prev = makeTransport;
+  makeTransport = factory;
+  return () => {
+    makeTransport = prev;
+  };
+}
+
 interface Channel {
-  transport: DropBoxTransport;
+  transport: EngineTransport;
   lastSent: string;
   timer: ReturnType<typeof setTimeout> | null;
   lastHelloAt: number;
@@ -75,7 +105,7 @@ function sharedSecret(l: GroceryList): string | undefined {
 function ensureChannel(secret: string): Channel {
   let ch = channels.get(secret);
   if (ch) return ch;
-  const transport = new DropBoxTransport(
+  const transport = makeTransport(
     channelId(secret),
     (ct) => receive(secret, ct),
     () => onReconnect(secret),
