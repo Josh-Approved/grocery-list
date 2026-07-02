@@ -1,0 +1,23 @@
+{
+  "generatedBy": "demo-capture.mjs",
+  "app": "grocery-list",
+  "store": "ios",
+  "theme": "light",
+  "fps": 15,
+  "W": 600,
+  "H": 1296,
+  "deviceRect": {
+    "x": 36,
+    "y": 126,
+    "w": 528,
+    "h": 1134,
+    "r": 44
+  },
+  "hole": {
+    "x": 42,
+    "y": 132,
+    "w": 516,
+    "h": 1122,
+    "r": 38
+  }
+}
