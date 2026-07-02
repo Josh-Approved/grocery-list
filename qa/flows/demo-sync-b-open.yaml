@@ -1,0 +1,25 @@
+# Two-device sync demo — DEVICE B, pass 1 of 2: OPEN the shared list, then exit.
+# The dual runner drives only ONE device at a time (two concurrent XCUITest
+# drivers polling the hierarchy overload the app and jetsam it), so B opens its
+# list here and is left SITTING on it — connected, subscribed, doing nothing —
+# while device A adds an item. B receives it passively; demo-sync-b-verify.yaml
+# then asserts it landed. Driven headless by demo-capture.mjs --dual.
+appId: com.joshapproved.grocerylist
+---
+- launchApp:
+    clearState: true
+- waitForAnimationToEnd:
+    timeout: 4000
+- extendedWaitUntil:
+    visible:
+      text: "Weekly shop.*"
+    timeout: 20000
+- tapOn:
+    text: "Weekly shop.*"
+- extendedWaitUntil:
+    visible:
+      text: "Bananas"
+    timeout: 10000
+# B has never added Avocado; prove it's absent before A adds it.
+- assertNotVisible:
+    text: "Avocado"

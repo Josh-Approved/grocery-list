@@ -1,0 +1,17 @@
+# Two-device sync demo — DEVICE B, pass 2 of 2: VERIFY the sync happened.
+# No launchApp: B is already sitting on the shared list (from demo-sync-b-open),
+# so this ATTACHES to the running app and asserts the item device A added has
+# arrived over the real relays. This is the proof, not a wall-clock guess: if
+# "Avocado" never synced in, the assertion fails and demo-capture --dual exits
+# non-zero. Driven headless by demo-capture.mjs --dual.
+appId: com.joshapproved.grocerylist
+---
+- extendedWaitUntil:
+    visible:
+      text: "Avocado"
+    timeout: 25000
+- assertVisible:
+    text: "Avocado"
+- takeScreenshot: qa/captures/demo-sync-b/synced
+- waitForAnimationToEnd:
+    timeout: 2000

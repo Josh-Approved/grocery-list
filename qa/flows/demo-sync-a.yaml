@@ -1,0 +1,50 @@
+# Two-device sync demo — DEVICE A (the "adder"). Hand-authored, NOT generated.
+# Runs as the MIDDLE pass of demo-capture.mjs --dual (after B has opened the
+# shared list on the other sim, before B verifies). Both sims boot the same
+# QA_MODE + EXPO_PUBLIC_QA_SHARE_SECRET build, so they share one list over real
+# public relays. A opens the shared list and adds a new item, which appears on
+# B (demo-sync-b-verify asserts it). Driven headless by demo-capture.mjs --dual.
+appId: com.joshapproved.grocerylist
+---
+- launchApp:
+    clearState: true
+- waitForAnimationToEnd:
+    timeout: 4000
+- extendedWaitUntil:
+    visible:
+      text: "Weekly shop.*"
+    timeout: 20000
+- tapOn:
+    text: "Weekly shop.*"
+- extendedWaitUntil:
+    visible:
+      text: "Bananas"
+    timeout: 10000
+# Give A's own relay connection a moment to open before we publish the edit.
+- waitForAnimationToEnd:
+    timeout: 2500
+# Open the full-screen Add-items sheet, then focus its search field explicitly
+# (don't rely on the sheet's ~60ms auto-focus landing before inputText).
+- tapOn:
+    text: "Add an item"
+- extendedWaitUntil:
+    visible:
+      text: "Search or add an item"
+    timeout: 8000
+- tapOn:
+    text: "Search or add an item"
+- inputText: "Avocado"
+- waitForAnimationToEnd:
+    timeout: 800
+- pressKey: Enter
+# Close the Add-items sheet so the new row is visible on A's own clean list
+# (the sheet otherwise sits over it, and iOS hides the list behind the modal).
+- tapOn:
+    id: "addSheetDone"
+- extendedWaitUntil:
+    visible:
+      text: "Avocado"
+    timeout: 8000
+# Hold on the final state so the recording ends on both lists showing Avocado.
+- waitForAnimationToEnd:
+    timeout: 3500
