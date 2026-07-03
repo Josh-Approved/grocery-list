@@ -106,6 +106,10 @@ const es = {
     reorderAisles: 'Reordenar pasillos',
     addUsuals: 'Añadir habituales',
     deleteList: 'Eliminar lista',
+    addedToList: 'Añadido a {name}',
+    forgetSuggestion: 'Olvidar {name}',
+    forgotSuggestion: 'Se olvidó {name}',
+    swipeToDeleteA11y: 'Quitar {name}',
     sync: { connected: 'Conectado', offline: 'Sin conexión', syncing: 'Sincronizando…', a11y: 'Sincronización de lista compartida: {status}. Toca para sincronizar ahora.' },
   },
   share: {
