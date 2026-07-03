@@ -9,6 +9,11 @@
  *
  * Canonical, app-agnostic — synced by `sync.mjs app-shell`; do not fork.
  *
+ * This file orchestrates the flow (state + header + the guided form); the two
+ * self-contained sub-views (FeedbackTypePicker = step 1, FeedbackLogPreview =
+ * the transparency modal) and the shared styles live in sibling files so each
+ * stays under the component ceiling (engineering-standards.md).
+ *
  * Copy lives in shellStrings.ts (translated in shellLocales.ts) — voice canon
  * applies: calm, plain second person, no urgency. The "good bug report" coaching
  * follows the standard checklist (what happened / expected / steps / how often),
@@ -23,7 +28,6 @@ import {
   Pressable,
   ScrollView,
   TextInput,
-  StyleSheet,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
@@ -31,42 +35,25 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import {
-  Bug,
-  Sparkles,
-  MessageSquare,
   ChevronLeft,
-  ChevronRight,
   X,
   CheckSquare,
   Square,
   FileText,
 } from 'lucide-react-native';
-import {
-  useTheme,
-  fontFamily,
-  space,
-  radius,
-  target,
-  hairline,
-  type as ty,
-  type Colors,
-} from '../theme';
+import { useTheme, space } from '../theme';
 import { t } from '../i18n';
 import { collectDiagnostics } from './diagnostics';
-import { buildLogReport } from './compose';
-import { sendFeedback, FIELDS, type FeedbackType } from './compose';
+import { buildLogReport, sendFeedback, FIELDS, type FeedbackType } from './compose';
+import { makeStyles } from './feedbackSheetStyles';
+import { FeedbackTypePicker } from './FeedbackTypePicker';
+import { FeedbackLogPreview } from './FeedbackLogPreview';
 
 type Props = {
   visible: boolean;
   initialType?: FeedbackType;
   onClose: () => void;
 };
-
-const TYPES: { type: FeedbackType; icon: typeof Bug; titleKey: string; descKey: string }[] = [
-  { type: 'bug', icon: Bug, titleKey: 'feedback.type.bug', descKey: 'feedback.type.bugDesc' },
-  { type: 'feature', icon: Sparkles, titleKey: 'feedback.type.feature', descKey: 'feedback.type.featureDesc' },
-  { type: 'general', icon: MessageSquare, titleKey: 'feedback.type.general', descKey: 'feedback.type.generalDesc' },
-];
 
 export function FeedbackSheet({ visible, initialType, onClose }: Props) {
   const { c } = useTheme();
@@ -161,27 +148,7 @@ export function FeedbackSheet({ visible, initialType, onClose }: Props) {
 
             {!type ? (
               // ---- Step 1: pick a kind ----
-              <ScrollView contentContainerStyle={s.pickerBody}>
-                <Text style={s.pickerLead}>{t('feedback.lead')}</Text>
-                {TYPES.map(({ type: tp, icon: Icon, titleKey, descKey }) => (
-                  <Pressable
-                    key={tp}
-                    onPress={() => chooseType(tp)}
-                    style={({ pressed }) => [s.typeCard, pressed && s.pressed]}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${t(titleKey)}. ${t(descKey)}`}
-                  >
-                    <View style={s.typeIcon}>
-                      <Icon size={20} color={c.appAccent} strokeWidth={1.5} />
-                    </View>
-                    <View style={s.typeText}>
-                      <Text style={s.typeTitle}>{t(titleKey)}</Text>
-                      <Text style={s.typeDesc}>{t(descKey)}</Text>
-                    </View>
-                    <ChevronRight size={18} color={c.fgSubtle} strokeWidth={1.5} />
-                  </Pressable>
-                ))}
-              </ScrollView>
+              <FeedbackTypePicker onChoose={chooseType} c={c} s={s} />
             ) : (
               // ---- Step 2: the guided form ----
               <KeyboardAvoidingView
@@ -282,186 +249,15 @@ export function FeedbackSheet({ visible, initialType, onClose }: Props) {
         </View>
 
         {/* What's shared — the exact attached text, for transparency */}
-        <Modal
+        <FeedbackLogPreview
           visible={previewOpen}
-          animationType={reduceMotion ? 'none' : 'slide'}
-          onRequestClose={() => setPreviewOpen(false)}
-          statusBarTranslucent
-          transparent
-        >
-          <SafeAreaProvider>
-            <View style={s.backdrop}>
-              <SafeAreaView style={s.sheet} edges={['top', 'bottom']}>
-                <View style={s.header}>
-                  <View style={s.headerBtn} />
-                  <Text style={s.headerTitle} numberOfLines={1}>
-                    {t('feedback.logs.previewTitle')}
-                  </Text>
-                  <Pressable
-                    onPress={() => setPreviewOpen(false)}
-                    hitSlop={10}
-                    style={s.headerBtn}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('common.done')}
-                  >
-                    <X size={22} color={c.fg} strokeWidth={1.5} />
-                  </Pressable>
-                </View>
-                <Text style={s.previewLead}>{t('feedback.logs.previewLead')}</Text>
-                <ScrollView style={s.flex} contentContainerStyle={s.previewBody}>
-                  <Text style={s.previewText} selectable>
-                    {buildLogReport(diag)}
-                  </Text>
-                </ScrollView>
-              </SafeAreaView>
-            </View>
-          </SafeAreaProvider>
-        </Modal>
+          onClose={() => setPreviewOpen(false)}
+          reduceMotion={reduceMotion}
+          report={buildLogReport(diag)}
+          c={c}
+          s={s}
+        />
       </SafeAreaProvider>
     </Modal>
   );
-}
-
-function makeStyles(c: Colors) {
-  return StyleSheet.create({
-    flex: { flex: 1 },
-    backdrop: { flex: 1, backgroundColor: c.bgScrim },
-    sheet: { flex: 1, backgroundColor: c.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: space.s4,
-      paddingVertical: space.s3,
-      borderBottomWidth: hairline,
-      borderBottomColor: c.hairline,
-    },
-    headerBtn: {
-      width: target.min,
-      height: target.min,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    headerTitle: {
-      ...ty.base,
-      fontFamily: fontFamily.sansSemibold,
-      color: c.fg,
-      flex: 1,
-      textAlign: 'center',
-    },
-
-    // Step 1 — picker
-    pickerBody: { padding: space.s5, gap: space.s4 },
-    pickerLead: {
-      ...ty.sm,
-      fontFamily: fontFamily.sans,
-      color: c.fgMuted,
-      marginBottom: space.s1,
-    },
-    typeCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: space.s4,
-      padding: space.s4,
-      borderRadius: radius.md,
-      borderWidth: hairline,
-      borderColor: c.hairlineStrong,
-      backgroundColor: c.bgElevated,
-    },
-    typeIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: radius.sm,
-      backgroundColor: c.appAccentBg,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    typeText: { flex: 1, gap: space.s1 },
-    typeTitle: { ...ty.base, fontFamily: fontFamily.sansMedium, color: c.fg },
-    typeDesc: { ...ty.sm, fontFamily: fontFamily.sans, color: c.fgMuted },
-
-    // Step 2 — form
-    formBody: { padding: space.s5, gap: space.s5, paddingBottom: space.s7 },
-    tipCard: {
-      padding: space.s4,
-      borderRadius: radius.md,
-      backgroundColor: c.bgSubtle,
-      gap: space.s2,
-    },
-    tipTitle: { ...ty.sm, fontFamily: fontFamily.sansSemibold, color: c.fg },
-    tipBody: { ...ty.sm, fontFamily: fontFamily.sans, color: c.fgMuted },
-    field: { gap: space.s2 },
-    label: { ...ty.sm, fontFamily: fontFamily.sansSemibold, color: c.fg },
-    input: {
-      ...ty.base,
-      fontFamily: fontFamily.sans,
-      color: c.fg,
-      borderWidth: hairline,
-      borderColor: c.hairlineStrong,
-      borderRadius: radius.md,
-      paddingHorizontal: space.s4,
-      paddingVertical: space.s3,
-      backgroundColor: c.bgElevated,
-      minHeight: target.min,
-    },
-    envCard: {
-      padding: space.s4,
-      borderRadius: radius.md,
-      backgroundColor: c.bgSubtle,
-      gap: space.s1,
-    },
-    envLabel: {
-      ...ty.xs,
-      fontFamily: fontFamily.sansSemibold,
-      color: c.fgMuted,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-    },
-    envValue: { ...ty.sm, fontFamily: fontFamily.mono, color: c.fg },
-    checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.s3 },
-    checkText: { flex: 1, gap: space.s1 },
-    checkLabel: { ...ty.base, fontFamily: fontFamily.sansMedium, color: c.fg },
-    checkHint: { ...ty.sm, fontFamily: fontFamily.sans, color: c.fgMuted },
-    previewLink: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: space.s2,
-      paddingVertical: space.s1,
-      marginLeft: 22 + space.s3,
-    },
-    previewLinkText: { ...ty.sm, fontFamily: fontFamily.sansMedium, color: c.fg, textDecorationLine: 'underline' },
-    error: { ...ty.sm, fontFamily: fontFamily.sans, color: c.danger },
-
-    footer: {
-      paddingHorizontal: space.s5,
-      paddingTop: space.s3,
-      paddingBottom: space.s4,
-      borderTopWidth: hairline,
-      borderTopColor: c.hairline,
-      gap: space.s2,
-    },
-    sendBtn: {
-      backgroundColor: c.inkButton,
-      borderRadius: radius.md,
-      minHeight: 48,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    sendBtnDim: { opacity: 0.5 },
-    sendBtnText: { ...ty.base, fontFamily: fontFamily.sansSemibold, color: c.inkButtonText },
-    footnote: { ...ty.xs, fontFamily: fontFamily.sans, color: c.fgSubtle, textAlign: 'center' },
-
-    // Preview
-    previewLead: {
-      ...ty.sm,
-      fontFamily: fontFamily.sans,
-      color: c.fgMuted,
-      paddingHorizontal: space.s5,
-      paddingTop: space.s4,
-    },
-    previewBody: { padding: space.s5 },
-    previewText: { ...ty.xs, fontFamily: fontFamily.mono, color: c.fg },
-
-    pressed: { opacity: 0.6 },
-  });
 }

@@ -24,6 +24,8 @@ export type { Colors } from './colors';
 
 export { space, radius, target, motion, hairline } from './tokens';
 
+export { CATEGORY_COLORS, CATEGORY_COLOR_TOKENS, categoryColor } from './categoryPalette';
+
 export { CONTENT_MAX_WIDTH, boundedContent } from './layout';
 
 export {
