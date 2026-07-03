@@ -310,7 +310,26 @@
   // plates and the ffmpeg overlay agree on the screen rect to the pixel.
   function renderVideoFrame() {
     const num = (k) => Number(params.get(k) || 0);
-    const W = window.innerWidth, H = window.innerHeight;
+    // SINGLE SOURCE OF TRUTH: the canvas size is the Node-computed geometry
+    // (cw/ch), NOT window.innerWidth/innerHeight. headless-new reports an
+    // innerHeight ~87px short of the requested --window-size, so deriving the
+    // SVG/viewBox from innerHeight silently clipped the bezel's bottom edge and
+    // corners (the path is drawn in Node coords up to g.H) while ffmpeg overlaid
+    // the video at the correct Node coords — the two disagreed and the video's
+    // square bottom corners hung outside the (clipped) phone. Pin the plate to
+    // cw/ch so the drawn bezel, the screen hole, and the video clip share ONE
+    // set of numbers. (Legacy callers without cw/ch fall back to inner*.)
+    const W = num('cw') || window.innerWidth, H = num('ch') || window.innerHeight;
+    // The requested window is >= H, but its viewport (innerHeight) is shorter, so
+    // an absolutely-positioned SVG taller than innerHeight would be clipped by the
+    // body's overflow:hidden. Grow the document to exactly H and let it overflow
+    // the short viewport — the --screenshot still captures the full requested H.
+    if (num('ch')) {
+      document.documentElement.style.height = H + 'px';
+      document.body.style.height = H + 'px';
+      document.body.style.minHeight = H + 'px';
+      document.body.style.overflow = 'visible';
+    }
     const capSize = num('capsize'), capCy = num('capcy');
     const isDark = theme === 'dark';
     const k = W / 1320;

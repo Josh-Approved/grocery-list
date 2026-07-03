@@ -17,6 +17,9 @@
  *   - <app>/qa/rules.mjs       — default-exported array of rule fns appended to canonical set
  *   - <app>/qa/baseline.json   — per-rule grandfathering, e.g.
  *       { "commits/fingerprint": "<sha>" }  — only commits AFTER this SHA are checked
+ *       { "testing/enforce": true }         — promote a WARN tier to FAIL
+ *       { "<rule-id>/skip": true }          — disable a rule for a deliberate design, or
+ *       { "<rule-id>/skip": ["Foo.tsx"] }   — exempt specific files (path fragments)
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -583,6 +586,188 @@ const ruleModalSafeAreaProvider = () => {
   return pass('rn/modal-safe-area-provider', 'No full-screen Modals consuming safe-area without their own provider');
 };
 
+// ---------- rules: UX interaction baseline (canon proposal studio-20260702-1) ----------
+//
+// Seeded 2026-07-02 from Josh's recurring on-device corrections across four apps
+// (tend, packing-list, grocery-list, workout-timer) — the defect class he named
+// "bugs only I am able to catch by manually testing the app on my phone." The
+// three mechanically-checkable rules of the UX-interaction-baseline proposal land
+// here as WARN (codify→backfill→shipgate, like the testing/i18n/theme tiers); the
+// non-mechanical rules of that proposal ride qa/review-rubric.md.
+//
+// Built FALSE-POSITIVES-FIRST (these run on every app forever): each strips
+// comments (stripComments, like the parity rules) so prose/doc mentions never
+// match, keys on real JSX/usage rather than a name in text, and honours a
+// documented per-app escape in qa/baseline.json — set `"<rule-id>/skip": true`
+// to disable the rule for a legitimate deliberate design, or an array of path
+// fragments (`["FooScreen.tsx"]`) to exempt specific files — so an exception is
+// recorded once instead of the rule nagging forever.
+const ruleSkipsAll = (id) => baseline[`${id}/skip`] === true;
+const ruleSkipsFile = (id, relPath) => {
+  const s = baseline[`${id}/skip`];
+  return Array.isArray(s) && s.some((frag) => relPath.replace(/\\/g, '/').includes(frag));
+};
+
+// Return {inner, end} for the balanced (…) whose opening bracket is at `open`, or
+// null if unbalanced. Comments are already stripped; string literals are kept, so
+// a stray bracket inside a string could skew the count — acceptable for these
+// WARN heuristics (effect-arg strings almost never carry an unbalanced paren).
+const matchBalanced = (code, open, oc = '(', cc = ')') => {
+  let depth = 0;
+  for (let i = open; i < code.length; i++) {
+    const ch = code[i];
+    if (ch === oc) depth++;
+    else if (ch === cc) { depth--; if (depth === 0) return { inner: code.slice(open + 1, i), end: i }; }
+  }
+  return null;
+};
+
+// rn/entry-screen-autofocus — a screen whose PRIMARY interaction is text entry
+// should raise the keyboard on mount so the user can just start typing, with an
+// explicit .focus() fallback (Android autoFocus can no-op after a navigation
+// transition). Flagged conservatively to spare the many screens that merely
+// CONTAIN an input: only a file under src/screens/ whose basename reads as a
+// create/new/add/edit/compose surface (verb + a following PascalCase word, so
+// "AddExpense" matches but "AddressScreen" does not) AND that renders a
+// <TextInput> AND has neither an autoFocus prop (that isn't ={false}) nor any
+// .focus() call. Recurred: tend new-person 2026-06-29, packing-list trip-info
+// 2026-05-23. (canon studio-20260702-1)
+const ENTRY_SCREEN_NAME_RE = /(?:^|\/)(?:New|Add|Create|Edit|Compose)[A-Z][A-Za-z]*\.(?:jsx?|tsx?)$/;
+const TEXTINPUT_JSX_RE = /<\s*TextInput\b/;
+const AUTOFOCUS_RE = /\bautoFocus\b(?!\s*=\s*\{?\s*false)/;
+const FOCUS_CALL_RE = /\.\s*focus\s*\(/;
+
+const ruleEntryScreenAutofocus = () => {
+  const id = 'rn/entry-screen-autofocus';
+  if (surface !== 'rn') return skip(id, 'Not an RN app');
+  if (ruleSkipsAll(id)) return skip(id, 'Disabled via qa/baseline.json "rn/entry-screen-autofocus/skip"');
+  const files = srcSourceFiles();
+  if (!files.length) return skip(id, 'No src/ source files');
+  const hits = [];
+  for (const f of files) {
+    const rel = relative(appDir, f);
+    const relSrc = relative(join(appDir, 'src'), f).replace(/\\/g, '/');
+    if (!relSrc.startsWith('screens/')) continue;         // screens only
+    if (!ENTRY_SCREEN_NAME_RE.test('/' + relSrc)) continue; // entry-primary by name
+    if (ruleSkipsFile(id, rel)) continue;
+    const raw = readText(f);
+    if (!raw) continue;
+    const code = stripComments(raw);
+    if (!TEXTINPUT_JSX_RE.test(code)) continue;           // must render an input
+    if (AUTOFOCUS_RE.test(code) || FOCUS_CALL_RE.test(code)) continue; // already focuses
+    hits.push(`${rel}: entry screen renders <TextInput> but never autoFocuses or calls .focus() — raise the keyboard on mount (autoFocus + a .focus() fallback for Android)`);
+  }
+  if (hits.length) {
+    return warn(id,
+      'Entry screen does not focus its field on mount — a create/edit screen whose primary action is text entry should auto-focus its first input (autoFocus, with an explicit .focus() fallback) so the keyboard is up and ready', hits);
+  }
+  return pass(id, 'Entry screens focus their first field on mount');
+};
+
+// rn/create-on-mount — draft-first creation: a store create/insert must fire from
+// an explicit user Save handler, never from a mount/navigation effect. The
+// anti-pattern (tend's blank person, 2026-06-29) writes a record the instant a
+// "new X" screen mounts, so backing out leaves an empty ghost. We look INSIDE
+// mount effects only — useEffect(…, []) with EMPTY deps, or useFocusEffect(…) —
+// for a creation call (create/insert/add/save<Noun>(…), or a .create( / .insert(
+// store method), excluding the framework factory functions that legitimately run
+// on mount (createRef/createContext/createNativeStackNavigator/addListener/…). A
+// non-empty / dynamic deps array is treated as not-mount (conservative: no flag).
+// WARN — a real save-on-mount is rare, so a hit is worth a human look, and a
+// deliberate case is recorded via the baseline skip. (canon studio-20260702-1)
+const CREATE_CALL_RE = /\b(?:create|insert|add|save)[A-Z]\w*\s*\(|\.\s*(?:create|insert)\s*\(/;
+const CREATE_DENYLIST = /\b(?:createRef|createContext|createElement|createNativeStackNavigator|createStackNavigator|createBottomTabNavigator|createMaterialTopTabNavigator|createDrawerNavigator|createAnimatedComponent|createSelector|createStore|createNavigationContainerRef|createURL|addListener|addEventListener)\b/g;
+
+const ruleCreateOnMount = () => {
+  const id = 'rn/create-on-mount';
+  if (surface !== 'rn') return skip(id, 'Not an RN app');
+  if (ruleSkipsAll(id)) return skip(id, 'Disabled via qa/baseline.json "rn/create-on-mount/skip"');
+  const files = srcSourceFiles();
+  if (!files.length) return skip(id, 'No src/ source files');
+  const hits = [];
+  for (const f of files) {
+    const rel = relative(appDir, f);
+    if (ruleSkipsFile(id, rel)) continue;
+    const raw = readText(f);
+    if (!raw) continue;
+    const code = stripComments(raw);
+    let flagged = false;
+    for (const kind of ['useEffect', 'useFocusEffect']) {
+      if (flagged) break;
+      const re = new RegExp(`\\b${kind}\\s*\\(`, 'g');
+      let m;
+      while ((m = re.exec(code)) !== null) {
+        const open = code.indexOf('(', m.index);
+        if (open < 0) break;
+        const bal = matchBalanced(code, open);
+        if (!bal) continue;
+        const args = bal.inner;
+        let body = args;
+        if (kind === 'useEffect') {
+          // deps = the trailing top-level [...]; only an EMPTY [] is a mount effect.
+          const depsMatch = args.match(/,\s*(\[[^\]]*\])\s*$/);
+          if (!depsMatch) continue;                            // no clear deps arg → skip
+          if (depsMatch[1].replace(/\s/g, '') !== '[]') continue; // has deps → not mount-only
+          body = args.slice(0, depsMatch.index);
+        }
+        if (!CREATE_CALL_RE.test(body)) continue;
+        // If the only creation-like token is a denylisted factory, don't flag.
+        const stripped = body.replace(CREATE_DENYLIST, '');
+        if (!CREATE_CALL_RE.test(stripped)) continue;
+        const line = code.slice(0, open).split(/\r?\n/).length;
+        hits.push(`${rel}:${line}: ${kind}(${kind === 'useEffect' ? '…, []' : '…'}) fires a create/insert call on ${kind === 'useEffect' ? 'mount' : 'navigation focus'} — write the record from an explicit Save handler, not a mount effect (draft-first)`);
+        flagged = true;
+        break;
+      }
+    }
+  }
+  if (hits.length) {
+    return warn(id,
+      'Record created on mount/navigation, not on Save — a create/insert call fires from a useEffect(…, []) / useFocusEffect rather than a user Save action; backing out then leaves a blank record (the draft-first violation that persisted tend\'s blank person). Move the write to the Save handler', hits);
+  }
+  return pass(id, 'No store create/insert calls fired from a mount or navigation effect');
+};
+
+// rn/scrollform-keyboard-avoidance — a scrollable form (a <ScrollView> holding
+// 2+ <TextInput>s) must keep the focused field above the keyboard: a
+// KeyboardAvoidingView ancestor (or a KeyboardAware* scroll view), plus a way to
+// dismiss the keyboard (keyboardDismissMode / keyboardShouldPersistTaps).
+// Without it the lower fields sit under the keyboard with no way out. Recurred:
+// tend HTC form 2026-06-27, grocery-list add-box 2026-06-13 (the § Interaction
+// safety seed). Flagged per-file (the common co-located form component); a form
+// split across files, or one that avoids the keyboard by another means, records
+// the exception via the baseline skip. WARN. (canon studio-20260702-1)
+const SCROLLVIEW_RE = /<\s*ScrollView\b/;
+const KB_AWARE_SCROLL_RE = /<\s*KeyboardAware(?:ScrollView|FlatList|SectionList)\b|<\s*KeyboardAvoidingView\b/;
+const KB_HANDLING_RE = /keyboardDismissMode\s*=|keyboardShouldPersistTaps\s*=/;
+
+const ruleScrollformKeyboardAvoidance = () => {
+  const id = 'rn/scrollform-keyboard-avoidance';
+  if (surface !== 'rn') return skip(id, 'Not an RN app');
+  if (ruleSkipsAll(id)) return skip(id, 'Disabled via qa/baseline.json "rn/scrollform-keyboard-avoidance/skip"');
+  const files = srcSourceFiles();
+  if (!files.length) return skip(id, 'No src/ source files');
+  const hits = [];
+  for (const f of files) {
+    const rel = relative(appDir, f);
+    if (ruleSkipsFile(id, rel)) continue;
+    const raw = readText(f);
+    if (!raw) continue;
+    const code = stripComments(raw);
+    if (!SCROLLVIEW_RE.test(code)) continue;
+    const inputs = (code.match(/<\s*TextInput\b/g) || []).length;
+    if (inputs < 2) continue;                        // a single input rarely gets clipped
+    if (KB_AWARE_SCROLL_RE.test(code)) continue;     // KeyboardAvoidingView / KeyboardAware* present
+    if (KB_HANDLING_RE.test(code)) continue;         // dismiss / persist-taps handling present
+    hits.push(`${rel}: <ScrollView> with ${inputs} <TextInput>s but no KeyboardAvoidingView / KeyboardAware* scroll and no keyboardDismissMode / keyboardShouldPersistTaps — lower fields can sit under the keyboard`);
+  }
+  if (hits.length) {
+    return warn(id,
+      'Scrollable form has no keyboard avoidance — a <ScrollView> with 2+ TextInputs needs a KeyboardAvoidingView (or a KeyboardAware* scroll view) so the focused field stays visible, plus keyboardDismissMode / keyboardShouldPersistTaps for a tap-out. Extends § Interaction safety (rn/keyboard-dismiss-escape)', hits);
+  }
+  return pass(id, 'Scrollable multi-input forms handle keyboard avoidance');
+};
+
 // The cold-start splash renders the "josh approved" wordmark with a NEGATIVE
 // letterSpacing (tracking.mark ≈ -0.5) inside a TRANSFORMED, animated layer
 // (scale/translateY intro). Negative letterSpacing narrows iOS's measured text
@@ -1071,6 +1256,129 @@ const ruleScreenshotCaptionNoPrice = () => {
 
 // ---------- runner ----------
 
+// Committed demo GIFs must be framed correctly and free of the simulator home
+// screen. The hard, fail-closed gate lives at production time in
+// demo-capture.mjs; this is the committed-asset belt-and-suspenders. Cheap part
+// (works everywhere incl. app-synced CI): every demo gif must carry a
+// `.frame.json` device-frame spec — its absence means an ungated / legacy asset
+// to re-render. Full part (factory only, where demo-frame-check.mjs + ffmpeg are
+// present): run the gate and FAIL on a launcher/dims defect. Degrades to the
+// cheap check when the module or ffmpeg is unavailable, so app CI never reds on it.
+async function ruleDemoFramesValid({ appDir }) {
+  const demoDir = join(appDir, 'store-assets', 'demos');
+  if (!exists(demoDir)) return skip('demo/frames', 'no store-assets/demos');
+  let gifs;
+  try { gifs = readdirSync(demoDir).filter((f) => f.endsWith('.gif')); } catch { return skip('demo/frames', 'demos unreadable'); }
+  if (!gifs.length) return skip('demo/frames', 'no demo gifs');
+
+  let gate = null;
+  try { gate = (await import(new URL('./demo-frame-check.mjs', import.meta.url).href)).checkDemoFile; } catch { /* app-synced context */ }
+  let ffmpegOk = false;
+  try { execSync('command -v ffmpeg && command -v ffprobe', { stdio: 'ignore' }); ffmpegOk = true; } catch { /* no ffmpeg */ }
+
+  const results = [];
+  for (const gif of gifs) {
+    const gifPath = join(demoDir, gif);
+    if (!exists(gifPath.replace(/\.gif$/, '.frame.json'))) {
+      results.push(warn('demo/frame-spec', `${gif} has no frame-spec sidecar — re-render via demo-capture so it is gated`));
+    }
+    if (gate && ffmpegOk) {
+      try {
+        const res = gate(gifPath);
+        const hard = res.findings.filter((f) => f.severity === 'fail' && f.check !== 'io');
+        if (hard.length) results.push(fail('demo/frame-quality', `${gif} misframed or shows the home screen: ${hard.map((f) => f.message).join('; ')}`));
+      } catch { /* decode error — leave to the production gate */ }
+    }
+  }
+  return results.length ? results : pass('demo/frames', `${gifs.length} demo gif(s) carry a frame-spec`);
+}
+
+// ---------- rules: maintainability standards (engineering-standards.md §1, §6) ----------
+//
+// The mechanical half of the maintainability standards ratchet (05-maintainability
+// Work item 4 / ticket eng-standards-ratchet). WARN, not FAIL — codify→backfill→
+// shipgate, like the testing/i18n/theme tiers — so a real decomposition signal is
+// surfaced without reddening CI while the current outliers (eng-oversized-screens)
+// are decomposed in their own stages. Built false-positives-first: each keys on a
+// mechanical fact (line count, dep count, repo-wide reference count), honours the
+// same per-app escape as the UX rules (baseline "<id>/skip": true or ["Frag.tsx"]),
+// and only names ceilings that engineering-standards.md already documents. No
+// style-cop rules — these are predictive smells (a file to split, a dep to justify,
+// dead code to drop), not formatting opinions.
+
+// maint/file-size — the soft size ceilings from §1: screens ≤400, components ≤300,
+// stores ≤350 lines. Pure data tables are exempt BY OMISSION — only screens/,
+// components/, store/ are bucketed; data/ (seedCatalogData 1098, categoryKeywords
+// 509), lib/, sync/ are never counted. A file over its ceiling is a decomposition
+// signal, not a hard gate.
+const SIZE_CEILINGS = [
+  { dir: 'screens/', ceiling: 400, label: 'screen' },
+  { dir: 'components/', ceiling: 300, label: 'component' },
+  { dir: 'store/', ceiling: 350, label: 'store' },
+];
+const ruleFileSizeCeiling = () => {
+  const id = 'maint/file-size';
+  if (surface !== 'rn') return skip(id, 'Not an RN app');
+  if (ruleSkipsAll(id)) return skip(id, 'Disabled via qa/baseline.json "maint/file-size/skip"');
+  const files = srcSourceFiles();
+  if (!files.length) return skip(id, 'No src/ source files');
+  const hits = [];
+  for (const f of files) {
+    const rel = relative(appDir, f);
+    const relSrc = relative(join(appDir, 'src'), f).replace(/\\/g, '/');
+    if (relSrc.endsWith('.d.ts')) continue;
+    const bucket = SIZE_CEILINGS.find((b) => relSrc.startsWith(b.dir));
+    if (!bucket) continue;                                   // data/ tables, lib/, sync/ exempt
+    if (ruleSkipsFile(id, rel)) continue;
+    const raw = readText(f);
+    if (raw == null) continue;
+    const lines = raw.split(/\r?\n/).length;
+    if (lines > bucket.ceiling) {
+      hits.push(`${rel}: ${lines} lines > ${bucket.ceiling}-line ${bucket.label} ceiling — extract a cohesive sub-view or hook`);
+    }
+  }
+  if (hits.length) {
+    return warn(id,
+      'A screen/component/store file is over its soft size ceiling (screens ≤400, components ≤300, stores ≤350; pure data tables exempt) — a decomposition signal. Split it, or record a deliberate exception in qa/baseline.json "maint/file-size/skip": ["File.tsx"]', hits);
+  }
+  return pass(id, 'Screen/component/store files are within their size ceilings');
+};
+
+// maint/dep-budget — §6 dependency policy: every dep is a liability. The RN fleet
+// runs 24–39 runtime deps (Expo modularity inflates the raw count); a jump past
+// the budget signals a cluster of non-platform deps to justify. WARN; the per-app
+// budget can be raised with baseline "maint/dep-budget": <n> when growth is
+// justified (distinct key from the "/skip" escape).
+const RUNTIME_DEP_BUDGET = 48; // fleet max 39 (grocery-list) as of 2026-07 + headroom
+const ruleDepBudget = () => {
+  const id = 'maint/dep-budget';
+  if (surface !== 'rn') return skip(id, 'Not an RN app'); // budget is calibrated to the RN fleet
+  if (ruleSkipsAll(id)) return skip(id, 'Disabled via qa/baseline.json "maint/dep-budget/skip"');
+  const pkg = readJson(join(appDir, 'package.json'));
+  if (!pkg) return skip(id, 'No package.json');
+  const n = Object.keys(pkg.dependencies || {}).length;
+  const budget = typeof baseline['maint/dep-budget'] === 'number' ? baseline['maint/dep-budget'] : RUNTIME_DEP_BUDGET;
+  if (n > budget) {
+    return warn(id,
+      `${n} runtime dependencies exceed the budget of ${budget} — prefer Expo/stdlib and state a one-line justification per addition (§6). Raise the per-app budget in qa/baseline.json "maint/dep-budget": ${n} if this growth is justified`,
+      [`package.json declares ${n} entries under "dependencies"`]);
+  }
+  return pass(id, `${n} runtime dependencies within the budget of ${budget}`);
+};
+
+// maint/orphaned-export was PROTOTYPED and DROPPED (2026-07-03, ticket
+// eng-standards-ratchet). A grep-based "exported symbol referenced nowhere else"
+// rule cannot meet the false-positives-first bar under the shell/app boundary:
+// the app shell OVERWRITE-SYNCS a full canonical API surface (kv.ts accessors,
+// EmptyState/ScreenHeader/SettingsAbout, backup/log helpers) into every app, and
+// an app that wires only a subset is NOT carrying dead code — those exports are
+// shared scaffolding by design. Tested against the fleet it flagged ~20 such
+// shell exports per app as "remove it" — exactly wrong advice. Separating true
+// app-authored dead code from shell-provided-unused-API would require coupling
+// qa-canonical to the shell file map (unavailable in the app-synced CI context)
+// plus reserved-config awareness. Deferred to a tsserver/ts-morph-grade pass;
+// the two clean, predictive rules above ship instead.
+
 const CANONICAL_RULES = [
   ruleLicense,
   rulePrivacy,
@@ -1092,6 +1400,9 @@ const CANONICAL_RULES = [
   ruleAppNameSpotlightSafe,
   ruleKeyboardDismissEscape,
   ruleModalSafeAreaProvider,
+  ruleEntryScreenAutofocus,
+  ruleCreateOnMount,
+  ruleScrollformKeyboardAvoidance,
   ruleSplashWordmarkClip,
   ruleTipJarNoGmsGuard,
   ruleManifestMv3,
@@ -1102,6 +1413,9 @@ const CANONICAL_RULES = [
   ruleFlowDrift,
   ruleNoHardcodedStrings,
   ruleScreenshotCaptionNoPrice,
+  ruleDemoFramesValid,
+  ruleFileSizeCeiling,
+  ruleDepBudget,
 ];
 
 async function loadAppRules() {
