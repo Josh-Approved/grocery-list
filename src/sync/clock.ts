@@ -41,8 +41,9 @@
 
 /** A device's clock may run at most this far ahead of real time after folding
  *  in peer timestamps. One day comfortably covers honest drift / timezone /
- *  DST while bounding the blast radius of a grossly-wrong peer clock. */
-const MAX_SKEW_MS = 24 * 60 * 60 * 1000;
+ *  DST while bounding the blast radius of a grossly-wrong peer clock.
+ *  Exported so hydrate can heal stored stamps against the same ceiling. */
+export const MAX_SKEW_MS = 24 * 60 * 60 * 1000;
 
 /** Persist at most this often (ms of clock advance). The persisted value only
  *  needs to be "recent enough" to beat a backward clock jump across a restart;
@@ -71,10 +72,15 @@ export class LogicalClock {
   }
 
   /** Restore the high-water mark from disk and wire the persistence sink. Call
-   *  once at startup, before the first `now()`. */
+   *  once at startup, before the first `now()`. Clamped like `observe()` — a
+   *  poisoned far-future value in storage (pre-logical-clock skew era) must
+   *  not pin the clock into the future, where every stamp degrades into a
+   *  counter and "last writer wins" stops tracking real recency. */
   init(persisted: number, persistSink: (v: number) => void): void {
     const p = Number.isFinite(persisted) ? Math.floor(persisted) : 0;
-    if (p > this.last) this.last = p;
+    const cap = this.physicalNow() + this.maxSkewMs;
+    const target = Math.min(p, cap);
+    if (target > this.last) this.last = target;
     this.lastPersisted = this.last;
     this.sink = persistSink;
   }

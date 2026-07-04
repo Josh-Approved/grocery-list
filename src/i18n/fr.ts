@@ -110,7 +110,7 @@ const fr = {
     forgetSuggestion: 'Oublier {name}',
     forgotSuggestion: '{name} oublié',
     swipeToDeleteA11y: 'Retirer {name}',
-    sync: { connected: 'Connecté', offline: 'Hors ligne', syncing: 'Synchronisation…', a11y: 'Synchronisation de la liste partagée : {status}. Touchez pour synchroniser.' },
+    sync: { connected: 'Connecté', offline: 'Hors ligne', syncing: 'Synchronisation…', trouble: 'Pas de synchronisation', a11y: 'Synchronisation de la liste partagée : {status}. Touchez pour synchroniser.' },
   },
   share: {
     shareThis: 'Partager cette liste',

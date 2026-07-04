@@ -111,7 +111,7 @@ const ja = {
     forgetSuggestion: '{name}を候補から外す',
     forgotSuggestion: '{name}を候補から外しました',
     swipeToDeleteA11y: '{name}を削除',
-    sync: { connected: '接続済み', offline: 'オフライン', syncing: '同期中…', a11y: '共有リストの同期：{status}。タップして今すぐ同期。' },
+    sync: { connected: '接続済み', offline: 'オフライン', syncing: '同期中…', trouble: '同期できません', a11y: '共有リストの同期：{status}。タップして今すぐ同期。' },
   },
   share: {
     shareThis: 'このリストを共有',

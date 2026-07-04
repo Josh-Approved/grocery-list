@@ -16,15 +16,23 @@ import {
   type GroceryList,
   clampQty,
   findActiveByName,
+  healFutureStamps,
   makeItem,
   makeList,
+  pruneTombstones,
   visibleItems,
 } from '../data/list';
 import { isBuiltinCategory, type Category } from '../data/categories';
 import { makeId } from '../lib/id';
 import { makeShareIdentity } from '../sync/share';
 import { mergeList } from '../sync/merge';
-import { now as clockNow, initClock, observe as observeClock, peek as clockPeek } from '../sync/clock';
+import {
+  now as clockNow,
+  initClock,
+  observe as observeClock,
+  peek as clockPeek,
+  MAX_SKEW_MS,
+} from '../sync/clock';
 import {
   loadAllLists,
   saveList,
@@ -181,16 +189,25 @@ export const useListsStore = create<ListsState>()((set, get) => {
     if (updated) persist(updated);
   }
 
-  /** Map one item within a list, stamping item + list updatedAt. */
+  /** Map one item within a list, stamping item + list updatedAt.
+   *  `stampContent:false` leaves the item's content clock alone — a check /
+   *  uncheck stamps only its own clock (`checkedUpdatedAt`), because bumping
+   *  `updatedAt` would let a check-off clobber a partner's concurrent
+   *  rename/quantity edit in the content merge. */
   function mutateItem(
     listId: string,
     itemId: string,
-    fn: (it: GroceryItem) => GroceryItem
+    fn: (it: GroceryItem) => GroceryItem,
+    stampContent = true
   ): void {
     mutate(listId, (l) => ({
       ...l,
       items: l.items.map((it) =>
-        it.id === itemId ? { ...fn(it), updatedAt: clockNow() } : it
+        it.id === itemId
+          ? stampContent
+            ? { ...fn(it), updatedAt: clockNow() }
+            : fn(it)
+          : it
       ),
     }));
   }
@@ -208,15 +225,30 @@ export const useListsStore = create<ListsState>()((set, get) => {
           getSyncMeta('clock'),
           loadAllLists(),
         ]);
+        // Hygiene before anything reads the data: clamp far-future stamps
+        // (poison left by the pre-logical-clock skew era — they'd keep beating
+        // fresh edits until real time caught up) and prune old tombstones (an
+        // unpruned list grows until public relays reject its published state).
+        const phys = Date.now();
+        const healed = loaded.map((l) =>
+          pruneTombstones(healFutureStamps(l, phys + MAX_SKEW_MS), phys)
+        );
+        const hygieneChanged = healed.filter((l, i) => l !== loaded[i]);
+
         // Initialise the skew-resistant clock above both the persisted
         // high-water mark and anything already on disk, so a post-update /
         // post-restore install never stamps an edit below its own stored data
         // (which would let stale local state lose to — or beat — a peer wrongly).
         let maxTs = persistedClock ? Number(persistedClock) || 0 : 0;
-        for (const l of loaded) {
+        for (const l of healed) {
           maxTs = Math.max(maxTs, l.updatedAt, l.nameUpdatedAt);
           for (const it of l.items) {
-            maxTs = Math.max(maxTs, it.updatedAt, it.deletedAt ?? 0);
+            maxTs = Math.max(
+              maxTs,
+              it.updatedAt,
+              it.checkedUpdatedAt ?? 0,
+              it.deletedAt ?? 0
+            );
           }
         }
         initClock(maxTs, persistClock);
@@ -224,13 +256,14 @@ export const useListsStore = create<ListsState>()((set, get) => {
         // QA capture boots cleared (clearState:true); seed deterministic data so
         // every screen is screenshot-ready without typing live. Compile-time
         // false in production (EXPO_PUBLIC_QA_MODE unset) → tree-shaken out.
-        if (QA_MODE && loaded.length === 0) {
+        if (QA_MODE && healed.length === 0) {
           set({ lists: qaLists(), hydrated: true });
           return;
         }
-        const { lists, changed } = repairIds(loaded);
+        const { lists, changed } = repairIds(healed);
         set({ lists, hydrated: true });
-        for (const l of changed) persist(l);
+        const dirty = new Set([...hygieneChanged, ...changed].map((l) => l.id));
+        for (const l of lists) if (dirty.has(l.id)) persist(l);
       } catch (err) {
         console.warn('grocery-list: failed to load lists from disk', err);
         initClock(Date.now(), persistClock);
@@ -273,6 +306,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
             id: makeId('i'),
             checked: false,
             checkedAt: undefined,
+            checkedUpdatedAt: now,
             addedAt: now,
             updatedAt: now,
           })),
@@ -309,13 +343,24 @@ export const useListsStore = create<ListsState>()((set, get) => {
       if (!list) return;
       const existing = findActiveByName(list, trimmed);
       if (existing) {
-        mutateItem(listId, existing.id, (it) => ({
-          ...it,
-          quantity: clampQty(it.quantity + 1),
-          // Re-adding a checked item means you want it again this shop.
-          checked: false,
-          checkedAt: undefined,
-        }));
+        if (existing.checked) {
+          // Re-adding a crossed-off item means you want it again NEXT shop —
+          // a fresh single need, not "one more than last time". Quantity
+          // resets to 1 (bumping it was the reported "shows two" defect).
+          mutateItem(listId, existing.id, (it) => ({
+            ...it,
+            quantity: 1,
+            checked: false,
+            checkedAt: undefined,
+            checkedUpdatedAt: clockNow(),
+          }));
+        } else {
+          // Already on the list and still wanted: you're asking for another.
+          mutateItem(listId, existing.id, (it) => ({
+            ...it,
+            quantity: clampQty(it.quantity + 1),
+          }));
+        }
         return;
       }
       mutate(listId, (l) => ({
@@ -327,24 +372,54 @@ export const useListsStore = create<ListsState>()((set, get) => {
     addKitItems: (listId, kitItems) => {
       const list = get().lists.find((l) => l.id === listId);
       if (!list) return [];
-      // Skip anything already on the list (by name), and de-dupe within the kit
-      // itself, so one tap can't double up a row.
-      const present = new Set(
-        visibleItems(list).map((it) => it.name.toLowerCase())
-      );
+      // Skip anything already wanted on the list (by name), and de-dupe within
+      // the kit itself, so one tap can't double up a row. A CHECKED match is
+      // revived instead of skipped — the kit says you need it again. Revived
+      // items are not in the returned array (the caller's Undo tombstones
+      // those ids, which must never delete a pre-existing item).
+      const wanted = new Set<string>();
+      const checkedByName = new Map<string, GroceryItem>();
+      for (const it of visibleItems(list)) {
+        const lower = it.name.toLowerCase();
+        if (it.checked) checkedByName.set(lower, it);
+        else wanted.add(lower);
+      }
       const added: GroceryItem[] = [];
+      const reviveIds = new Set<string>();
       for (const ki of kitItems) {
         const name = ki.name.trim();
         if (!name) continue;
         const lower = name.toLowerCase();
-        if (present.has(lower)) continue;
-        present.add(lower);
+        if (wanted.has(lower)) continue;
+        wanted.add(lower);
+        const crossed = checkedByName.get(lower);
+        if (crossed) {
+          reviveIds.add(crossed.id);
+          continue;
+        }
         const item = makeItem(name, 'en', ki.category);
         item.quantity = clampQty(ki.quantity);
         added.push(item);
       }
-      if (added.length === 0) return [];
-      mutate(listId, (l) => ({ ...l, items: [...l.items, ...added] }));
+      if (added.length === 0 && reviveIds.size === 0) return [];
+      const at = clockNow();
+      mutate(listId, (l) => ({
+        ...l,
+        items: [
+          ...l.items.map((it) =>
+            reviveIds.has(it.id)
+              ? {
+                  ...it,
+                  quantity: 1,
+                  checked: false,
+                  checkedAt: undefined,
+                  checkedUpdatedAt: at,
+                }
+              : it
+          ),
+          ...added,
+        ],
+      }));
       return added;
     },
 
@@ -361,11 +436,18 @@ export const useListsStore = create<ListsState>()((set, get) => {
     },
 
     setChecked: (listId, itemId, checked) => {
-      mutateItem(listId, itemId, (it) => ({
-        ...it,
-        checked,
-        checkedAt: checked ? clockNow() : undefined,
-      }));
+      const at = clockNow();
+      mutateItem(
+        listId,
+        itemId,
+        (it) => ({
+          ...it,
+          checked,
+          checkedAt: checked ? at : undefined,
+          checkedUpdatedAt: at,
+        }),
+        false // check state rides its own clock, not the content clock
+      );
     },
 
     setQuantity: (listId, itemId, qty) => {
@@ -442,14 +524,21 @@ export const useListsStore = create<ListsState>()((set, get) => {
       const snapshots = bought.map((it) => ({ ...it }));
       const boughtIds = new Set(bought.map((it) => it.id));
       const at = clockNow();
-      mutate(listId, (l) => ({
-        ...l,
-        items: l.items.map((it) =>
-          boughtIds.has(it.id)
-            ? { ...it, deletedAt: at, updatedAt: at }
-            : it
-        ),
-      }));
+      // Prune in the same motion — finish-shop is where tombstones are minted,
+      // so it's also where the dead weight is kept bounded between launches.
+      mutate(listId, (l) =>
+        pruneTombstones(
+          {
+            ...l,
+            items: l.items.map((it) =>
+              boughtIds.has(it.id)
+                ? { ...it, deletedAt: at, updatedAt: at }
+                : it
+            ),
+          },
+          Date.now()
+        )
+      );
       return snapshots;
     },
 
@@ -457,11 +546,18 @@ export const useListsStore = create<ListsState>()((set, get) => {
       if (items.length === 0) return;
       const byId = new Map(items.map((it) => [it.id, it]));
       const at = clockNow();
+      // An undo deliberately reinstates the snapshot's checked state too, so
+      // both clocks stamp — the restore must win the merge on every device.
       mutate(listId, (l) => ({
         ...l,
         items: l.items.map((it) =>
           byId.has(it.id)
-            ? { ...byId.get(it.id)!, deletedAt: undefined, updatedAt: at }
+            ? {
+                ...byId.get(it.id)!,
+                deletedAt: undefined,
+                updatedAt: at,
+                checkedUpdatedAt: at,
+              }
             : it
         ),
       }));

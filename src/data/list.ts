@@ -42,6 +42,13 @@ export interface GroceryItem {
   category: Category;
   checked: boolean;
   checkedAt?: number;
+  /** When `checked` last changed — the check state's OWN merge clock, separate
+   *  from `updatedAt` (the content clock). Without it the whole item is one
+   *  last-writer-wins unit, so a partner renaming or re-quantitying an item
+   *  after you crossed it off silently reverts the check when the copies merge
+   *  (the "my checked-off items came back" defect). Absent on legacy records →
+   *  merge falls back to `updatedAt`. */
+  checkedUpdatedAt?: number;
   addedAt: number;
   updatedAt: number;
   /** Soft-delete tombstone (ms). Set instead of removing the item so a delete
@@ -98,6 +105,7 @@ export function makeItem(
     // the name in the active language.
     category: category ?? inferCategory(name, locale),
     checked: false,
+    checkedUpdatedAt: now,
     addedAt: now,
     updatedAt: now,
   };
@@ -177,4 +185,118 @@ export function findActiveByName(
 ): GroceryItem | undefined {
   const n = name.trim().toLowerCase();
   return visibleItems(list).find((it) => it.name.toLowerCase() === n);
+}
+
+// ---------------------------------------------------------------------------
+// Hygiene (pure; run at hydrate / finish-shop, NEVER inside the merge — they
+// depend on local wall time, and the merge must stay a pure convergent
+// function of its two inputs)
+// ---------------------------------------------------------------------------
+
+/** How long a tombstone keeps carrying its dead item in the payload, and how
+ *  many we keep at most. Tombstones exist so a delete beats a paired device's
+ *  stale live copy; a device offline longer than the horizon may resurrect
+ *  what it never saw deleted (accepted tradeoff — without pruning, the
+ *  published payload grows without bound until public relays reject it and
+ *  sync silently dies, which is far worse). */
+export const TOMBSTONE_HORIZON_MS = 21 * 24 * 3600 * 1000;
+export const MAX_TOMBSTONES = 80;
+/** Tombstones keep their payload (notably the NAME) this long: the merge
+ *  folds a late check-off made on a collapsed duplicate into the surviving
+ *  same-name row, and that fold needs the dead row's name. After a week the
+ *  household has long converged; only id + clocks are worth carrying. */
+export const STRIP_AFTER_MS = 7 * 24 * 3600 * 1000;
+
+/**
+ * Bound the list's dead weight: drop tombstones older than the horizon or
+ * beyond the count cap (oldest first), and strip payload fields off the
+ * remaining ones once they're old enough that no same-name fold can still
+ * need them. Returns the same list object when nothing changed, so callers
+ * can cheaply detect a no-op.
+ */
+export function pruneTombstones(list: GroceryList, now: number): GroceryList {
+  const dead = list.items.filter((it) => it.deletedAt != null);
+  if (dead.length === 0) return list;
+
+  const keepIds = new Set(
+    dead
+      .filter((it) => now - (it.deletedAt ?? 0) < TOMBSTONE_HORIZON_MS)
+      .sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0))
+      .slice(0, MAX_TOMBSTONES)
+      .map((it) => it.id)
+  );
+
+  let changed = false;
+  const items: GroceryItem[] = [];
+  for (const it of list.items) {
+    if (it.deletedAt == null) {
+      items.push(it);
+      continue;
+    }
+    if (!keepIds.has(it.id)) {
+      changed = true;
+      continue;
+    }
+    const oldEnoughToStrip = now - (it.deletedAt ?? 0) >= STRIP_AFTER_MS;
+    if (!oldEnoughToStrip || (it.name === '' && it.note == null)) {
+      items.push(it);
+      continue;
+    }
+    changed = true;
+    items.push({
+      id: it.id,
+      name: '',
+      quantity: 1,
+      category: it.category,
+      checked: false,
+      addedAt: it.addedAt,
+      updatedAt: it.updatedAt,
+      checkedUpdatedAt: it.checkedUpdatedAt,
+      deletedAt: it.deletedAt,
+    });
+  }
+  return changed ? { ...list, items } : list;
+}
+
+/**
+ * Clamp every merge-participating stamp to `cap` (wall time + the clock's max
+ * skew). Heals data poisoned by the pre-logical-clock era, where a device with
+ * a fast wall clock minted far-future stamps: those stamps otherwise beat
+ * every fresh edit until real time catches up — stale copies keep winning
+ * merges, checked-off items keep coming back. Returns the same object when
+ * nothing changed.
+ */
+export function healFutureStamps(list: GroceryList, cap: number): GroceryList {
+  const clampTs = (t: number): number => (t > cap ? cap : t);
+  let changed =
+    list.updatedAt > cap || list.nameUpdatedAt > cap || list.createdAt > cap;
+  const items = list.items.map((it) => {
+    if (
+      it.updatedAt <= cap &&
+      it.addedAt <= cap &&
+      (it.checkedUpdatedAt ?? 0) <= cap &&
+      (it.checkedAt ?? 0) <= cap &&
+      (it.deletedAt ?? 0) <= cap
+    ) {
+      return it;
+    }
+    changed = true;
+    return {
+      ...it,
+      updatedAt: clampTs(it.updatedAt),
+      addedAt: clampTs(it.addedAt),
+      checkedUpdatedAt:
+        it.checkedUpdatedAt != null ? clampTs(it.checkedUpdatedAt) : undefined,
+      checkedAt: it.checkedAt != null ? clampTs(it.checkedAt) : undefined,
+      deletedAt: it.deletedAt != null ? clampTs(it.deletedAt) : undefined,
+    };
+  });
+  if (!changed) return list;
+  return {
+    ...list,
+    updatedAt: clampTs(list.updatedAt),
+    nameUpdatedAt: clampTs(list.nameUpdatedAt),
+    createdAt: clampTs(list.createdAt),
+    items,
+  };
 }

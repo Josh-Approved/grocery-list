@@ -33,7 +33,13 @@ import type { GroceryList } from '../data/list';
 import type { Kit } from '../data/kit';
 import { channelId, seal, open } from './crypto';
 import { DropBoxTransport } from './transport';
-import { markConnected, markReceived, markSent, dropStatus } from './status';
+import {
+  markConnected,
+  markDelivered,
+  markReceived,
+  markSent,
+  dropStatus,
+} from './status';
 
 /** A control message asking peers to re-publish their current state. Encrypted
  *  like everything else; distinguished from a state message by `_sync` (a state
@@ -56,11 +62,18 @@ type TransportFactory = (
   channel: string,
   onMessage: (ciphertext: string) => void,
   onReconnect: () => void,
-  onStatus: (openRelays: number) => void
+  onStatus: (openRelays: number) => void,
+  onPublishResult?: (delivered: boolean, reason: string) => void
 ) => EngineTransport;
 
-let makeTransport: TransportFactory = (channel, onMessage, onReconnect, onStatus) =>
-  new DropBoxTransport(channel, onMessage, onReconnect, onStatus);
+let makeTransport: TransportFactory = (
+  channel,
+  onMessage,
+  onReconnect,
+  onStatus,
+  onPublishResult
+) =>
+  new DropBoxTransport(channel, onMessage, onReconnect, onStatus, onPublishResult);
 
 /** TEST-ONLY seam: swap the transport factory (e.g. for a recording fake) and
  *  get back a restore fn. Production never calls this — the default factory
@@ -109,7 +122,8 @@ function ensureChannel(secret: string): Channel {
     channelId(secret),
     (ct) => receive(secret, ct),
     () => onReconnect(secret),
-    (openRelays) => markConnected(secret, openRelays > 0)
+    (openRelays) => markConnected(secret, openRelays > 0),
+    (delivered) => markDelivered(secret, delivered)
   );
   ch = { transport, lastSent: '', timer: null, lastHelloAt: 0 };
   channels.set(secret, ch);
@@ -184,6 +198,12 @@ function forcePublish(secret: string): void {
     .getState()
     .lists.find((l) => sharedSecret(l) === secret);
   if (!list) return;
+  // Cancel any pending debounced publish: it captured an OLDER snapshot, and
+  // letting it fire after this one would re-send stale state.
+  if (ch.timer) {
+    clearTimeout(ch.timer);
+    ch.timer = null;
+  }
   const payload = JSON.stringify(list);
   ch.lastSent = payload;
   ch.transport.publish(seal(secret, payload));

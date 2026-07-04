@@ -111,7 +111,7 @@ const pt_BR = {
     forgetSuggestion: 'Esquecer {name}',
     forgotSuggestion: '{name} esquecido',
     swipeToDeleteA11y: 'Remover {name}',
-    sync: { connected: 'Conectado', offline: 'Sem conexão', syncing: 'Sincronizando…', a11y: 'Sincronização da lista compartilhada: {status}. Toque para sincronizar agora.' },
+    sync: { connected: 'Conectado', offline: 'Sem conexão', syncing: 'Sincronizando…', trouble: 'Sem sincronizar', a11y: 'Sincronização da lista compartilhada: {status}. Toque para sincronizar agora.' },
   },
   share: {
     shareThis: 'Compartilhar esta lista',

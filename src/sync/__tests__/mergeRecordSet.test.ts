@@ -57,15 +57,17 @@ describe('mergeRecordSet — last-write-wins by clock', () => {
     expect(get(mergeRecordSet([fresh], [old]), 'x')).toEqual(fresh);
   });
 
-  it('on an exact updatedAt tie between two live edits, the result is stable (no flip-flop)', () => {
+  it('on an exact updatedAt tie between two live edits, BOTH merge orders pick the same copy', () => {
     const left = rec('x', T0, { name: 'A' });
     const right = rec('x', T0, { name: 'B' });
-    // The contract: a tie between two live edits is resolved deterministically
-    // (keep the one already in the map = the left/`a` side) so both devices,
-    // merging in their own order, still converge — see the commutativity test
-    // below for the both-sides guarantee.
-    expect(get(mergeRecordSet([left], [right]), 'x')).toEqual(left);
-    expect(get(mergeRecordSet([right], [left]), 'x')).toEqual(right);
+    // The contract: a tie between two live edits resolves by CONTENT (stable
+    // key-sorted serialization), identically on every device. The old
+    // "keep whichever copy is local" rule meant two phones that stamped the
+    // same millisecond each kept their own copy — divergent forever.
+    const ab = get(mergeRecordSet([left], [right]), 'x');
+    const ba = get(mergeRecordSet([right], [left]), 'x');
+    expect(ab).toEqual(ba);
+    expect([left, right]).toContainEqual(ab);
   });
 });
 

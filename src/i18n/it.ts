@@ -109,7 +109,7 @@ const it = {
     forgetSuggestion: 'Dimentica {name}',
     forgotSuggestion: '{name} dimenticato',
     swipeToDeleteA11y: 'Rimuovi {name}',
-    sync: { connected: 'Connesso', offline: 'Offline', syncing: 'Sincronizzazione…', a11y: 'Sincronizzazione lista condivisa: {status}. Tocca per sincronizzare ora.' },
+    sync: { connected: 'Connesso', offline: 'Offline', syncing: 'Sincronizzazione…', trouble: 'Non sincronizza', a11y: 'Sincronizzazione lista condivisa: {status}. Tocca per sincronizzare ora.' },
   },
   share: {
     shareThis: 'Condividi questa lista',

@@ -43,12 +43,19 @@ export function SyncStatusBar({ secret }: { secret: string }) {
   const label = syncing
     ? t('detail.sync.syncing')
     : status.connected
-      ? t('detail.sync.connected')
+      ? status.publishRejected
+        ? t('detail.sync.trouble')
+        : t('detail.sync.connected')
       : t('detail.sync.offline');
   // Accent (not approval-green — that token is reserved for the verified/done
-  // semantic) marks an active connection; muted marks offline. The text label
+  // semantic) marks an active connection; muted marks offline OR a connection
+  // that relays are refusing our updates on ("connected" would be dishonest —
+  // the socket is up but nothing we publish is being carried). The text label
   // carries the meaning, so the dot is a secondary indicator, never colour-only.
-  const dotColor = status.connected || syncing ? c.appAccent : c.fgSubtle;
+  const dotColor =
+    syncing || (status.connected && !status.publishRejected)
+      ? c.appAccent
+      : c.fgSubtle;
 
   return (
     <Pressable

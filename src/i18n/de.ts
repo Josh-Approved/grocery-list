@@ -112,7 +112,7 @@ const de = {
     forgetSuggestion: '{name} vergessen',
     forgotSuggestion: '{name} wurde vergessen',
     swipeToDeleteA11y: '{name} entfernen',
-    sync: { connected: 'Verbunden', offline: 'Offline', syncing: 'Wird synchronisiert…', a11y: 'Synchronisierung der geteilten Liste: {status}. Zum Synchronisieren tippen.' },
+    sync: { connected: 'Verbunden', offline: 'Offline', syncing: 'Wird synchronisiert…', trouble: 'Keine Synchronisierung', a11y: 'Synchronisierung der geteilten Liste: {status}. Zum Synchronisieren tippen.' },
   },
   share: {
     shareThis: 'Diese Liste teilen',

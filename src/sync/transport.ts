@@ -28,8 +28,13 @@ import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import nacl from 'tweetnacl';
 
 /** Free public relays. Updatable: the swarm is redundant by design, so a
- *  dead one just means fewer couriers, never a broken app. */
-export const RELAYS = [
+ *  dead one just means fewer couriers, never a broken app.
+ *  EXPO_PUBLIC_SYNC_RELAYS (comma-separated ws:// URLs, baked at bundle time)
+ *  overrides the list — used by the two-device E2E harness to run against a
+ *  local relay hermetically. Unset in every store build. */
+export const RELAYS = (process.env.EXPO_PUBLIC_SYNC_RELAYS?.split(',')
+  .map((u) => u.trim())
+  .filter(Boolean) as string[] | undefined) ?? [
   'wss://relay.damus.io',
   'wss://nos.lol',
   'wss://relay.primal.net',
@@ -54,6 +59,8 @@ export class DropBoxTransport {
   private openSockets = new Set<WebSocket>();
   private seen = new Set<string>();
   private mine = new Set<string>();
+  /** Per published event id: whether any relay accepted, and how many rejected. */
+  private ackState = new Map<string, { ok: boolean; rejects: number }>();
   private closed = false;
   private priv: Uint8Array;
   private pub: string;
@@ -69,12 +76,16 @@ export class DropBoxTransport {
    *   the other side happens to make an edit.
    * @param onStatus  fires with the live relay count whenever it changes — the
    *   engine surfaces this as a connected/offline indicator in the UI.
+   * @param onPublishResult  fires once per published event: `true` when the
+   *   first relay accepts it, `false` when every open relay rejected it — so
+   *   the engine can tell "sent" apart from "actually delivered".
    */
   constructor(
     private channel: string,
     private onMessage: (ciphertext: string) => void,
     private onConnect?: () => void,
-    private onStatus?: (openRelays: number) => void
+    private onStatus?: (openRelays: number) => void,
+    private onPublishResult?: (delivered: boolean, reason: string) => void
   ) {
     this.priv = sha256(nacl.randomBytes(32));
     this.pub = bytesToHex(schnorr.getPublicKey(this.priv));
@@ -131,7 +142,29 @@ export class DropBoxTransport {
     } catch {
       return;
     }
-    if (!Array.isArray(msg) || msg[0] !== 'EVENT') return;
+    if (!Array.isArray(msg)) return;
+    // NIP-20 command result for one of our publishes. One acceptance anywhere
+    // means the swarm carried it; a rejection from EVERY open relay means the
+    // publish silently failed (rate limit, max event size, …) — ignoring that
+    // made oversized publishes vanish while the UI claimed "Connected".
+    if (msg[0] === 'OK' && typeof msg[1] === 'string' && this.mine.has(msg[1])) {
+      const id = msg[1];
+      const st = this.ackState.get(id) ?? { ok: false, rejects: 0 };
+      if (msg[2] === true) {
+        if (!st.ok) this.onPublishResult?.(true, '');
+        st.ok = true;
+      } else {
+        st.rejects += 1;
+        if (!st.ok && st.rejects >= Math.max(1, this.openSockets.size)) {
+          const reason = String(msg[3] ?? '');
+          console.warn(`grocery-list sync: all relays rejected publish: ${reason}`);
+          this.onPublishResult?.(false, reason);
+        }
+      }
+      this.ackState.set(id, st);
+      return;
+    }
+    if (msg[0] !== 'EVENT') return;
     const ev = msg[2] as NostrEvent | undefined;
     if (!ev || ev.kind !== KIND || this.seen.has(ev.id) || this.mine.has(ev.id))
       return;
@@ -158,7 +191,10 @@ export class DropBoxTransport {
     const id = bytesToHex(idBytes);
     const sig = bytesToHex(schnorr.sign(idBytes, this.priv));
     this.mine.add(id);
-    if (this.mine.size > 200) this.mine = new Set([id]);
+    if (this.mine.size > 200) {
+      this.mine = new Set([id]);
+      this.ackState.clear();
+    }
     const ev: NostrEvent = {
       id,
       pubkey: this.pub,

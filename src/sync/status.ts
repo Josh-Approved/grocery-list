@@ -20,9 +20,18 @@ export interface ChannelStatus {
   lastReceivedAt: number | null;
   /** ms of the last copy we published. */
   lastSentAt: number | null;
+  /** True when the last publish was rejected by every open relay — the socket
+   *  is up but our state is NOT leaving the device ("sent" ≠ "delivered").
+   *  Cleared by the next accepted publish. */
+  publishRejected: boolean;
 }
 
-const EMPTY: ChannelStatus = { connected: false, lastReceivedAt: null, lastSentAt: null };
+const EMPTY: ChannelStatus = {
+  connected: false,
+  lastReceivedAt: null,
+  lastSentAt: null,
+  publishRejected: false,
+};
 
 interface SyncStatusState {
   bySecret: Record<string, ChannelStatus>;
@@ -58,6 +67,9 @@ export function markReceived(secret: string, at: number): void {
 }
 export function markSent(secret: string, at: number): void {
   useSyncStatusStore.getState().patch(secret, { lastSentAt: at });
+}
+export function markDelivered(secret: string, delivered: boolean): void {
+  useSyncStatusStore.getState().patch(secret, { publishRejected: !delivered });
 }
 export function dropStatus(secret: string): void {
   useSyncStatusStore.getState().drop(secret);
