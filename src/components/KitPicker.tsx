@@ -44,6 +44,7 @@ export default function KitPicker({ listId }: Props) {
   const list = useListsStore((st) => st.lists.find((l) => l.id === listId));
   const addKitItems = useListsStore((st) => st.addKitItems);
   const removeItems = useListsStore((st) => st.removeItems);
+  const restoreItems = useListsStore((st) => st.restoreItems);
   const kits = useKitsStore((st) => st.kits);
 
   const [snack, setSnack] = useState<{
@@ -69,7 +70,7 @@ export default function KitPicker({ listId }: Props) {
         setSnack({ message: t('kits.kitEmpty') });
         return;
       }
-      const added = addKitItems(
+      const { added, revived } = addKitItems(
         listId,
         items.map((it) => ({
           name: it.name,
@@ -78,19 +79,26 @@ export default function KitPicker({ listId }: Props) {
         }))
       );
       Haptics.selectionAsync().catch(() => {});
-      if (added.length === 0) {
+      const total = added.length + revived.length;
+      if (total === 0) {
         setSnack({ message: t('kits.allPresent') });
         return;
       }
       const ids = added.map((it) => it.id);
       setSnack({
-        message: t(added.length === 1 ? 'kits.addedOne' : 'kits.addedOther', {
-          count: added.length,
+        message: t(total === 1 ? 'kits.addedOne' : 'kits.addedOther', {
+          count: total,
         }),
-        undo: () => removeItems(listId, ids),
+        // Undo removes what was newly added and puts revived rows back to
+        // their pre-kit state (crossed off) — it must never delete a row
+        // that existed before the tap.
+        undo: () => {
+          removeItems(listId, ids);
+          restoreItems(listId, revived);
+        },
       });
     },
-    [addKitItems, removeItems, listId]
+    [addKitItems, removeItems, restoreItems, listId]
   );
 
   const renderItem = useCallback(

@@ -111,15 +111,16 @@ interface ListsState {
     locale?: string,
     category?: Category
   ) => void;
-  /** Add a kit's items to a list in one shot. Skips any item already active on
-   *  the list (by name) — selecting a kit never doubles up what you already
-   *  have. Items arrive with their remembered quantity + pre-assigned aisle, so
-   *  they land sorted instantly. Returns the items actually added (for the
-   *  "Added N items" toast and its Undo). */
+  /** Add a kit's items to a list in one shot. Skips any name already WANTED
+   *  on the list; a crossed-off match is revived (unchecked, qty 1 — the kit
+   *  says you need it again). Items arrive with their remembered quantity +
+   *  pre-assigned aisle, so they land sorted instantly. Returns the new items
+   *  (`added`) and pre-change snapshots of revived ones (`revived`) so the
+   *  caller's Undo can remove the former and restore the latter. */
   addKitItems: (
     listId: string,
     items: { name: string; quantity: number; category: Category }[]
-  ) => GroceryItem[];
+  ) => { added: GroceryItem[]; revived: GroceryItem[] };
   /** Soft-delete a batch of items in a single mutate — the Undo for a kit add. */
   removeItems: (listId: string, itemIds: string[]) => void;
   setChecked: (listId: string, itemId: string, checked: boolean) => void;
@@ -371,7 +372,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
 
     addKitItems: (listId, kitItems) => {
       const list = get().lists.find((l) => l.id === listId);
-      if (!list) return [];
+      if (!list) return { added: [], revived: [] };
       // Skip anything already wanted on the list (by name), and de-dupe within
       // the kit itself, so one tap can't double up a row. A CHECKED match is
       // revived instead of skipped — the kit says you need it again. Revived
@@ -401,7 +402,11 @@ export const useListsStore = create<ListsState>()((set, get) => {
         item.quantity = clampQty(ki.quantity);
         added.push(item);
       }
-      if (added.length === 0 && reviveIds.size === 0) return [];
+      if (added.length === 0 && reviveIds.size === 0)
+        return { added: [], revived: [] };
+      const revived = visibleItems(list)
+        .filter((it) => reviveIds.has(it.id))
+        .map((it) => ({ ...it })); // pre-change snapshots for the caller's Undo
       const at = clockNow();
       mutate(listId, (l) => ({
         ...l,
@@ -414,25 +419,36 @@ export const useListsStore = create<ListsState>()((set, get) => {
                   checked: false,
                   checkedAt: undefined,
                   checkedUpdatedAt: at,
+                  // The quantity reset is a CONTENT change — without this
+                  // stamp the revive ties with the partner's stale copy and
+                  // can lose the merge (reverting to the old quantity).
+                  updatedAt: at,
                 }
               : it
           ),
           ...added,
         ],
       }));
-      return added;
+      return { added, revived };
     },
 
     removeItems: (listId, itemIds) => {
       if (itemIds.length === 0) return;
       const idSet = new Set(itemIds);
       const at = clockNow();
-      mutate(listId, (l) => ({
-        ...l,
-        items: l.items.map((it) =>
-          idSet.has(it.id) ? { ...it, deletedAt: at, updatedAt: at } : it
-        ),
-      }));
+      // Prune wherever tombstones are minted — a long-resident app that only
+      // ever swipe-deletes must still keep its payload bounded.
+      mutate(listId, (l) =>
+        pruneTombstones(
+          {
+            ...l,
+            items: l.items.map((it) =>
+              idSet.has(it.id) ? { ...it, deletedAt: at, updatedAt: at } : it
+            ),
+          },
+          Date.now()
+        )
+      );
     },
 
     setChecked: (listId, itemId, checked) => {
@@ -511,7 +527,19 @@ export const useListsStore = create<ListsState>()((set, get) => {
     },
 
     deleteItem: (listId, itemId) => {
-      mutateItem(listId, itemId, (it) => ({ ...it, deletedAt: clockNow() }));
+      const at = clockNow();
+      // Same prune-at-mint rule as removeItems.
+      mutate(listId, (l) =>
+        pruneTombstones(
+          {
+            ...l,
+            items: l.items.map((it) =>
+              it.id === itemId ? { ...it, deletedAt: at, updatedAt: at } : it
+            ),
+          },
+          Date.now()
+        )
+      );
     },
 
     finishShop: (listId) => {
@@ -599,15 +627,34 @@ export const useListsStore = create<ListsState>()((set, get) => {
         (l) => l.shareIdentity?.secret === secret
       );
       if (!local) return;
+      // Heal the INCOMING copy too (hydrate only heals what's on disk): a
+      // peer still running the pre-clock build republishes far-future
+      // poisoned stamps on every sync, which would otherwise out-clock every
+      // fresh local edit and undo the hydrate heal seconds after each launch.
+      // The receive boundary is side-effect territory, so the merge itself
+      // stays a pure function.
+      const healed = healFutureStamps(remote, Date.now() + MAX_SKEW_MS);
       // Advance our clock past every timestamp in the incoming copy, so our
       // NEXT local edit out-clocks whatever the peer last did — this is what
       // turns "fastest wall clock wins" into "last action in causal order wins".
-      let remoteMax = Math.max(remote.updatedAt, remote.nameUpdatedAt);
-      for (const it of remote.items) {
-        remoteMax = Math.max(remoteMax, it.updatedAt, it.deletedAt ?? 0);
+      // The check clock is scanned explicitly: it does NOT ride updatedAt, and
+      // relying on the list-level stamp to transitively cover it would be an
+      // unwritten invariant.
+      let remoteMax = Math.max(healed.updatedAt, healed.nameUpdatedAt);
+      for (const it of healed.items) {
+        remoteMax = Math.max(
+          remoteMax,
+          it.updatedAt,
+          it.checkedUpdatedAt ?? 0,
+          it.checkedAt ?? 0,
+          it.deletedAt ?? 0
+        );
       }
       observeClock(remoteMax);
-      const merged = mergeList(local, remote);
+      const merged = mergeList(local, healed);
+      // A converged echo (peer answering hello, reconnect force-publish) must
+      // not cost a store update + full-list SQLite write + re-render.
+      if (JSON.stringify(merged) === JSON.stringify(local)) return;
       set((s) => ({
         lists: s.lists.map((l) => (l.id === local.id ? merged : l)),
       }));

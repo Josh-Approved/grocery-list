@@ -348,8 +348,9 @@ describe('R2d: full-state payload stays under relay event-size limits', () => {
     }
 
     const json = JSON.stringify(a.store.getState().getList(listId)!);
-    // Sealed payload adds ~37% (base64) + event envelope; 20KB of JSON keeps
-    // the published event safely under the strictest public-relay limits.
-    expect(json.length).toBeLessThan(20 * 1024);
+    // Sealed payload adds ~37% (base64) + the event envelope; 32KB of JSON
+    // (~44KB on the wire) keeps 2× headroom under the ~64KB event-size limit
+    // of the swarm's relays. Pre-fix this measured 256KB — sync was dead.
+    expect(json.length).toBeLessThan(32 * 1024);
   });
 });

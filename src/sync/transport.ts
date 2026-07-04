@@ -31,10 +31,18 @@ import nacl from 'tweetnacl';
  *  dead one just means fewer couriers, never a broken app.
  *  EXPO_PUBLIC_SYNC_RELAYS (comma-separated ws:// URLs, baked at bundle time)
  *  overrides the list — used by the two-device E2E harness to run against a
- *  local relay hermetically. Unset in every store build. */
-export const RELAYS = (process.env.EXPO_PUBLIC_SYNC_RELAYS?.split(',')
-  .map((u: string) => u.trim())
-  .filter(Boolean) as string[] | undefined) ?? [
+ *  local relay hermetically. DEV-ONLY by construction: release builds ignore
+ *  it, so a stray env var in the build shell can never bake a localhost
+ *  relay list into a store binary. An empty/blank var falls back too. */
+function envRelays(): string[] | undefined {
+  if (typeof __DEV__ === 'undefined' || !__DEV__) return undefined;
+  const list = process.env.EXPO_PUBLIC_SYNC_RELAYS?.split(',')
+    .map((u: string) => u.trim())
+    .filter(Boolean);
+  return list && list.length > 0 ? list : undefined;
+}
+
+export const RELAYS = envRelays() ?? [
   'wss://relay.damus.io',
   'wss://nos.lol',
   'wss://relay.primal.net',
@@ -59,8 +67,12 @@ export class DropBoxTransport {
   private openSockets = new Set<WebSocket>();
   private seen = new Set<string>();
   private mine = new Set<string>();
-  /** Per published event id: whether any relay accepted, and how many rejected. */
-  private ackState = new Map<string, { ok: boolean; rejects: number }>();
+  /** Per published event id: whether any relay accepted, how many rejected,
+   *  and how many sockets the event was actually SENT to — the rejection
+   *  threshold must count recipients, not currently-open sockets (a relay
+   *  that connected after the publish never got the event and will never
+   *  OK it). */
+  private ackState = new Map<string, { ok: boolean; rejects: number; sent: number }>();
   private closed = false;
   private priv: Uint8Array;
   private pub: string;
@@ -149,15 +161,15 @@ export class DropBoxTransport {
     // made oversized publishes vanish while the UI claimed "Connected".
     if (msg[0] === 'OK' && typeof msg[1] === 'string' && this.mine.has(msg[1])) {
       const id = msg[1];
-      const st = this.ackState.get(id) ?? { ok: false, rejects: 0 };
+      const st = this.ackState.get(id) ?? { ok: false, rejects: 0, sent: 1 };
       if (msg[2] === true) {
         if (!st.ok) this.onPublishResult?.(true, '');
         st.ok = true;
       } else {
         st.rejects += 1;
-        if (!st.ok && st.rejects >= Math.max(1, this.openSockets.size)) {
+        if (!st.ok && st.rejects >= Math.max(1, st.sent)) {
           const reason = String(msg[3] ?? '');
-          console.warn(`grocery-list sync: all relays rejected publish: ${reason}`);
+          console.warn(`shared-sync: all relays rejected publish: ${reason}`);
           this.onPublishResult?.(false, reason);
         }
       }
@@ -205,15 +217,18 @@ export class DropBoxTransport {
       sig,
     };
     const frame = JSON.stringify(['EVENT', ev]);
+    let sent = 0;
     for (const ws of this.sockets) {
       if (ws.readyState === 1) {
         try {
           ws.send(frame);
+          sent += 1;
         } catch {
           /* dropped — another relay or the next publish will carry it */
         }
       }
     }
+    this.ackState.set(id, { ok: false, rejects: 0, sent: Math.max(1, sent) });
   }
 
   close(): void {

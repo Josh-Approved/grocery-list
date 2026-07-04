@@ -22,10 +22,11 @@
  * DUPLICATE NAMES COLLAPSE DETERMINISTICALLY. Two devices adding "Milk" while
  * apart mint two different ids, and an id-keyed union would show two Milk
  * rows forever. After the record merge, visible items sharing a normalized
- * name collapse to the earliest-added copy (ties by id), folding quantity and
- * check state; the losers are tombstoned at the winner's clock. The collapse
- * is a pure function of the merged set, so every device computes the same
- * result — convergence is preserved.
+ * name collapse to the freshest copy, which keeps its own content; check
+ * state folds across the whole name group by its clock; the losers are
+ * tombstoned at their own clock. The collapse is a pure function of the
+ * merged set, so every device computes the same result — convergence is
+ * preserved. (Details on the collapse function below.)
  *
  * Yjs / Automerge were considered (the spec named them) and deliberately not
  * used: a list of records needs an LWW-element-set, not a sequence CRDT —
@@ -33,7 +34,7 @@
  * as a deliberate build decision in the project's build notes.
  */
 
-import type { GroceryItem, GroceryList } from '../data/list';
+import { normalizeItemName, type GroceryItem, type GroceryList } from '../data/list';
 import { mergeRecordSet } from './mergeRecordSet';
 
 /** The clock the *name* merges by. Legacy lists persisted before `nameUpdatedAt`
@@ -44,14 +45,18 @@ function nameClock(l: GroceryList): number {
   return l.nameUpdatedAt ?? l.createdAt;
 }
 
-/** The check state's clock. Legacy records (minted before the field existed)
- *  fall back to `checkedAt` — exactly when they were checked — and then to
- *  `addedAt` (unchecked since creation). NEVER to `updatedAt`: the content
- *  clock rises with every rename/quantity edit, so falling back to it would
- *  re-create the very defect this clock exists to fix (a content edit
- *  out-clocking and reverting a check-off). */
+/** The check state's clock: the newest of `checkedUpdatedAt` and `checkedAt`,
+ *  falling back to `addedAt` (unchecked since creation). `checkedAt` must
+ *  participate even when `checkedUpdatedAt` exists: an OLD-version device
+ *  checks an item by writing only `checkedAt`, and a stale `checkedUpdatedAt`
+ *  minted earlier by a new-version device must not mask that fresher action.
+ *  NEVER falls back to `updatedAt`: the content clock rises with every
+ *  rename/quantity edit, so using it would re-create the very defect this
+ *  clock exists to fix (a content edit out-clocking and reverting a
+ *  check-off). */
 function checkedClock(it: GroceryItem): number {
-  return it.checkedUpdatedAt ?? it.checkedAt ?? it.addedAt;
+  const explicit = Math.max(it.checkedUpdatedAt ?? 0, it.checkedAt ?? 0);
+  return explicit > 0 ? explicit : it.addedAt;
 }
 
 /** Fold the loser's check state into the record winner when it is newer.
@@ -70,9 +75,8 @@ function combineItems(win: GroceryItem, lose: GroceryItem): GroceryItem {
   };
 }
 
-function normName(name: string): string {
-  return name.trim().toLowerCase();
-}
+// One name-identity rule for the whole app (store dedupe + merge collapse).
+const normName = normalizeItemName;
 
 /**
  * Reconcile items that share a normalized name, deterministically.
@@ -96,9 +100,25 @@ function normName(name: string): string {
  * Pure function of the merged set → identical on every device → convergent.
  */
 function collapseDuplicateNames(items: GroceryItem[]): GroceryItem[] {
-  const groups = new Map<string, GroceryItem[]>();
+  // Fast bail: name groups only matter when a normalized name occurs twice.
+  // In the overwhelmingly common no-duplicate case (every received message,
+  // once converged) this is one pass and no per-group allocation.
+  const seen = new Set<string>();
+  let hasDup = false;
   for (const it of items) {
     if (it.name === '') continue; // stripped tombstone — no name to group by
+    const key = normName(it.name);
+    if (seen.has(key)) {
+      hasDup = true;
+      break;
+    }
+    seen.add(key);
+  }
+  if (!hasDup) return items;
+
+  const groups = new Map<string, GroceryItem[]>();
+  for (const it of items) {
+    if (it.name === '') continue;
     const key = normName(it.name);
     const arr = groups.get(key) ?? [];
     arr.push(it);
@@ -107,6 +127,7 @@ function collapseDuplicateNames(items: GroceryItem[]): GroceryItem[] {
 
   const replace = new Map<string, GroceryItem>();
   for (const group of groups.values()) {
+    if (group.length < 2) continue;
     const live = group.filter((it) => it.deletedAt == null);
     if (live.length === 0) continue;
     const sorted = [...live].sort(
@@ -129,7 +150,15 @@ function collapseDuplicateNames(items: GroceryItem[]): GroceryItem[] {
         deletedAt: Math.max(dup.updatedAt, dup.deletedAt ?? 0),
       });
     }
-    if (checkSource !== keeper || sorted.length > 1) {
+    // Rewrite the keeper only when the fold actually changes its check state
+    // — identity-preserving for memoized rows, and no hidden legacy-stamp
+    // materialization on a value-equal pass.
+    if (
+      checkSource !== keeper &&
+      (checkSource.checked !== keeper.checked ||
+        checkSource.checkedAt !== keeper.checkedAt ||
+        checkedClock(checkSource) !== checkedClock(keeper))
+    ) {
       replace.set(keeper.id, {
         ...keeper,
         checked: checkSource.checked,
@@ -148,8 +177,17 @@ export function mergeList(
   local: GroceryList,
   remote: GroceryList
 ): GroceryList {
-  const localNewer = local.updatedAt >= remote.updatedAt;
-  const head = localNewer ? local : remote;
+  // Head (aisle order + share identity) resolves by the whole-list clock;
+  // tie → the greater serialized aisle order, so both devices agree even when
+  // two edits land in the same millisecond ("keep local" would diverge).
+  const head =
+    local.updatedAt !== remote.updatedAt
+      ? local.updatedAt > remote.updatedAt
+        ? local
+        : remote
+      : JSON.stringify(local.categoryOrder) >= JSON.stringify(remote.categoryOrder)
+        ? local
+        : remote;
   // The name resolves on its OWN clock, independent of the list's updatedAt.
   // Tie → the lexicographically greater name, so both devices agree even when
   // two renames land in the same millisecond.

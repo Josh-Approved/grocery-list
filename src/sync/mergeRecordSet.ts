@@ -56,8 +56,24 @@ function stableStringify(v: unknown): string {
 }
 type Record2 = { [k: string]: unknown };
 
+/** Flat value-equality over own enumerable keys (undefined-valued keys are
+ *  ignored, matching what the JSON wire drops). The fast path for ties: in a
+ *  converged set EVERY shared id ties on clock with identical content, so
+ *  the expensive stable serialization must not run per item per message. Any
+ *  nested value (arrays/objects) fails === and falls through to the full
+ *  serialization — correctness is never traded, only work. */
+function shallowEqual(a: object, b: object): boolean {
+  const ra = a as { [k: string]: unknown };
+  const rb = b as { [k: string]: unknown };
+  for (const k in ra) if (ra[k] !== rb[k] && ra[k] !== undefined) return false;
+  for (const k in rb) if (rb[k] !== ra[k] && rb[k] !== undefined) return false;
+  return true;
+}
+
 /** Pick the surviving record of two copies with the same id. Total order:
- *  higher clock → tombstone (a delete is the safe branch) → greater stable
+ *  higher clock → tombstone (a delete is the safe branch) → between two
+ *  tombstones the LEANER serialization (so a payload-stripped tombstone
+ *  propagates and the size bound actually holds swarm-wide) → greater stable
  *  serialization (arbitrary but identical on every device — two phones that
  *  stamp the same millisecond must still agree on one copy). */
 function winner<T extends Record>(a: T, b: T): T {
@@ -67,7 +83,11 @@ function winner<T extends Record>(a: T, b: T): T {
   const aDead = a.deletedAt != null;
   const bDead = b.deletedAt != null;
   if (aDead !== bDead) return aDead ? a : b;
-  return stableStringify(a) >= stableStringify(b) ? a : b;
+  if (shallowEqual(a, b)) return a;
+  const sa = stableStringify(a);
+  const sb = stableStringify(b);
+  if (aDead) return sa.length !== sb.length ? (sa.length < sb.length ? a : b) : sa >= sb ? a : b;
+  return sa >= sb ? a : b;
 }
 
 /** Merge two record sets by id. Returns a new array; order is not

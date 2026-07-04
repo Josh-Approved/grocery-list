@@ -21,10 +21,22 @@ import type { Kit, KitItem } from '../data/kit';
 
 const DB_NAME = 'grocery-list.db';
 
-let _db: SQLite.SQLiteDatabase | null = null;
+let _dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
-async function getDb(): Promise<SQLite.SQLiteDatabase> {
-  if (_db) return _db;
+/** Memoize the OPEN PROMISE, not the handle: hydrate fires several queries
+ *  concurrently (Promise.all), and two racing first opens are themselves the
+ *  Android fresh-install "path already points to a non-normal file" failure
+ *  — every caller must await the same open. */
+function getDb(): Promise<SQLite.SQLiteDatabase> {
+  _dbPromise ??= openDb().catch((err) => {
+    _dbPromise = null; // next caller retries a failed open from scratch
+    throw err;
+  });
+  return _dbPromise;
+}
+
+async function openDb(): Promise<SQLite.SQLiteDatabase> {
+  let _db: SQLite.SQLiteDatabase;
   try {
     _db = await SQLite.openDatabaseAsync(DB_NAME);
   } catch (err) {
@@ -32,7 +44,6 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
     // data clear) can race the SQLite directory creation ("path already
     // points to a non-normal file") — one settle-and-retry succeeds, where
     // giving up would boot the user into a silently empty app.
-    _db = null;
     await new Promise((r) => setTimeout(r, 400));
     _db = await SQLite.openDatabaseAsync(DB_NAME);
   }

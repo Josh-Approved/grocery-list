@@ -176,6 +176,14 @@ export function checkedItems(list: GroceryList): GroceryItem[] {
     .sort((a, b) => (b.checkedAt ?? 0) - (a.checkedAt ?? 0));
 }
 
+/** THE name-identity rule — one normalizer for every layer that answers "are
+ *  these the same item?": the store's add-dedupe, the merge's duplicate-name
+ *  collapse, and the test oracles. Two layers with different equality rules
+ *  disagree about duplicates, which reads as add/vanish flicker. */
+export function normalizeItemName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
 /** Case-insensitive lookup of an active (non-deleted) item by name. Used to
  *  merge a re-added duplicate into the existing row instead of stacking two
  *  identical lines — the "easy to correct" tenet, no AI involved. */
@@ -183,8 +191,8 @@ export function findActiveByName(
   list: GroceryList,
   name: string
 ): GroceryItem | undefined {
-  const n = name.trim().toLowerCase();
-  return visibleItems(list).find((it) => it.name.toLowerCase() === n);
+  const n = normalizeItemName(name);
+  return visibleItems(list).find((it) => normalizeItemName(it.name) === n);
 }
 
 // ---------------------------------------------------------------------------
@@ -200,7 +208,9 @@ export function findActiveByName(
  *  published payload grows without bound until public relays reject it and
  *  sync silently dies, which is far worse). */
 export const TOMBSTONE_HORIZON_MS = 21 * 24 * 3600 * 1000;
-export const MAX_TOMBSTONES = 80;
+/** High enough that two heavy back-to-back shops (~45 items each) never evict
+ *  a tombstone younger than the horizon; still bounds a pathological flood. */
+export const MAX_TOMBSTONES = 150;
 /** Tombstones keep their payload (notably the NAME) this long: the merge
  *  folds a late check-off made on a collapsed duplicate into the surviving
  *  same-name row, and that fold needs the dead row's name. After a week the

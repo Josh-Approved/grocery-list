@@ -42,7 +42,7 @@ describe('lists.addKitItems — selecting a kit onto a list', () => {
     const listId = useListsStore.getState().createList('Weekly');
     useListsStore.getState().addItem(listId, 'Celery');
 
-    const added = useListsStore.getState().addKitItems(listId, [
+    const { added } = useListsStore.getState().addKitItems(listId, [
       { name: 'Celery', quantity: 2, category: 'Produce' },
       { name: 'Mayonnaise', quantity: 1, category: 'Pantry' },
       { name: 'Rotisserie chicken', quantity: 3, category: 'Meat & seafood' },
@@ -67,22 +67,47 @@ describe('lists.addKitItems — selecting a kit onto a list', () => {
 
   test('de-dupes within the kit itself and returns [] when all present', () => {
     const listId = useListsStore.getState().createList('Weekly');
-    const first = useListsStore.getState().addKitItems(listId, [
+    const { added: first } = useListsStore.getState().addKitItems(listId, [
       { name: 'Eggs', quantity: 1, category: 'Dairy & eggs' },
       { name: 'eggs', quantity: 1, category: 'Dairy & eggs' }, // same, case-insensitive
     ]);
     expect(first).toHaveLength(1);
 
     // Adding the same kit again now finds everything present.
-    const second = useListsStore.getState().addKitItems(listId, [
+    const { added: second } = useListsStore.getState().addKitItems(listId, [
       { name: 'Eggs', quantity: 1, category: 'Dairy & eggs' },
     ]);
     expect(second).toHaveLength(0);
   });
 
+  test('a crossed-off match is revived (unchecked, qty 1, content clock stamped) and returned as a snapshot', () => {
+    const listId = useListsStore.getState().createList('Weekly');
+    useListsStore.getState().addItem(listId, 'Celery');
+    const celery = liveItems(listId)[0];
+    useListsStore.getState().setQuantity(listId, celery.id, 3);
+    useListsStore.getState().setChecked(listId, celery.id, true);
+    const beforeUpdatedAt = liveItems(listId)[0].updatedAt;
+
+    const { added, revived } = useListsStore.getState().addKitItems(listId, [
+      { name: 'Celery', quantity: 2, category: 'Produce' },
+    ]);
+
+    expect(added).toHaveLength(0);
+    expect(revived).toHaveLength(1);
+    expect(revived[0].checked).toBe(true); // pre-change snapshot for Undo
+    expect(revived[0].quantity).toBe(3);
+
+    const after = liveItems(listId)[0];
+    expect(after.checked).toBe(false);
+    expect(after.quantity).toBe(1);
+    // The qty reset is a content change — it must out-clock a partner's
+    // stale copy or the merge reverts it.
+    expect(after.updatedAt).toBeGreaterThan(beforeUpdatedAt);
+  });
+
   test('removeItems tombstones exactly the kit-added rows (the Undo)', () => {
     const listId = useListsStore.getState().createList('Weekly');
-    const added = useListsStore.getState().addKitItems(listId, [
+    const { added } = useListsStore.getState().addKitItems(listId, [
       { name: 'Salsa', quantity: 1, category: 'Pantry' },
       { name: 'Cheddar', quantity: 1, category: 'Dairy & eggs' },
     ]);
