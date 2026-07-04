@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "_note": "Tests that can NEVER be quarantined — they block, full stop (Uber's pattern). `flaky.mjs mark` refuses any testId that equals an entry in `testIds` OR contains any string in `patterns`. Seed with the trust-core: sync intent oracles + data-loss / reported-defect regression suites. testId shape: '<file-basename-no-ext>::<full test name>'.",
+  "patterns": [
+    "reportedDefects",
+    "intentFuzz",
+    "mergeRecordSet",
+    "skewMerge"
+  ],
+  "testIds": []
+}

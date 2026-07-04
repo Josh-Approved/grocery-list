@@ -68,6 +68,9 @@
     "reporters": [
       "default",
       "<rootDir>/qa/defect-reporter.cjs"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/qa/quarantine.setup.cjs"
     ]
   },
   "overrides": {

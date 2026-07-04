@@ -29,8 +29,10 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { execSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { execSync, execFileSync } from 'node:child_process';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const args = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith('--')));
@@ -153,6 +155,27 @@ function runMatrix(profile) {
   return { status, profile: matrixProfile, regressions, cellFails, reviewerBlockers, reviewerMajors };
 }
 
+// ---------- Defect loop: no unproven fix at release (T0 stage 2) ----------
+// The failing-first fix gate (regression-gate.mjs) advances a defect out of
+// `proving` only once its regression test provably fails on the pre-fix code.
+// A record still sitting in `proving` at release means a fix landed without its
+// proof — that must not ship (SQLite/WebKit's merge rule, machine-enforced).
+// Rollout doctrine (same as testing/*): an absent ledger simply skips.
+function runDefectGate(app, profile) {
+  if (profile !== 'production') return { status: 'skip', reason: 'defect gate is production-only' };
+  const cli = path.join(__dirname, '..', 'defects.mjs');
+  if (!exists(cli)) return { status: 'skip', reason: 'no defects.mjs (defect loop not present)' };
+  let out;
+  try {
+    out = execFileSync('node', [cli, 'list', '--app', app, '--status', 'proving', '--json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch { return { status: 'skip', reason: 'no ledger for this app (defect loop rolling out)' }; }
+  let recs;
+  try { recs = JSON.parse(out); } catch { return { status: 'skip', reason: 'ledger unreadable' }; }
+  const proving = Array.isArray(recs) ? recs : [];
+  if (!proving.length) return { status: 'pass', proving: 0 };
+  return { status: 'fail', proving: proving.length, ids: proving.map((r) => r.id) };
+}
+
 // ---------- Lint: qa-canonical testing tiers ----------
 function runLintTiers() {
   const canon = path.join(appDir, 'scripts', 'qa-canonical.mjs');
@@ -174,15 +197,17 @@ const unit = runUnit();
 const flow = await runFlowStatic();
 const lint = runLintTiers();
 const matrix = runMatrix(profile);
+const defects = runDefectGate(path.basename(appDir), profile);
 
 // Gate: a tier that ERRORs or FAILs blocks; SKIP/PASS are fine.
 const unitOk = unit.status === 'pass' || unit.status === 'skip';
 const flowFailed = flow.status === 'fail';
 const lintFailed = lint.status === 'fail';
 const matrixFailed = matrix.status === 'fail';
+const defectsFailed = defects.status === 'fail';
 const ok = profile === 'testflight'
   ? unitOk && !lintFailed && !matrixFailed       // Tier 1 + lint + device smoke; Tier 2 is smoke/optional
-  : unitOk && !flowFailed && !lintFailed && !matrixFailed;  // production: Tier 2 + full matrix failure blocks
+  : unitOk && !flowFailed && !lintFailed && !matrixFailed && !defectsFailed;  // production: Tier 2 + full matrix + no unproven fix
 
 const report = {
   app: path.basename(appDir),
@@ -191,7 +216,7 @@ const report = {
   // NOTE: timestamp intentionally omitted — Date.now() is unavailable in some
   // factory contexts and would make the artifact non-deterministic. CI/commit
   // metadata carries the time.
-  tiers: { unit, flow, lint, matrix },
+  tiers: { unit, flow, lint, matrix, defects },
   // The agent's reading guide — what to do, in one line, without opening logs.
   verdict: ok
     ? `OK for ${profile}: ${unit.status === 'skip' ? 'no unit tests' : unit.passed + ' tests pass'}${flow.status === 'pass' ? ', flow static green' : ''}${matrix.status === 'pass' ? ', device matrix green' : ''}.`
@@ -200,6 +225,7 @@ const report = {
         flow.status === 'fail' && (flow.stale ? 'flow yaml stale (re-run compile-flow)' : 'selector grounding failed (run heal)'),
         lint.status === 'fail' && 'qa-canonical testing rule failing',
         matrix.status === 'fail' && (matrix.reason || `device matrix: ${matrix.regressions || 0} visual regression(s), ${matrix.cellFails || 0} failed cell(s), ${matrix.reviewerBlockers || 0} reviewer blocker(s)` + ' (accept intended changes via visual-reg --accept)'),
+        defects.status === 'fail' && `${defects.proving} defect(s) unproven at release (${(defects.ids || []).join(', ')}) — run scripts/qa/regression-gate.mjs to prove the failing-first test, or waive`,
       ].filter(Boolean).join('; ')}`,
 };
 
