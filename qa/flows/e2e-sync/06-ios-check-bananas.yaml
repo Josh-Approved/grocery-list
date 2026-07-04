@@ -1,0 +1,15 @@
+# E2E two-device sync — iOS pass 3: first half of THE REPORTED R2 DEFECT.
+# While Android is OFFLINE (runner disabled its network), iOS crosses off
+# Bananas (the row folds into the Checked group — leaves the aisle sections).
+# Android will blindly edit the same item's quantity; after reconnect BOTH
+# edits must survive (pre-fix, whole-item LWW reverted the check — "my
+# crossed-off items came back").
+appId: com.joshapproved.grocerylist
+---
+- tapOn:
+    text: "Bananas"
+- extendedWaitUntil:
+    notVisible:
+      text: "Bananas"
+    timeout: 8000
+- takeScreenshot: qa/captures/e2e-sync/06-ios-checked-bananas

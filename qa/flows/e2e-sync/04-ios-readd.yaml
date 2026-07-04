@@ -1,0 +1,37 @@
+# E2E two-device sync — iOS pass 2: THE REPORTED R1 DEFECT, on device.
+# Cross Avocado off, then add "Avocado" again. Expected: ONE row, quantity 1
+# (no "quantity 2" label), unchecked — not "shows as two quantity".
+# (See 02-ios-add.yaml for why iOS asserts via row a11y labels.)
+appId: com.joshapproved.grocerylist
+---
+# Cross it off: the row folds into the Checked group below the fold.
+- tapOn:
+    text: "Avocado"
+- extendedWaitUntil:
+    notVisible:
+      text: "Avocado"
+    timeout: 8000
+# Re-add the same name.
+- tapOn:
+    text: "Add an item"
+- extendedWaitUntil:
+    visible:
+      text: "Search or add an item"
+    timeout: 8000
+- tapOn:
+    text: "Search or add an item"
+- inputText: "Avocado"
+- waitForAnimationToEnd:
+    timeout: 800
+- pressKey: Enter
+- tapOn:
+    id: "addSheetDone"
+# Back in Produce as a fresh single need: EXACT "Avocado" = unchecked, qty 1
+# (the reported defect would label it "Avocado, quantity 2").
+- extendedWaitUntil:
+    visible:
+      text: "Avocado"
+    timeout: 8000
+- assertNotVisible:
+    text: "Avocado, quantity 2"
+- takeScreenshot: qa/captures/e2e-sync/04-ios-readd-qty1

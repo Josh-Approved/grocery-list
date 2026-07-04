@@ -1,0 +1,25 @@
+# E2E two-device sync — iOS pass 5: relaunch after being killed (NO
+# clearState) and prove the cold-start hello backfill pulls what Android
+# added while iOS was dead — plus everything earlier persisted (checked
+# Bananas still carrying Android's ×2).
+appId: com.joshapproved.grocerylist
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      text: "Weekly shop.*"
+    timeout: 20000
+- tapOn:
+    text: "Weekly shop.*"
+- extendedWaitUntil:
+    visible:
+      text: "Mango"
+    timeout: 30000
+- assertNotVisible:
+    text: "Bananas"
+- scrollUntilVisible:
+    element:
+      text: "Bananas, quantity 2"
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: qa/captures/e2e-sync/11-ios-backfilled

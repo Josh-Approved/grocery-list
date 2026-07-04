@@ -1,0 +1,31 @@
+# E2E two-device sync — ANDROID pass 6: iOS is KILLED (runner terminated it).
+# Android adds "Mango" while its partner is gone — exercising the cold-start
+# hello backfill when iOS relaunches. The count reaching 14 proves the add
+# landed; the new Produce row can sit above the current viewport (list
+# virtualization keeps off-screen rows out of the accessibility tree), so
+# scroll up to it rather than asserting in place.
+appId: com.joshapproved.grocerylist
+---
+- tapOn:
+    text: "Add an item"
+- extendedWaitUntil:
+    visible:
+      text: "Search or add an item"
+    timeout: 8000
+- tapOn:
+    text: "Search or add an item"
+- inputText: "Mango"
+- waitForAnimationToEnd:
+    timeout: 800
+- pressKey: Enter
+- tapOn:
+    id: "addSheetDone"
+- extendedWaitUntil:
+    visible:
+      text: ".*3 of 14 checked.*"
+    timeout: 8000
+- scrollUntilVisible:
+    element:
+      text: "Mango"
+    direction: UP
+    timeout: 15000

@@ -1,0 +1,17 @@
+# E2E two-device sync — ANDROID pass 3: the re-add converges as ONE Avocado,
+# quantity 1, unchecked (Checked stays at the 2 fixtures).
+appId: com.joshapproved.grocerylist
+---
+# Dwell for the sync to land, then assert the R1 signature is ABSENT
+# (pre-fix, the re-add arrived as quantity ×2).
+- waitForAnimationToEnd:
+    timeout: 8000
+- extendedWaitUntil:
+    visible:
+      text: ".*2 of 13 checked.*"
+    timeout: 20000
+- assertVisible:
+    text: "Avocado"
+- assertNotVisible:
+    text: "(.*×2.*|.*quantity 2.*)"
+- takeScreenshot: qa/captures/e2e-sync/05-android-readd-qty1

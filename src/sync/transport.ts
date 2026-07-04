@@ -33,7 +33,7 @@ import nacl from 'tweetnacl';
  *  overrides the list — used by the two-device E2E harness to run against a
  *  local relay hermetically. Unset in every store build. */
 export const RELAYS = (process.env.EXPO_PUBLIC_SYNC_RELAYS?.split(',')
-  .map((u) => u.trim())
+  .map((u: string) => u.trim())
   .filter(Boolean) as string[] | undefined) ?? [
   'wss://relay.damus.io',
   'wss://nos.lol',

@@ -1,0 +1,30 @@
+# E2E two-device sync — ANDROID pass 4 (still OFFLINE): blind concurrent
+# content edit on the same item iOS just crossed off. Adding "Bananas" while
+# its row is active bumps quantity to ×2 (a content edit, later wall-clock
+# than iOS's check). Android hasn't seen the check: still Checked (2).
+appId: com.joshapproved.grocerylist
+---
+# Offline: iOS's check must NOT be here (proves the edit is truly blind).
+- assertVisible:
+    text: ".*2 of 13 checked.*"
+- tapOn:
+    text: "Add an item"
+- extendedWaitUntil:
+    visible:
+      text: "Search or add an item"
+    timeout: 8000
+- tapOn:
+    text: "Search or add an item"
+- inputText: "Bananas"
+- waitForAnimationToEnd:
+    timeout: 800
+- pressKey: Enter
+- tapOn:
+    id: "addSheetDone"
+- extendedWaitUntil:
+    visible:
+      text: "(.*×2.*|.*quantity 2.*)"
+    timeout: 8000
+- assertVisible:
+    text: ".*2 of 13 checked.*"
+- takeScreenshot: qa/captures/e2e-sync/07-android-bumped-offline

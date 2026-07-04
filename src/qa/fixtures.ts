@@ -46,6 +46,7 @@ export function qaLists(): GroceryList[] {
       addedAt: BASE + idx,
       updatedAt: BASE + idx,
       checkedAt: it.checked ? BASE + idx : undefined,
+      checkedUpdatedAt: BASE + idx,
     }));
     list.shareIdentity = { secret: QA_SHARE_SECRET, createdAt: BASE };
   }

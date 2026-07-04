@@ -1,0 +1,46 @@
+# E2E two-device sync — iOS pass 1: fresh boot, open the shared fixture list,
+# add "Avocado". Android (already sitting on its copy) must receive it live.
+#
+# iOS assertion note (applies to every iOS flow here): the header's
+# "N of M checked" subtitle is INSIDE the rename button's accessibility
+# element, so XCUITest/Maestro can't see it. State is asserted through row
+# accessibility labels instead: an UNCHECKED qty-1 row is labelled exactly
+# "<name>"; qty>1 becomes "<name>, quantity <n>"; a CHECKED row leaves the
+# aisle sections (folds into the below-the-fold Checked group). So an exact
+# "Avocado" match at the top of the list proves: present, unchecked, qty 1.
+appId: com.joshapproved.grocerylist
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      text: "Weekly shop.*"
+    timeout: 20000
+- tapOn:
+    text: "Weekly shop.*"
+- extendedWaitUntil:
+    visible:
+      text: "Bananas"
+    timeout: 10000
+# Let this device's relay connection open before publishing an edit.
+- waitForAnimationToEnd:
+    timeout: 2500
+- tapOn:
+    text: "Add an item"
+- extendedWaitUntil:
+    visible:
+      text: "Search or add an item"
+    timeout: 8000
+- tapOn:
+    text: "Search or add an item"
+- inputText: "Avocado"
+- waitForAnimationToEnd:
+    timeout: 800
+- pressKey: Enter
+- tapOn:
+    id: "addSheetDone"
+- extendedWaitUntil:
+    visible:
+      text: "Avocado"
+    timeout: 8000
+- takeScreenshot: qa/captures/e2e-sync/02-ios-added

@@ -1,0 +1,25 @@
+# E2E two-device sync — ANDROID pass 5 (back ONLINE): the money assertion.
+# After reconnect, iOS's check-off AND Android's quantity bump both survive:
+# the checked count reaches 3 (the check arrived) and the checked Bananas row
+# still carries ×2 (the blind bump kept its quantity). Pre-fix, the later
+# content edit reverted the check on both devices — the reported
+# "my crossed-off items came back" defect.
+appId: com.joshapproved.grocerylist
+---
+- extendedWaitUntil:
+    visible:
+      text: ".*3 of 13 checked.*"
+    timeout: 30000
+# The now-checked row folds below the fold — scroll to it to prove the ×2
+# survived alongside the check.
+- scrollUntilVisible:
+    element:
+      text: "(.*×2.*|.*quantity 2.*)"
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: qa/captures/e2e-sync/08-android-merged
+- scrollUntilVisible:
+    element:
+      text: "Add an item"
+    direction: UP
+    timeout: 15000

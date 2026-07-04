@@ -1,0 +1,23 @@
+# E2E two-device sync — iOS pass 4: the merge from iOS's seat. Its check-off
+# survived AND Android's blind ×2 arrived: the Checked group (below the fold)
+# now holds a row labelled exactly "Bananas, quantity 2" — checked state and
+# quantity proven by one label. Pre-fix, Android's later content edit
+# reverted the check and Bananas would be back in Produce unchecked.
+appId: com.joshapproved.grocerylist
+---
+# Dwell for reconnect + hello + publish to land, then find the checked row.
+- waitForAnimationToEnd:
+    timeout: 8000
+- assertNotVisible:
+    text: "Bananas"
+- scrollUntilVisible:
+    element:
+      text: "Bananas, quantity 2"
+    direction: DOWN
+    timeout: 30000
+- takeScreenshot: qa/captures/e2e-sync/09-ios-merged
+- scrollUntilVisible:
+    element:
+      text: "Add an item"
+    direction: UP
+    timeout: 15000

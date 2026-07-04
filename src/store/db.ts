@@ -25,7 +25,17 @@ let _db: SQLite.SQLiteDatabase | null = null;
 
 async function getDb(): Promise<SQLite.SQLiteDatabase> {
   if (_db) return _db;
-  _db = await SQLite.openDatabaseAsync(DB_NAME);
+  try {
+    _db = await SQLite.openDatabaseAsync(DB_NAME);
+  } catch (err) {
+    // Android quirk: the very first open on a fresh install (or right after a
+    // data clear) can race the SQLite directory creation ("path already
+    // points to a non-normal file") — one settle-and-retry succeeds, where
+    // giving up would boot the user into a silently empty app.
+    _db = null;
+    await new Promise((r) => setTimeout(r, 400));
+    _db = await SQLite.openDatabaseAsync(DB_NAME);
+  }
   await _db.execAsync(`
     CREATE TABLE IF NOT EXISTS lists (
       id            TEXT PRIMARY KEY NOT NULL,

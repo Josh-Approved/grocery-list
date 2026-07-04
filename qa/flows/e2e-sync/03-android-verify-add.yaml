@@ -1,0 +1,13 @@
+# E2E two-device sync — ANDROID pass 2: attach to the running app (no
+# launchApp) and prove iOS's "Avocado" arrived over the local relay.
+appId: com.joshapproved.grocerylist
+---
+- extendedWaitUntil:
+    visible:
+      text: "Avocado"
+    timeout: 25000
+- extendedWaitUntil:
+    visible:
+      text: ".*2 of 13 checked.*"
+    timeout: 10000
+- takeScreenshot: qa/captures/e2e-sync/03-android-received

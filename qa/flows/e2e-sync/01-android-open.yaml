@@ -1,0 +1,25 @@
+# E2E two-device sync — ANDROID pass 1: fresh boot, open the shared fixture
+# list, prove baseline (fixtures present, nothing synced in yet). The app is
+# left SITTING on the list, connected, to passively receive what iOS adds.
+# Fresh state comes from the runner's reinstall + warm-up (NOT clearState:
+# pm clear races expo-sqlite's first launch and hydrate fails).
+# Driven by scripts/e2e/run-two-device.sh (one Maestro driver at a time).
+appId: com.joshapproved.grocerylist
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      text: "Weekly shop.*"
+    timeout: 20000
+- tapOn:
+    text: "Weekly shop.*"
+- extendedWaitUntil:
+    visible:
+      text: "Bananas"
+    timeout: 10000
+- assertVisible:
+    text: ".*2 of 12 checked.*"
+- assertVisible:
+    text: "Connected"
+- assertNotVisible:
+    text: "Avocado"
