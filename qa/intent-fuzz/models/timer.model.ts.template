@@ -1,0 +1,145 @@
+/**
+ * STARTER intent-fuzz model — `timer` archetype (Uplevel 3 / T1).
+ *
+ * ACTIVATE: copy to `src/data/__tests__/intentFuzz.test.ts`, rename to your
+ * domain, fill any «TODO oracle». Runs green against the stock `timer`
+ * archetype run engine.
+ *
+ * WHAT IT DOES. Drives the REAL wall-clock run engine (src/data/timer.ts —
+ * startRun/pauseRun/resetRun/remainingMsAt) through random run/pause/resume/
+ * reset stories with an explicit clock that JUMPS (backgrounding the app,
+ * locking the phone, a dropped frame). Because the engine derives `remaining`
+ * from `endsAt - now` rather than decrementing a counter, these oracles must
+ * hold no matter how the clock jumps — the exact property T4 later exercises on
+ * a real device:
+ *
+ *   I-NONNEG    remaining is never negative.
+ *   I-MONO      while RUNNING, remaining never INCREASES as the clock advances.
+ *   I-FROZEN    while PAUSED, advancing the clock does not change remaining.
+ *   I-RESUME    starting after a pause resumes from exactly the frozen remaining
+ *               (a background gap can't lose or invent time).
+ *
+ * The clock is our own number handed to the pure functions — no Date.now, no
+ * real timers (Google "small" test), and every value is fast-check-drawn (a
+ * logged seed), never Math.random.
+ */
+
+import fc from 'fast-check';
+import { runIntentFuzz, intent } from '../../qa/intent-fuzz/harness';
+import { replayRegressions } from '../../qa/intent-fuzz/replay';
+
+import {
+  type RunState,
+  makePreset,
+  idleRun,
+  startRun,
+  pauseRun,
+  resetRun,
+  remainingMsAt,
+} from '../timer';
+
+const APP = require('../../../app.json').expo.slug as string;
+
+interface Real {
+  now: number;      // the fake wall clock (ms)
+  run: RunState;
+  durationMs: number;
+}
+interface Model {
+  running: boolean;
+  lastRemaining: number; // remaining observed at the last command
+}
+
+function observe(m: Model, r: Real, claimPrefix: string): void {
+  const rem = remainingMsAt(r.run, r.now);
+  intent(`${claimPrefix}: remaining never negative (was ${rem})`, rem >= 0);
+  intent(`${claimPrefix}: remaining never exceeds the full duration`, rem <= r.durationMs + 1);
+  m.lastRemaining = rem;
+}
+
+class Advance implements fc.Command<Model, Real> {
+  constructor(readonly ms: number) {} // includes big "background" jumps
+  check = () => true;
+  run(m: Model, r: Real): void {
+    const before = remainingMsAt(r.run, r.now);
+    r.now += this.ms;
+    const after = remainingMsAt(r.run, r.now);
+    if (m.running) {
+      intent(`while running, remaining must not increase across a ${this.ms}ms jump`, after <= before + 1);
+    } else {
+      intent('while paused/idle, advancing the clock must not change remaining', Math.abs(after - before) < 1);
+    }
+    observe(m, r, `advance(${this.ms})`);
+  }
+  toString = () => `advance(${this.ms}ms)`;
+}
+
+class Start implements fc.Command<Model, Real> {
+  check = () => true;
+  run(m: Model, r: Real): void {
+    const frozen = remainingMsAt(r.run, r.now);
+    r.run = startRun(r.run, r.now);
+    // Resuming from a pause must preserve the exact frozen remaining.
+    if (frozen > 0) {
+      intent('start/resume must resume from exactly the frozen remaining', Math.abs(remainingMsAt(r.run, r.now) - frozen) < 1);
+      m.running = true;
+    }
+    observe(m, r, 'start');
+  }
+  toString = () => 'start';
+}
+
+class Pause implements fc.Command<Model, Real> {
+  check = () => true;
+  run(m: Model, r: Real): void {
+    const at = remainingMsAt(r.run, r.now);
+    r.run = pauseRun(r.run, r.now);
+    intent('pause freezes remaining at the moment of pausing', Math.abs(remainingMsAt(r.run, r.now) - at) < 1);
+    m.running = false;
+    observe(m, r, 'pause');
+  }
+  toString = () => 'pause';
+}
+
+class Reset implements fc.Command<Model, Real> {
+  check = () => true;
+  run(m: Model, r: Real): void {
+    r.run = resetRun(r.run);
+    m.running = false;
+    intent('reset returns a full, stopped clock', Math.abs(remainingMsAt(r.run, r.now) - r.durationMs) < 1);
+    observe(m, r, 'reset');
+  }
+  toString = () => 'reset';
+}
+
+const commands: fc.Arbitrary<fc.Command<Model, Real>>[] = [
+  // Advances span a dropped frame (16ms) to a multi-hour background gap.
+  fc.integer({ min: 0, max: 6 * 60 * 60 * 1000 }).map((ms) => new Advance(ms)),
+  fc.constant(new Start()),
+  fc.constant(new Pause()),
+  fc.constant(new Reset()),
+];
+
+function setup(): { model: Model; real: Real } {
+  const preset = makePreset('Fuzz', 5 * 60); // 5-minute clock
+  const run = idleRun(preset);
+  return {
+    model: { running: false, lastRemaining: run.remainingMs },
+    real: { now: 1_750_000_000_000, run, durationMs: run.durationMs },
+  };
+}
+
+export function buildTimerProperty(): fc.IPropertyWithHooks<unknown> {
+  return fc.property(fc.commands(commands, { maxCommands: 60 }), (cmds) => {
+    const s = setup();
+    fc.modelRun(() => ({ model: s.model, real: s.real }), cmds);
+  }) as unknown as fc.IPropertyWithHooks<unknown>;
+}
+
+describe('timer — intent fuzzer', () => {
+  it('the countdown survives randomized run/pause/background stories', () => {
+    runIntentFuzz<Model, Real>({ app: APP, model: 'timer', commands, setup });
+  });
+});
+
+replayRegressions({ models: { timer: buildTimerProperty } });

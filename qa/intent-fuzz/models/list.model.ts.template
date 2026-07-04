@@ -1,0 +1,149 @@
+/**
+ * STARTER intent-fuzz model — `list` archetype (Uplevel 3 / T1).
+ *
+ * ACTIVATE: copy to `src/store/__tests__/intentFuzz.test.ts`, rename the
+ * NAMES/types to your domain, and fill any «TODO oracle» you add. It already
+ * runs green against the stock `list` archetype store. (Import paths below
+ * assume that location — retarget them if you put the test elsewhere.)
+ *
+ * WHAT IT DOES. Drives the REAL `useListsStore` (a fresh module instance per
+ * run via jest.isolateModules, persistence mocked so it stays hermetic —
+ * Google's "small" test: no disk, no network, no real timers) through random
+ * user stories, and after every command asserts INTENT — what a person expects,
+ * not "the state converged":
+ *
+ *   I-REACQUIRE  re-adding a checked-off item makes it an active need again
+ *                (the store's add-wins rule — the grocery "re-add" defect class).
+ *   I-CHECK      the last check/uncheck action on an item is what shows.
+ *   I-NODUP      no two ACTIVE items share a name (case-insensitive).
+ *   I-GONE       a deleted item's row never reappears by id.
+ *
+ * Convergence is single-store here (no sync); the list-sync model adds the
+ * multi-device convergence+intent oracles. Oracles are intent statements, never
+ * convergence alone (canon, 2026-07-03).
+ */
+
+import fc from 'fast-check';
+import { runIntentFuzz, intent } from '../../../qa/intent-fuzz/harness';
+import { replayRegressions } from '../../../qa/intent-fuzz/replay';
+
+// Hermetic: mock everything the store touches beyond pure JS.
+jest.mock('../../storage/kv', () => ({ putTombstone: jest.fn(async () => {}) }));
+jest.mock('../db', () => ({
+  loadAllLists: jest.fn(async () => []),
+  saveList: jest.fn(async () => {}),
+  deleteListFromDb: jest.fn(async () => {}),
+}));
+jest.mock('../../qa/qaMode', () => ({ QA_MODE: false }));
+jest.mock('../../qa/fixtures', () => ({ qaLists: () => [] }));
+
+import type { ItemList, ListItem } from '../../data/item';
+
+const APP = require('../../../app.json').expo.slug as string;
+const NAMES = ['Milk', 'Eggs', 'Bread', 'Butter', 'Coffee', 'Apples', 'Rice', 'Pasta'];
+const norm = (s: string) => s.trim().toLowerCase();
+
+// The REAL store type (just the slice the fuzzer drives).
+type Store = {
+  createList: (name?: string) => string;
+  getList: (id: string) => ItemList | undefined;
+  addItem: (listId: string, name: string) => void;
+  setDone: (listId: string, itemId: string, done: boolean) => void;
+  deleteItem: (listId: string, itemId: string) => void;
+};
+
+interface Real {
+  store: Store;
+  listId: string;
+}
+interface Model {
+  // Intent ledger: per normalized name, the latest expectation.
+  names: Map<string, { present: boolean; done: boolean }>;
+}
+
+function activeItems(r: Real): ListItem[] {
+  const list = r.store.getState().getList(r.listId);
+  return (list?.items ?? []).filter((it) => it.deletedAt == null);
+}
+function activeByName(r: Real, name: string): ListItem | undefined {
+  return activeItems(r).find((it) => norm(it.name) === norm(name));
+}
+
+class AddItem implements fc.Command<Model, Real> {
+  constructor(readonly name: string) {}
+  check = () => true;
+  run(m: Model, r: Real): void {
+    const before = activeByName(r, this.name);
+    r.store.getState().addItem(r.listId, this.name);
+    const after = activeByName(r, this.name);
+    intent(`re-add of "${this.name}" should leave an ACTIVE, un-checked need`, !!after && after.done === false);
+    if (before) {
+      intent(`re-add of "${this.name}" must not create a duplicate row`, activeItems(r).filter((it) => norm(it.name) === norm(this.name)).length === 1);
+    }
+    m.names.set(norm(this.name), { present: true, done: false });
+  }
+  toString = () => `add(${this.name})`;
+}
+
+class ToggleDone implements fc.Command<Model, Real> {
+  constructor(readonly name: string, readonly done: boolean) {}
+  check = (m: Model) => (m.names.get(norm(this.name))?.present ?? false);
+  run(m: Model, r: Real): void {
+    const it = activeByName(r, this.name);
+    if (!it) return; // model thought it existed; store is source of truth
+    r.store.getState().setDone(r.listId, it.id, this.done);
+    const after = activeByName(r, this.name);
+    intent(`last check action on "${this.name}" wins (wanted ${this.done})`, after?.done === this.done);
+    const cur = m.names.get(norm(this.name));
+    if (cur) cur.done = this.done;
+  }
+  toString = () => `${this.done ? 'check' : 'uncheck'}(${this.name})`;
+}
+
+class DeleteItem implements fc.Command<Model, Real> {
+  constructor(readonly name: string) {}
+  check = (m: Model) => (m.names.get(norm(this.name))?.present ?? false);
+  run(m: Model, r: Real): void {
+    const it = activeByName(r, this.name);
+    if (!it) return;
+    const deadId = it.id;
+    r.store.getState().deleteItem(r.listId, it.id);
+    intent(`deleted row ${deadId} ("${this.name}") must not reappear active`, !activeItems(r).some((x) => x.id === deadId));
+    m.names.set(norm(this.name), { present: false, done: false });
+  }
+  toString = () => `delete(${this.name})`;
+}
+
+const commands: fc.Arbitrary<fc.Command<Model, Real>>[] = [
+  fc.constantFrom(...NAMES).map((n) => new AddItem(n)),
+  fc.tuple(fc.constantFrom(...NAMES), fc.boolean()).map(([n, d]) => new ToggleDone(n, d)),
+  fc.constantFrom(...NAMES).map((n) => new DeleteItem(n)),
+];
+
+/** A fresh REAL store per run (isolateModules re-instantiates the singleton). */
+function setup(): { model: Model; real: Real } {
+  let store!: Store;
+  jest.isolateModules(() => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    store = require('../lists').useListsStore;
+  });
+  const listId = store.getState().createList('Fuzz list');
+  return { model: { names: new Map() }, real: { store, listId } };
+}
+
+/** Shared by the live fuzzer and the regression replayer (same property). */
+export function buildListProperty(): fc.IPropertyWithHooks<unknown> {
+  return fc.property(fc.commands(commands, { maxCommands: 60 }), (cmds) => {
+    const s = setup();
+    fc.modelRun(() => ({ model: s.model, real: s.real }), cmds);
+  }) as unknown as fc.IPropertyWithHooks<unknown>;
+}
+
+describe('list — intent fuzzer', () => {
+  it('user intent survives randomized list stories', () => {
+    runIntentFuzz<Model, Real>({ app: APP, model: 'list', commands, setup });
+  });
+});
+
+// Every crystallized failure replays as a normal test forever.
+replayRegressions({ models: { list: buildListProperty } });

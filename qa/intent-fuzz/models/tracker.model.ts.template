@@ -1,0 +1,115 @@
+/**
+ * STARTER intent-fuzz model — `tracker` archetype (Uplevel 3 / T1).
+ *
+ * ACTIVATE: copy to `src/store/__tests__/intentFuzz.test.ts`, rename to your
+ * domain, fill any «TODO oracle». Runs green against the stock `tracker`
+ * archetype. (Import paths below assume that location.)
+ *
+ * WHAT IT DOES. Drives the REAL `useEntriesStore` (fresh module per run,
+ * persistence mocked → hermetic) through random log/delete stories, and after
+ * every command asserts the numbers a person reads match an INDEPENDENT
+ * hand-computed replay of the story — the oracle is the reference computation,
+ * never the code under test:
+ *
+ *   I-TOTAL   summarize(store).total  == Σ of the values still logged.
+ *   I-COUNT   summarize(store).count  == how many are still logged.
+ *   I-AVG     summarize(store).average is total/count (0, never NaN, when empty).
+ *   I-RANGE   entriesInRange keeps exactly the in-window entries.
+ *
+ * The store is the system under test; the `Map<id,value>` model is the oracle.
+ */
+
+import fc from 'fast-check';
+import { runIntentFuzz, intent } from '../../../qa/intent-fuzz/harness';
+import { replayRegressions } from '../../../qa/intent-fuzz/replay';
+
+jest.mock('../../storage/kv', () => ({ putTombstone: jest.fn(async () => {}) }));
+jest.mock('../db', () => ({
+  loadAllEntries: jest.fn(async () => []),
+  saveEntry: jest.fn(async () => {}),
+  deleteEntryFromDb: jest.fn(async () => {}),
+}));
+jest.mock('../../qa/qaMode', () => ({ QA_MODE: false }));
+jest.mock('../../qa/fixtures', () => ({ qaEntries: () => [] }));
+
+import type { Entry } from '../../data/entry';
+import { summarize, activeEntries } from '../../data/entry';
+
+const APP = require('../../../app.json').expo.slug as string;
+
+type Store = {
+  entries: Entry[];
+  addEntry: (value: number, note?: string, at?: number) => string;
+  deleteEntry: (id: string) => void;
+};
+interface Real { store: Store }
+interface Model { values: Map<string, number> } // id -> value (the oracle ledger)
+
+function storeEntries(r: Real): Entry[] {
+  return activeEntries(r.store.getState().entries);
+}
+function checkNumbers(m: Model, r: Real): void {
+  const expectTotal = [...m.values.values()].reduce((a, v) => a + v, 0);
+  const expectCount = m.values.size;
+  const s = summarize(r.store.getState().entries);
+  intent(`count should be ${expectCount} (was ${s.count})`, s.count === expectCount);
+  intent(`total should be ${expectTotal} (was ${s.total})`, Math.abs(s.total - expectTotal) < 1e-9);
+  const expectAvg = expectCount ? expectTotal / expectCount : 0;
+  intent(`average should be ${expectAvg} (was ${s.average})`, Math.abs(s.average - expectAvg) < 1e-9);
+  intent('average is never NaN', !Number.isNaN(s.average));
+}
+
+class LogEntry implements fc.Command<Model, Real> {
+  constructor(readonly value: number) {}
+  check = () => true;
+  run(m: Model, r: Real): void {
+    const id = r.store.getState().addEntry(this.value);
+    m.values.set(id, this.value);
+    checkNumbers(m, r);
+  }
+  toString = () => `log(${this.value})`;
+}
+
+class DeleteEntry implements fc.Command<Model, Real> {
+  constructor(readonly pick: number) {}
+  check = (m: Model) => m.values.size > 0;
+  run(m: Model, r: Real): void {
+    const entries = storeEntries(r);
+    if (entries.length === 0) return;
+    const victim = entries[this.pick % entries.length];
+    r.store.getState().deleteEntry(victim.id);
+    m.values.delete(victim.id);
+    intent(`deleted entry ${victim.id} must not remain logged`, !storeEntries(r).some((e) => e.id === victim.id));
+    checkNumbers(m, r);
+  }
+  toString = () => `delete(#${this.pick})`;
+}
+
+const commands: fc.Arbitrary<fc.Command<Model, Real>>[] = [
+  fc.integer({ min: -50, max: 500 }).map((v) => new LogEntry(v)),
+  fc.nat({ max: 1000 }).map((p) => new DeleteEntry(p)),
+];
+
+function setup(): { model: Model; real: Real } {
+  let store!: Store;
+  jest.isolateModules(() => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    store = require('../entries').useEntriesStore;
+  });
+  return { model: { values: new Map() }, real: { store } };
+}
+
+export function buildTrackerProperty(): fc.IPropertyWithHooks<unknown> {
+  return fc.property(fc.commands(commands, { maxCommands: 60 }), (cmds) => {
+    const s = setup();
+    fc.modelRun(() => ({ model: s.model, real: s.real }), cmds);
+  }) as unknown as fc.IPropertyWithHooks<unknown>;
+}
+
+describe('tracker — intent fuzzer', () => {
+  it('the numbers survive randomized log/delete stories', () => {
+    runIntentFuzz<Model, Real>({ app: APP, model: 'tracker', commands, setup });
+  });
+});
+
+replayRegressions({ models: { tracker: buildTrackerProperty } });

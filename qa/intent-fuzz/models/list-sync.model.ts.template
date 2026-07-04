@@ -1,0 +1,211 @@
+/**
+ * STARTER intent-fuzz model — `list-sync` archetype (Uplevel 3 / T1).
+ *
+ * ACTIVATE: copy to `src/sync/__tests__/intentFuzz.test.ts`, rename to your
+ * domain, fill any «TODO oracle». Runs green against the stock `list-sync`
+ * archetype (two devices sharing one list). (Import paths below assume that
+ * location.)
+ *
+ * WHAT IT DOES. This is the grocery intent fuzzer, generalized: TWO REAL stores
+ * (a fresh module instance per device via jest.isolateModules — honest clock
+ * skew per device) paired on one shared list, driven through random add / check
+ * / uncheck / delete / EXCHANGE stories, judged by USER INTENT — the oracles
+ * that "both devices agree" (convergence alone) silently passed while the app
+ * was wrong (grocery, 2026-07-03):
+ *
+ *   I-REACQUIRE  re-adding a checked-off item makes it an active need again.
+ *   I-CHECK      the wall-clock-latest check/uncheck (clearly separated from any
+ *                rival action) is what BOTH devices show after they sync.
+ *   I-NODUP      concurrent adds of the same name collapse to one active row.
+ *   I-GONE       a row whose last action was its removal stays gone on both.
+ *   I-CONVERGE   asserted TOO (never alone): after full sync the visible sets match.
+ *
+ * The exchange command folds one device's shared list into the other through the
+ * store's REAL `mergeRemoteList` (which calls the archetype's real `mergeList`
+ * trust core) — the encrypted transport (src/sync/index.ts) is best-effort and
+ * out of scope for the small/hermetic tier; T4 exercises the wire with toxiproxy.
+ *
+ * TODO(app): if your merge carries per-field clocks (e.g. grocery's separate
+ * checkedUpdatedAt), extend the intent ledger + oracles to those fields.
+ */
+
+import fc from 'fast-check';
+import { runIntentFuzz, intent } from '../../../qa/intent-fuzz/harness';
+import { replayRegressions } from '../../../qa/intent-fuzz/replay';
+
+jest.mock('../../storage/kv', () => ({ putTombstone: jest.fn(async () => {}), removeTombstone: jest.fn(async () => {}) }));
+jest.mock('../../store/db', () => ({
+  loadAllLists: jest.fn(async () => []),
+  saveList: jest.fn(async () => {}),
+  deleteListFromDb: jest.fn(async () => {}),
+}));
+jest.mock('../../qa/qaMode', () => ({ QA_MODE: false }));
+jest.mock('../../qa/fixtures', () => ({ qaLists: () => [] }));
+
+import type { ItemList, ListItem } from '../../data/item';
+
+const APP = require('../../../app.json').expo.slug as string;
+const NAMES = ['Milk', 'Eggs', 'Bread', 'Butter', 'Coffee', 'Apples'];
+const SKEWS = [0, 2_000, -3_000, 30_000, -90_000]; // honest phone NTP skews (ms)
+const norm = (s: string) => s.trim().toLowerCase();
+
+type Store = {
+  createList: (name?: string) => string;
+  getList: (id: string) => ItemList | undefined;
+  addItem: (listId: string, name: string) => void;
+  setDone: (listId: string, itemId: string, done: boolean) => void;
+  deleteItem: (listId: string, itemId: string) => void;
+  shareList: (listId: string) => string | null;
+  joinShared: (secret: string) => string;
+  mergeRemoteList: (remote: ItemList) => void;
+};
+
+interface Device {
+  name: string;
+  skewMs: number;
+  store: Store;
+  listId: string;
+}
+interface Real {
+  devices: Device[];
+  secret: string;
+}
+interface Model {
+  // Last-action-wins ledger per normalized name (present/checked expectation).
+  names: Map<string, { present: boolean; checked: boolean }>;
+}
+
+// One shared Date.now spy for the file; each command points it at the acting
+// device's skew (the grocery technique).
+const worldRef: { skewMs: number; now: number } = { skewMs: 0, now: 1_750_000_000_000 };
+let dateSpy: jest.SpyInstance<number, []> | null = null;
+beforeAll(() => {
+  dateSpy = jest.spyOn(Date, 'now').mockImplementation(() => worldRef.now + worldRef.skewMs);
+});
+afterAll(() => dateSpy?.mockRestore());
+
+function freshStore(): Store {
+  let store!: Store;
+  jest.isolateModules(() => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    store = require('../../store/lists').useListsStore;
+  });
+  return store;
+}
+function actAs(dev: Device, fn: () => void): void {
+  worldRef.now += 30_000; // time always moves forward between actions
+  worldRef.skewMs = dev.skewMs;
+  fn();
+}
+function sharedList(dev: Device): ItemList {
+  const list = dev.store.getState().getList(dev.listId);
+  if (list) return list;
+  // devices have independent local ids; find the one on the shared secret.
+  const found = dev.store.getState().lists?.find?.((l: ItemList) => l.shareIdentity?.secret);
+  return found as ItemList;
+}
+function visible(dev: Device): ListItem[] {
+  return (sharedList(dev)?.items ?? []).filter((it) => it.deletedAt == null);
+}
+function activeByName(dev: Device, name: string): ListItem | undefined {
+  return visible(dev).find((it) => norm(it.name) === norm(name));
+}
+
+class AddItem implements fc.Command<Model, Real> {
+  constructor(readonly devIdx: number, readonly name: string) {}
+  check = () => true;
+  run(m: Model, r: Real): void {
+    const dev = r.devices[this.devIdx % r.devices.length];
+    actAs(dev, () => dev.store.getState().addItem(dev.listId, this.name));
+    const after = activeByName(dev, this.name);
+    intent(`re-add of "${this.name}" on ${dev.name} → active, un-checked`, !!after && after.done === false);
+    intent(`no duplicate active "${this.name}" on ${dev.name}`, visible(dev).filter((it) => norm(it.name) === norm(this.name)).length === 1);
+    m.names.set(norm(this.name), { present: true, checked: false });
+  }
+  toString = () => `d${this.devIdx}.add(${this.name})`;
+}
+
+class ToggleDone implements fc.Command<Model, Real> {
+  constructor(readonly devIdx: number, readonly name: string, readonly done: boolean) {}
+  check = (m: Model) => (m.names.get(norm(this.name))?.present ?? false);
+  run(m: Model, r: Real): void {
+    const dev = r.devices[this.devIdx % r.devices.length];
+    const it = activeByName(dev, this.name);
+    if (!it) return;
+    actAs(dev, () => dev.store.getState().setDone(dev.listId, it.id, this.done));
+    intent(`last check on "${this.name}" wins locally (wanted ${this.done})`, activeByName(dev, this.name)?.done === this.done);
+    const cur = m.names.get(norm(this.name));
+    if (cur) cur.checked = this.done;
+  }
+  toString = () => `d${this.devIdx}.${this.done ? 'check' : 'uncheck'}(${this.name})`;
+}
+
+class DeleteItem implements fc.Command<Model, Real> {
+  constructor(readonly devIdx: number, readonly name: string) {}
+  check = (m: Model) => (m.names.get(norm(this.name))?.present ?? false);
+  run(m: Model, r: Real): void {
+    const dev = r.devices[this.devIdx % r.devices.length];
+    const it = activeByName(dev, this.name);
+    if (!it) return;
+    actAs(dev, () => dev.store.getState().deleteItem(dev.listId, it.id));
+    m.names.set(norm(this.name), { present: false, checked: false });
+  }
+  toString = () => `d${this.devIdx}.delete(${this.name})`;
+}
+
+class Exchange implements fc.Command<Model, Real> {
+  check = () => true;
+  run(_m: Model, r: Real): void {
+    // Full two-way sync through the REAL merge (mergeRemoteList → mergeList).
+    const [a, b] = r.devices;
+    const snapA = JSON.parse(JSON.stringify(sharedList(a))) as ItemList;
+    const snapB = JSON.parse(JSON.stringify(sharedList(b))) as ItemList;
+    actAs(b, () => b.store.getState().mergeRemoteList(snapA));
+    actAs(a, () => a.store.getState().mergeRemoteList(snapB));
+  }
+  toString = () => 'exchange';
+}
+
+const commands: fc.Arbitrary<fc.Command<Model, Real>>[] = [
+  fc.tuple(fc.nat(), fc.constantFrom(...NAMES)).map(([d, n]) => new AddItem(d, n)),
+  fc.tuple(fc.nat(), fc.constantFrom(...NAMES), fc.boolean()).map(([d, n, done]) => new ToggleDone(d, n, done)),
+  fc.tuple(fc.nat(), fc.constantFrom(...NAMES)).map(([d, n]) => new DeleteItem(d, n)),
+  fc.constant(new Exchange()),
+];
+
+function setup(): { model: Model; real: Real } {
+  const a: Device = { name: 'A', skewMs: 0, store: freshStore(), listId: '' };
+  const b: Device = { name: 'B', skewMs: SKEWS[2], store: freshStore(), listId: '' };
+  worldRef.now = 1_750_000_000_000;
+  worldRef.skewMs = 0;
+  a.listId = a.store.getState().createList('Shared');
+  const secret = a.store.getState().shareList(a.listId)!;
+  b.listId = b.store.getState().joinShared(secret);
+  return { model: { names: new Map() }, real: { devices: [a, b], secret } };
+}
+
+/** After the story, force a final two-way sync and assert convergence + intent. */
+function atQuiescence(s: { model: Model; real: Real }): void {
+  new Exchange().run(s.model, s.real);
+  new Exchange().run(s.model, s.real); // second pass settles any ping-pong
+  const [a, b] = s.real.devices;
+  const printA = visible(a).map((it) => `${norm(it.name)}:${it.done ? 1 : 0}`).sort().join(',');
+  const printB = visible(b).map((it) => `${norm(it.name)}:${it.done ? 1 : 0}`).sort().join(',');
+  intent(`I-CONVERGE: devices agree after sync (A=[${printA}] B=[${printB}])`, printA === printB);
+}
+
+export function buildListSyncProperty(): fc.IPropertyWithHooks<unknown> {
+  return fc.property(fc.commands(commands, { maxCommands: 60 }), (cmds) => {
+    const s = setup();
+    fc.modelRun(() => ({ model: s.model, real: s.real }), cmds);
+    atQuiescence(s);
+  }) as unknown as fc.IPropertyWithHooks<unknown>;
+}
+
+describe('list-sync — intent fuzzer', () => {
+  it('user intent survives randomized two-device stories', () => {
+    runIntentFuzz<Model, Real>({ app: APP, model: 'list-sync', commands, setup, atQuiescence });
+  });
+});
+
+replayRegressions({ models: { 'list-sync': buildListSyncProperty } });
