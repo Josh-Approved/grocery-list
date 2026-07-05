@@ -12,8 +12,12 @@
  * public relays' event-size limits — used to verify the app SURFACES a
  * rejected publish instead of failing silently (the pre-fix behaviour).
  *
- * Usage: node scripts/e2e/mini-relay.mjs [--port 7447] [--max-bytes N]
+ * Local relay ONLY — never point tests at a public relay. Usage:
+ *   node scripts/e2e/mini-relay.mjs [--port 7447] [--max-bytes N]
  * Logs one line per event so a test run is auditable.
+ *
+ * Factory template (templates/e2e-two-device/) — app-agnostic; synced verbatim
+ * into each shared-sync consumer's scripts/e2e/. Do not fork per app.
  */
 
 import ws from 'ws';

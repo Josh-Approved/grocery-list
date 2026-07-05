@@ -1,0 +1,19 @@
+# E2E chaos — HONESTY ORACLE (iOS). Run while a network-chaos scenario's fault
+# is live (run-chaos.sh starts chaos-relay just before this flow). The sync
+# status indicator must be HONEST about a failing link: it must NOT read
+# "Connected" while delivery is actually failing. Depending on the fault it
+# reads "Offline" (link severed — partition/flap/disconnect) or "Not syncing"
+# (socket up but publishes rejected — lossy/oversized). Either is honest; only
+# a lingering "Connected" is the 2026-07-04 regression this guards forever.
+#
+# The status bar sits on the shared-list detail screen; we are already on it.
+appId: com.joshapproved.grocerylist
+---
+- assertVisible:
+    text: "Bananas"
+# Give the transport a beat to notice the link is degraded and write status.
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertNotVisible:
+    text: "Connected"
+- takeScreenshot: qa/captures/e2e-sync/chaos-honesty
