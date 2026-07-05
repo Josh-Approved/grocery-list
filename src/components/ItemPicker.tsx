@@ -264,6 +264,10 @@ export default function ItemPicker({
       if (!n) return;
       onAdd(n, category);
       recordUse(n);
+      // Clear the search box on every add (typed OR tapped) so the next add
+      // starts clean and a stray partial term ("sal") can't be re-added by a
+      // later checkmark/submit. See submitTyped, which relies on this.
+      setQuery('');
       Haptics.selectionAsync().catch(() => {});
       setSnack({
         message: t('detail.addedToList', { name: targetName }),
@@ -322,8 +326,7 @@ export default function ItemPicker({
       onClose();
       return;
     }
-    add(n);
-    setQuery('');
+    add(n); // clears the query itself
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [query, add, onClose]);
 
