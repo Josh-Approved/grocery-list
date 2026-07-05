@@ -45,5 +45,35 @@
       { "waitFor": "@first-item", "timeout": 10000 },
       { "assert": "@added-item" }
     ]
+  },
+  "upgrade": {
+    "$comment": "T4 chaos net — upgrade/migration subflow (compiles to qa/flows/upgrade-write.yaml + upgrade-assert.yaml; run by scripts/qa/upgrade-test.mjs, full profile + nightly, NOT per-PR). The migration bug class Josh hits: install a HEAD build over months-old data and lose it. `write` runs on the LAST-RELEASED binary (fresh install -> QA seed + add Avocado, a datum NOT in the seed); the harness then installs HEAD OVER it (no uninstall) and runs `assert`, which re-opens the list and proves BOTH a seeded item (Bananas) AND the written item (Avocado) survived the upgrade. If HEAD reads the persisted store differently than the released build wrote it, Avocado is gone and the assert fails.",
+    "write": {
+      "steps": [
+        { "waitFor": "@home-title", "timeout": 30000 },
+        { "waitFor": "@weekly-list", "timeout": 15000 },
+        { "tap": "@weekly-list" },
+        { "waitFor": "@first-item", "timeout": 10000 },
+        { "assertNot": "@added-item" },
+        { "tap": "@add-input" },
+        { "waitFor": "@add-search", "timeout": 10000 },
+        { "tap": "@add-search" },
+        { "type": "Avocado" },
+        { "pressKey": "Enter" },
+        { "tap": "@sheet-done" },
+        { "assert": "@added-item" },
+        { "wait": 2000 }
+      ]
+    },
+    "assert": {
+      "steps": [
+        { "waitFor": "@home-title", "timeout": 30000 },
+        { "waitFor": "@weekly-list", "timeout": 15000 },
+        { "tap": "@weekly-list" },
+        { "waitFor": "@first-item", "timeout": 10000 },
+        { "assert": "@first-item" },
+        { "assert": "@added-item" }
+      ]
+    }
   }
 }
