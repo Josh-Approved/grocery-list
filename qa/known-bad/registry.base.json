@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "note": "CANONICAL known-bad registry (Uplevel 3 / T2 stage 2 — gates prove failure). Overwrite-synced by `sync.mjs qa` into every app's qa/known-bad/. prove-gates.mjs runs each gate against its checked-in fixture and FAILS if the gate does NOT reject the known-bad (a dead sensor). App-specific gates go in a sibling qa/known-bad/registry.json (app-owned, never clobbered). Excluded gates + why: EXCLUSIONS.md.",
+  "gates": [
+    { "gate": "parity/no-ios-only-imports", "kind": "canonical-rule", "fixture": "canonical", "rule": "parity/no-ios-only-imports", "why": "Bad.tsx imports ActionSheetIOS from 'react-native' — must FAIL (iOS-only API breaks the feature on Android)." },
+    { "gate": "parity/no-alert-prompt", "kind": "canonical-rule", "fixture": "canonical", "rule": "parity/no-alert-prompt", "why": "Bad.tsx calls Alert.prompt(...) — must FAIL (undefined on Android)." },
+    { "gate": "parity/no-platform-early-return", "kind": "canonical-rule", "fixture": "canonical", "rule": "parity/no-platform-early-return", "why": "Bad.tsx has `if (Platform.OS !== 'ios') return` — must FAIL (gates whether a feature exists)." },
+    { "gate": "telemetry/no-analytics-deps", "kind": "canonical-rule", "fixture": "canonical", "rule": "telemetry/no-analytics-deps", "why": "package.json depends on firebase — must FAIL (tenet: no tracking)." },
+    { "gate": "theme/contrast-pairing", "kind": "canonical-rule", "fixture": "canonical", "rule": "theme/contrast-pairing", "why": "Bad.tsx uses c.fgOnInk as a foreground — must FAIL (invisible on the inverted dark-mode button)." },
+    { "gate": "store/caption-no-price", "kind": "canonical-rule", "fixture": "canonical", "rule": "store/caption-no-price", "why": "screenshots.config.json caption says 'Free forever' — must FAIL (both stores reject price/promo text in a screenshot)." },
+    { "gate": "rn/splash-wordmark-clip", "kind": "canonical-rule", "fixture": "canonical", "rule": "rn/splash-wordmark-clip", "why": "AnimatedSplash.tsx sets letterSpacing with no trailing pad — must FAIL (the 'd' clip regression)." },
+    { "gate": "rn/app-name-spotlight-safe", "kind": "canonical-rule", "fixture": "canonical", "rule": "rn/app-name-spotlight-safe", "why": "app.json name has a space and no CFBundleName — must FAIL (Spotlight shows the space-stripped name)." },
+    { "gate": "rn/eas-json-shape", "kind": "canonical-rule", "fixture": "canonical", "rule": "rn/eas-json-shape", "why": "no eas.json in the fixture — must FAIL (missing canonical eas.json)." },
+    { "gate": "test/script-present", "kind": "canonical-rule", "fixture": "canonical", "rule": "test/script-present", "why": "package.json has no `test` script + fixture baseline sets testing/enforce — must FAIL (Tier-1 unit tests required)." },
+    { "gate": "test/trust-core-covered", "kind": "canonical-rule", "fixture": "canonical", "rule": "test/trust-core-covered", "why": "no *.test/*.spec under src + testing/enforce — must FAIL (the trust core must be covered)." },
+    { "gate": "flows/has-outcome-assertions", "kind": "canonical-rule", "fixture": "canonical", "rule": "flows/has-outcome-assertions", "why": "journey.json has steps but zero assert/assertNot + testing/enforce — must FAIL (a flow must prove an outcome)." },
+    { "gate": "i18n/no-hardcoded-strings", "kind": "canonical-rule", "fixture": "canonical", "rule": "i18n/no-hardcoded-strings", "why": "no src/i18n module + i18n/enforce — must FAIL (every app ships translation-ready)." },
+    { "gate": "theme/appearance-toggle", "kind": "canonical-rule", "fixture": "canonical", "rule": "theme/appearance-toggle", "why": "no <AppearanceToggle/> in source + theme/enforce — must FAIL (Settings must offer System/Light/Dark)." },
+    { "gate": "flows/lint-drift", "kind": "command", "fixture": "flow-drift", "cmd": ["node", "{appDir}/scripts/qa/lint-flows.mjs", "{fixtureDir}"], "why": "journey.json references @missingAnchor absent from selectors.json — lint-flows must exit non-zero (selector drift)." }
+  ]
+}

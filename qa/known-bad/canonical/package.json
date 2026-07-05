@@ -1,0 +1,10 @@
+{
+  "name": "jaf-known-bad-fixture",
+  "private": true,
+  "version": "0.0.0",
+  "//": "A DELIBERATELY-BROKEN fixture app (see ../README.md). qa-canonical needs an app.json + a package.json with an `expo` dep to detect surface=rn, so the RN/parity/theme/testing rules actually run against it. `firebase` is here on purpose to trip telemetry/no-analytics-deps. There is intentionally NO `scripts.test` (trips test/script-present) and NO eas.json (trips rn/eas-json-shape). Nothing here is installed — it is scanned, never built.",
+  "dependencies": {
+    "expo": "^54.0.0",
+    "firebase": "^10.0.0"
+  }
+}

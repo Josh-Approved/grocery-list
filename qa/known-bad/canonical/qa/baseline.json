@@ -1,0 +1,6 @@
+{
+  "//": "Force the rollout WARN tiers to FAIL so prove-gates can assert the sensor fires. The real apps promote these per-app when backfilled; the fixture promotes them unconditionally so the gate's live-or-dead is unambiguous.",
+  "testing/enforce": true,
+  "i18n/enforce": true,
+  "theme/enforce": true
+}

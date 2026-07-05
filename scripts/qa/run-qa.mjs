@@ -155,6 +155,90 @@ function runMatrix(profile) {
   return { status, profile: matrixProfile, regressions, cellFails, reviewerBlockers, reviewerMajors };
 }
 
+// ---------- Tier "twoDevice": network chaos on the two-device rig (T4 stage 2) ----------
+// Gates the two-device sync E2E for apps that consume shared-sync — currently
+// gated NOWHERE (survey gap #3). Read-only like the matrix tier: it never boots
+// a device here; it reads the artifact the Mac-present run wrote
+// (qa/e2e-sync-report.json), plus cheap static checks (harness wired + chaos
+// catalog shape valid). "Consumer of shared-sync" is derived the same way the
+// module-consumers map is: the overwrite-synced src/sync/transport.ts present.
+// Gate policy (canon § QA & testing doctrine, mirrors device-net):
+//   • not a sync consumer          => 'skip' (not applicable)
+//   • production + two-device/enforce:
+//       harness missing / catalog invalid / no green report => 'fail'
+//   • production without enforce, or testflight => 'skip' (rolling out)
+async function runTwoDevice(profile) {
+  const isConsumer = exists(path.join(appDir, 'src', 'sync', 'transport.ts'));
+  if (!isConsumer) return { status: 'skip', reason: 'not a shared-sync consumer' };
+
+  const baseline = readJson(path.join(appDir, 'qa', 'baseline.json')) || {};
+  const enforce = baseline['two-device/enforce'] === true;
+  const enforcedProd = enforce && profile === 'production';
+
+  const e2eDir = path.join(appDir, 'scripts', 'e2e');
+  const harnessFiles = ['chaos-relay.mjs', 'chaos-scenarios.mjs', 'mini-relay.mjs', 'harness-lib.sh'];
+  const missing = harnessFiles.filter((f) => !exists(path.join(e2eDir, f)));
+  const hasFlows = exists(path.join(appDir, 'qa', 'flows', 'e2e-sync'));
+  if (missing.length || !hasFlows) {
+    const reason = `two-device harness not wired (${missing.length ? 'missing ' + missing.join(',') : 'no qa/flows/e2e-sync'}) — sync module e2e-two-device`;
+    return { status: enforcedProd ? 'fail' : 'skip', reason };
+  }
+
+  // Cheap, pure catalog validation (no toxiproxy, no ws) — chaos-scenarios.mjs
+  // is import-safe. Guards against a broken/forked scenario schedule shipping.
+  let catalogProblems = [];
+  try {
+    const mod = await import(pathToFileURL(path.join(e2eDir, 'chaos-scenarios.mjs')).href);
+    catalogProblems = mod.validateCatalog ? mod.validateCatalog() : ['no validateCatalog export'];
+  } catch (e) {
+    catalogProblems = ['catalog import failed: ' + e.message];
+  }
+  if (catalogProblems.length) {
+    return { status: enforcedProd ? 'fail' : 'skip', reason: 'chaos catalog invalid: ' + catalogProblems.join('; ') };
+  }
+
+  const report = readJson(path.join(appDir, 'qa', 'e2e-sync-report.json'));
+  if (!report) {
+    return { status: enforcedProd ? 'fail' : 'skip',
+      reason: enforcedProd ? 'two-device enforced but no run recorded (run scripts/e2e/run-two-device.sh + run-chaos.sh on a Mac)' : 'two-device wired; no device run recorded yet (rolling out)' };
+  }
+  const failures = Array.isArray(report.scenarios) ? report.scenarios.filter((s) => !s.ok) : [];
+  const runOk = report.ok === true && failures.length === 0;
+  let status;
+  if (profile === 'production') status = runOk ? 'pass' : (enforce ? 'fail' : 'skip');
+  else status = 'skip'; // testflight: sync E2E is a production-gate concern
+  return { status, ok: runOk, suite: report.suite, scenarios: report.scenarios, failures: failures.map((f) => f.name) };
+}
+
+// ---------- Tier "upgrade": migration harness (T4 stage 4) ----------
+// Gates the upgrade/migration harness (scripts/qa/upgrade-test.mjs): install the
+// last-released binary, write data, install HEAD OVER it (no uninstall), assert
+// the data survived. Read-only here like the matrix/twoDevice tiers: it never
+// boots a device; it reads the artifact the Mac-present run wrote
+// (qa/upgrade-report.json). The device run itself is Mac-present → T5-scheduled.
+// Gate policy (mirrors device-net/two-device, canon § QA & testing doctrine):
+//   • no upgrade block in journey.json      => 'skip' (rolling out, like survival)
+//   • no released binary / no run recorded  => 'skip' unless upgrade/enforce
+//   • production + upgrade/enforce + a recorded FAIL => 'fail'
+//   • a recorded PASS => 'pass'
+function runUpgrade(profile) {
+  const journey = readJson(path.join(appDir, 'qa', 'journey.json'));
+  const hasBlock = !!(journey && journey.upgrade && journey.upgrade.write && journey.upgrade.assert);
+  if (!hasBlock) return { status: 'skip', reason: 'no journey.json "upgrade" block (migration harness rolling out)' };
+  if (profile !== 'production') return { status: 'skip', reason: 'upgrade harness is a production-gate concern' };
+
+  const baseline = readJson(path.join(appDir, 'qa', 'baseline.json')) || {};
+  const enforce = baseline['upgrade/enforce'] === true;
+  const report = readJson(path.join(appDir, 'qa', 'upgrade-report.json'));
+  if (!report) {
+    return { status: enforce ? 'fail' : 'skip',
+      reason: enforce ? 'upgrade enforced but no run recorded (run scripts/qa/upgrade-test.mjs on a Mac with a released binary)' : 'upgrade harness wired; no device run recorded yet (rolling out / no local released binary)' };
+  }
+  if (report.ok === true) return { status: 'pass', platform: report.platform, oldSource: report.oldSource };
+  // A recorded loss blocks production when enforced; otherwise it's still surfaced.
+  return { status: enforce ? 'fail' : 'skip', reason: report.verdict || 'upgrade lost data', platform: report.platform };
+}
+
 // ---------- Defect loop: no unproven fix at release (T0 stage 2) ----------
 // The failing-first fix gate (regression-gate.mjs) advances a defect out of
 // `proving` only once its regression test provably fails on the pre-fix code.
@@ -174,6 +258,33 @@ function runDefectGate(app, profile) {
   const proving = Array.isArray(recs) ? recs : [];
   if (!proving.length) return { status: 'pass', proving: 0 };
   return { status: 'fail', proving: proving.length, ids: proving.map((r) => r.id) };
+}
+
+// ---------- Gates prove failure: dead-sensor check (T2 stage 2) ----------
+// Every checkable gate must reject a checked-in known-bad; a gate that reports
+// green over its known-bad is a DEAD SENSOR — a hole exactly where the net says
+// "covered" (canon 2026-07-02, the demo-frame miss, generalized). A dead sensor
+// blocks a production release. prove-gates.mjs is the app's own synced runner; it
+// uses the app's own gates (qa-canonical, lint-flows) against qa/known-bad/.
+// Rollout doctrine (mirrors testing/*): an app with no registry yet simply skips.
+function runProveGates(profile) {
+  if (profile !== 'production') return { status: 'skip', reason: 'dead-sensor check is a production-gate concern' };
+  const runner = path.join(__dirname, 'prove-gates.mjs');
+  if (!exists(runner)) return { status: 'skip', reason: 'no prove-gates.mjs (gates-prove-failure rolling out)' };
+  let out;
+  try {
+    out = execFileSync('node', [runner, appDir, '--json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch (e) {
+    // prove-gates exits 1 on a dead sensor / malformed registry but still prints its JSON.
+    out = e.stdout || '';
+  }
+  let rep;
+  try { rep = JSON.parse(out); } catch { return { status: 'error', reason: 'could not parse prove-gates output' }; }
+  if (rep.status === 'skip') return { status: 'skip', reason: rep.reason || 'no known-bad registry' };
+  if (rep.status === 'error') return { status: 'fail', reason: `known-bad registry malformed: ${(rep.problems || []).join('; ')}` };
+  return rep.ok
+    ? { status: 'pass', total: rep.total }
+    : { status: 'fail', dead: rep.dead || [], reason: rep.verdict || `dead sensor(s): ${(rep.dead || []).join(', ')}` };
 }
 
 // ---------- Lint: qa-canonical testing tiers ----------
@@ -197,17 +308,23 @@ const unit = runUnit();
 const flow = await runFlowStatic();
 const lint = runLintTiers();
 const matrix = runMatrix(profile);
+const twoDevice = await runTwoDevice(profile);
+const upgrade = runUpgrade(profile);
 const defects = runDefectGate(path.basename(appDir), profile);
+const proveGates = runProveGates(profile);
 
 // Gate: a tier that ERRORs or FAILs blocks; SKIP/PASS are fine.
 const unitOk = unit.status === 'pass' || unit.status === 'skip';
 const flowFailed = flow.status === 'fail';
 const lintFailed = lint.status === 'fail';
 const matrixFailed = matrix.status === 'fail';
+const twoDeviceFailed = twoDevice.status === 'fail';
+const upgradeFailed = upgrade.status === 'fail';
 const defectsFailed = defects.status === 'fail';
+const proveGatesFailed = proveGates.status === 'fail' || proveGates.status === 'error';
 const ok = profile === 'testflight'
   ? unitOk && !lintFailed && !matrixFailed       // Tier 1 + lint + device smoke; Tier 2 is smoke/optional
-  : unitOk && !flowFailed && !lintFailed && !matrixFailed && !defectsFailed;  // production: Tier 2 + full matrix + no unproven fix
+  : unitOk && !flowFailed && !lintFailed && !matrixFailed && !twoDeviceFailed && !upgradeFailed && !defectsFailed && !proveGatesFailed;  // production: Tier 2 + full matrix + two-device sync + upgrade migration + no unproven fix + no dead sensor
 
 const report = {
   app: path.basename(appDir),
@@ -216,7 +333,7 @@ const report = {
   // NOTE: timestamp intentionally omitted — Date.now() is unavailable in some
   // factory contexts and would make the artifact non-deterministic. CI/commit
   // metadata carries the time.
-  tiers: { unit, flow, lint, matrix, defects },
+  tiers: { unit, flow, lint, matrix, twoDevice, upgrade, defects, proveGates },
   // The agent's reading guide — what to do, in one line, without opening logs.
   verdict: ok
     ? `OK for ${profile}: ${unit.status === 'skip' ? 'no unit tests' : unit.passed + ' tests pass'}${flow.status === 'pass' ? ', flow static green' : ''}${matrix.status === 'pass' ? ', device matrix green' : ''}.`
@@ -225,7 +342,10 @@ const report = {
         flow.status === 'fail' && (flow.stale ? 'flow yaml stale (re-run compile-flow)' : 'selector grounding failed (run heal)'),
         lint.status === 'fail' && 'qa-canonical testing rule failing',
         matrix.status === 'fail' && (matrix.reason || `device matrix: ${matrix.regressions || 0} visual regression(s), ${matrix.cellFails || 0} failed cell(s), ${matrix.reviewerBlockers || 0} reviewer blocker(s)` + ' (accept intended changes via visual-reg --accept)'),
+        twoDevice.status === 'fail' && (twoDevice.reason || `two-device sync E2E: ${(twoDevice.failures || []).join(', ') || 'not green'} (run scripts/e2e/run-two-device.sh + run-chaos.sh)`),
+        upgrade.status === 'fail' && (upgrade.reason || `upgrade migration: data lost across install-over (run scripts/qa/upgrade-test.mjs)`),
         defects.status === 'fail' && `${defects.proving} defect(s) unproven at release (${(defects.ids || []).join(', ')}) — run scripts/qa/regression-gate.mjs to prove the failing-first test, or waive`,
+        proveGatesFailed && (proveGates.reason || `dead sensor(s): ${(proveGates.dead || []).join(', ')} — a gate reports green over its known-bad; fix the gate (run scripts/qa/prove-gates.mjs)`),
       ].filter(Boolean).join('; ')}`,
 };
 
