@@ -30,7 +30,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { compileJourney, resolveSelector } from './compile-flow.mjs';
+import { compileJourney, resolveSelector, survivalJourney } from './compile-flow.mjs';
 
 const SRC_EXT = new Set(['.ts', '.tsx', '.js', '.jsx']);
 
@@ -70,6 +70,7 @@ export function lintFlows(appDir) {
   const journeyPath = path.join(appDir, 'qa', 'journey.json');
   const selectorsPath = path.join(appDir, 'qa', 'selectors.json');
   const yamlPath = path.join(appDir, 'qa', 'flows', 'mobile.yaml');
+  const survivalYamlPath = path.join(appDir, 'qa', 'flows', 'state-survival.yaml');
 
   if (!fs.existsSync(journeyPath)) {
     add('skip', 'flows/journey', 'no qa/journey.json — flow pipeline not adopted yet');
@@ -97,11 +98,15 @@ export function lintFlows(appDir) {
   // an unknown @anchor or malformed step, which is exactly the integrity check.
   let yaml = null;
   const referenced = new Set();
-  for (const step of journey.steps || []) {
-    for (const k of ['waitFor', 'assert', 'tap']) {
-      if (typeof step[k] === 'string' && step[k].startsWith('@')) referenced.add(step[k].slice(1));
+  const collectAnchors = (steps) => {
+    for (const step of steps || []) {
+      for (const k of ['waitFor', 'assert', 'assertNot', 'tap', 'scrollUntilVisible']) {
+        if (typeof step[k] === 'string' && step[k].startsWith('@')) referenced.add(step[k].slice(1));
+      }
     }
-  }
+  };
+  collectAnchors(journey.steps);
+  collectAnchors(journey.survival && journey.survival.steps);
   try {
     yaml = compileJourney(journey, selectors, appDir);
     add('pass', 'flows/journey', `journey compiles (${(journey.steps || []).length} steps, ${referenced.size} anchors used)`);
@@ -119,6 +124,27 @@ export function lintFlows(appDir) {
       add('fail', 'flows/yaml-fresh', 'qa/flows/mobile.yaml is STALE vs journey/selectors — run compile-flow.mjs');
     } else {
       add('pass', 'flows/yaml-fresh', 'qa/flows/mobile.yaml matches journey+selectors');
+    }
+  }
+
+  // (2b) state-survival flow freshness (T4 chaos net) — only when the app
+  // declares a `survival` block. It's a separate artifact from mobile.yaml so it
+  // can run in the full profile + nightly, never per-PR.
+  let survivalYaml = null;
+  try {
+    const sj = survivalJourney(journey);
+    survivalYaml = sj ? compileJourney(sj, selectors, appDir) : null;
+  } catch (e) {
+    add('fail', 'flows/survival', e.message);
+  }
+  if (survivalYaml != null) {
+    const cur = fs.existsSync(survivalYamlPath) ? fs.readFileSync(survivalYamlPath, 'utf8') : null;
+    if (cur == null) {
+      add('fail', 'flows/survival-fresh', 'qa/flows/state-survival.yaml missing — run compile-flow.mjs');
+    } else if (cur !== survivalYaml) {
+      add('fail', 'flows/survival-fresh', 'qa/flows/state-survival.yaml is STALE vs journey.survival — run compile-flow.mjs');
+    } else {
+      add('pass', 'flows/survival-fresh', `qa/flows/state-survival.yaml matches journey.survival (${journey.survival.steps.length} steps)`);
     }
   }
 

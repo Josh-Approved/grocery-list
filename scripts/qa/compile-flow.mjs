@@ -221,6 +221,28 @@ export function compileJourney(journey, selectors, appDir = '.', opts = {}) {
       // don't lose state). Distinct from the cell-level orientation axis — use
       // this to rotate mid-journey then assert the user stayed in place.
       out.push(`- setOrientation: ${maestroOrientation(step.rotate)}`);
+    } else if ('killApp' in step) {
+      // Chaos probe (T4 state-survival): REAL system-initiated process death —
+      // NOT the graceful `stopApp`. On Android `killApp` issues an actual
+      // process kill (the "OS reclaimed a backgrounded app mid-write" regime
+      // Josh's hardest bug reports came from). iOS has no true force-kill
+      // through Maestro's driver, so we alias to `stopApp` (the closest
+      // available termination) and say so. One YAML runs BOTH platforms, so we
+      // branch with runFlow/when:platform rather than emit a bare command that
+      // silently behaves differently per OS. Follow with `relaunch` (keepState)
+      // + an outcome `assert` to prove state persisted before the kill survived.
+      out.push('# killApp: real process death on Android; stopApp alias on iOS');
+      out.push('# (no true force-kill via the iOS XCTest driver). See runbooks/testing-net.md § chaos net.');
+      out.push('- runFlow:');
+      out.push('    when:');
+      out.push('      platform: Android');
+      out.push('    commands:');
+      out.push('      - killApp');
+      out.push('- runFlow:');
+      out.push('    when:');
+      out.push('      platform: iOS');
+      out.push('    commands:');
+      out.push('      - stopApp');
     } else if ('screenshot' in step) {
       out.push('- takeScreenshot: qa/captures/${STORE}/' + step.screenshot);
     } else {
@@ -229,6 +251,34 @@ export function compileJourney(journey, selectors, appDir = '.', opts = {}) {
   });
 
   return out.join('\n') + '\n';
+}
+
+/**
+ * The state-survival flow (T4 chaos net) is a SEPARATE compiled artifact from
+ * the screenshot/Tier-2 traversal — deliberately, because it must run in the
+ * FULL profile + nightly, NOT per-PR (the per-PR CI runs only mobile.yaml).
+ * It's authored as an optional top-level `survival` block in journey.json:
+ *
+ *   "survival": { "$comment": "...", "clearState": true, "steps": [ ... ] }
+ *
+ * The sequence is: mutate → killApp → relaunch(keepState) → assert the outcome
+ * SURVIVED (an intent waypoint, not a pixel). This helper projects that block
+ * into a normal journey object so compileJourney can render it verbatim.
+ * Returns null when the app declares no survival block.
+ */
+export function survivalJourney(journey) {
+  if (!journey || !journey.survival) return null;
+  const s = journey.survival;
+  if (!Array.isArray(s.steps)) throw new Error('journey.json: "survival.steps" must be an array');
+  return {
+    appId: journey.appId,
+    // A survival flow always starts from a clean, seeded boot (clearState:true)
+    // so the mutation it makes is the ONLY off-seed datum — then proves THAT
+    // survives the kill. Never a diagnostic launch shot (it's a behavioral run,
+    // not a capture run).
+    clearState: s.clearState !== false,
+    steps: s.steps,
+  };
 }
 
 // ---------- CLI ----------
@@ -251,6 +301,7 @@ function main() {
   const journeyPath = path.join(appDir, 'qa', 'journey.json');
   const selectorsPath = path.join(appDir, 'qa', 'selectors.json');
   const outPath = path.join(appDir, 'qa', 'flows', 'mobile.yaml');
+  const survivalPath = path.join(appDir, 'qa', 'flows', 'state-survival.yaml');
 
   if (!fs.existsSync(journeyPath)) {
     console.error(`No qa/journey.json in ${appDir}. Copy qa/journey.example.json to start.`);
@@ -259,16 +310,20 @@ function main() {
   const journey = readJson(journeyPath);
   const selectors = fs.existsSync(selectorsPath) ? readJson(selectorsPath) : { anchors: {} };
 
-  let yaml;
+  let yaml, survivalYaml;
   try {
     yaml = compileJourney(journey, selectors, appDir, { orientation });
+    // The state-survival flow (T4) uses no orientation axis — it's a behavioral
+    // run, not a per-cell capture — so it compiles once, canonically.
+    const sj = survivalJourney(journey);
+    survivalYaml = sj ? compileJourney(sj, selectors, appDir) : null;
   } catch (e) {
     console.error(`compile-flow: ${e.message}`);
     process.exit(1);
   }
 
   if (flags.has('--stdout')) {
-    process.stdout.write(yaml);
+    process.stdout.write(flags.has('--survival') && survivalYaml ? survivalYaml : yaml);
     return;
   }
 
@@ -278,13 +333,24 @@ function main() {
       console.error(`qa/flows/mobile.yaml is STALE — re-run: node scripts/qa/compile-flow.mjs`);
       process.exit(1);
     }
-    console.log('qa/flows/mobile.yaml is up to date.');
+    if (survivalYaml != null) {
+      const curSurv = fs.existsSync(survivalPath) ? fs.readFileSync(survivalPath, 'utf8') : '';
+      if (curSurv !== survivalYaml) {
+        console.error(`qa/flows/state-survival.yaml is STALE — re-run: node scripts/qa/compile-flow.mjs`);
+        process.exit(1);
+      }
+    }
+    console.log('qa/flows/mobile.yaml is up to date.' + (survivalYaml != null ? ' state-survival.yaml too.' : ''));
     return;
   }
 
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, yaml);
   console.log(`Wrote ${path.relative(appDir, outPath)} (${journey.steps?.length || 0} steps).`);
+  if (survivalYaml != null) {
+    fs.writeFileSync(survivalPath, survivalYaml);
+    console.log(`Wrote ${path.relative(appDir, survivalPath)} (${journey.survival.steps?.length || 0} survival steps).`);
+  }
 }
 
 // Only run as CLI when invoked directly, not when imported by lint/heal/tests.

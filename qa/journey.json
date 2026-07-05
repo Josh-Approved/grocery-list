@@ -21,5 +21,29 @@
     { "pressKey": "Enter" },
     { "tap": "@sheet-done" },
     { "assert": "@added-item" }
-  ]
+  ],
+  "survival": {
+    "$comment": "T4 chaos net — state-survival subflow (compiles to qa/flows/state-survival.yaml, run in the full profile + nightly, NOT per-PR). Core mutating action = add an item; then REAL process death (killApp on Android, stopApp on iOS); then relaunch keeping state and re-open the list. The intent oracle: the item added before the kill is still on the list after it — the 'app killed mid-write' regime Josh reported. Reuses @added-item (Avocado); the leading assertNot proves it wasn't there to begin with, so the post-kill assert can only pass if the write persisted through the kill.",
+    "steps": [
+      { "waitFor": "@home-title", "timeout": 30000 },
+      { "waitFor": "@weekly-list", "timeout": 15000 },
+      { "tap": "@weekly-list" },
+      { "waitFor": "@first-item", "timeout": 10000 },
+      { "assertNot": "@added-item" },
+      { "tap": "@add-input" },
+      { "waitFor": "@add-search", "timeout": 10000 },
+      { "tap": "@add-search" },
+      { "type": "Avocado" },
+      { "pressKey": "Enter" },
+      { "tap": "@sheet-done" },
+      { "assert": "@added-item" },
+      { "wait": 1500 },
+      { "killApp": true },
+      { "relaunch": true },
+      { "waitFor": "@home-title", "timeout": 30000 },
+      { "tap": "@weekly-list" },
+      { "waitFor": "@first-item", "timeout": 10000 },
+      { "assert": "@added-item" }
+    ]
+  }
 }
