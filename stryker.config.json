@@ -1,0 +1,39 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "Trust core = the CRDT merge/clock/pairing logic the intent fuzzer exercises (a bug here silently corrupts a shared list). Transport/engine/status glue (transport.ts, index.ts, status.ts, crypto.ts) is DEFERRED — mostly network/timer/UI, not unit-tested here; tracked as ticket mut-grocery-list-DEFERRED-sync-glue. Survivors are a work queue, never a gate. Incremental only. See stack/stryker.md.",
+  "packageManager": "npm",
+  "testRunner": "jest",
+  "jest": {
+    "projectType": "custom",
+    "configFile": "package.json",
+    "enableFindRelatedTests": false
+  },
+  "coverageAnalysis": "perTest",
+  "incremental": true,
+  "incrementalFile": "stryker-incremental.json",
+  "reporters": [
+    "json",
+    "clear-text"
+  ],
+  "concurrency": 2,
+  "timeoutMS": 20000,
+  "mutate": [
+    "src/sync/merge.ts",
+    "src/sync/mergeRecordSet.ts",
+    "src/sync/mergeKits.ts",
+    "src/sync/clock.ts",
+    "src/sync/share.ts"
+  ],
+  "ignorePatterns": [
+    "ios",
+    "android",
+    ".expo",
+    ".stryker-tmp",
+    "dist",
+    "build",
+    "reports",
+    "coverage",
+    "store-assets",
+    "qa/captures"
+  ]
+}
