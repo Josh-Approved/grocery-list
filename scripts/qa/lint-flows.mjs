@@ -160,9 +160,10 @@ export function lintFlows(appDir) {
     try { return fs.readFileSync(f, 'utf8'); } catch { return ''; }
   }).join('\n');
 
-  // Declared testIDs in source: `testID="x"`, `testID={'x'}`, `testID: 'x'`.
+  // Declared testIDs in source: `testID="x"`, `testID={'x'}`, `testID: 'x'`,
+  // plus suffixed carriers like react-navigation's `tabBarButtonTestID: 'x'`.
   const declaredTestIds = new Set();
-  for (const m of haystack.matchAll(/testID\s*[=:]\s*[{(]?\s*[`"']([^`"']+)[`"']/g)) {
+  for (const m of haystack.matchAll(/[Tt]estID\s*[=:]\s*[{(]?\s*[`"']([^`"']+)[`"']/g)) {
     declaredTestIds.add(m[1]);
   }
 
