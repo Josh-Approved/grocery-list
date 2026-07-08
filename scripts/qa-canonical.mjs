@@ -938,6 +938,45 @@ const ruleFlowDrift = async ({ appDir }) => {
   }
 };
 
+// ---------- rule: action coverage (Uplevel-3 T3) ----------
+//
+// Tier-2 journeys prove the happy path; they don't prove EVERY user-facing
+// action works. scripts/qa/action-coverage.mjs enumerates the app's actions from
+// src/** into the tracked registry qa/actions.json, each mapped to a proof
+// (tier2-assert | rntl | unit | none). This rule surfaces the gap: WARN when the
+// registry is missing or carries any unproven (proof.kind "none") or stale
+// entries. Promote per-app to FAIL with `"coverage/enforce": true` in
+// qa/baseline.json once the app is backfilled green — same codify→backfill→
+// shipgate rollout, and the same enforce plumbing, as the testing/i18n/theme
+// tiers (the backfill stages own closing the gaps).
+const enforceCoverage = baseline['coverage/enforce'] === true;
+const coverageWarn = (id, message, detail) => (enforceCoverage ? fail : warn)(id, message, detail);
+
+const ruleActionsMapped = () => {
+  if (surface !== 'rn') return skip('coverage/actions-mapped', 'Not a React Native app');
+  const p = join(appDir, 'qa', 'actions.json');
+  if (!exists(p)) {
+    return coverageWarn('coverage/actions-mapped',
+      'No qa/actions.json — run `node scripts/qa/action-coverage.mjs <app>` to map every user-facing action to a proof (Uplevel-3 T3)');
+  }
+  const reg = readJson(p);
+  if (!reg || !Array.isArray(reg.actions)) {
+    return coverageWarn('coverage/actions-mapped', 'qa/actions.json is unreadable or has no actions array');
+  }
+  const actions = reg.actions;
+  const unproven = actions.filter((a) => !a.stale && (!a.proof || a.proof.kind === 'none'));
+  const stale = actions.filter((a) => a.stale);
+  if (unproven.length || stale.length) {
+    const detail = [];
+    if (unproven.length) detail.push(`${unproven.length} action(s) with no proof: ${unproven.slice(0, 8).map((a) => a.id).join(', ')}${unproven.length > 8 ? ' …' : ''}`);
+    if (stale.length) detail.push(`${stale.length} stale entr${stale.length === 1 ? 'y' : 'ies'} (action gone from code): ${stale.slice(0, 8).map((a) => a.id).join(', ')}`);
+    return coverageWarn('coverage/actions-mapped',
+      `Action coverage incomplete — ${unproven.length} unproven / ${stale.length} stale. Backfill each gap's cheapest proof (unit → rntl → tier2-assert) or remove the stale entry (canon § QA & testing)`,
+      detail);
+  }
+  return pass('coverage/actions-mapped', `All ${actions.length} user-facing action(s) mapped to a proof`);
+};
+
 // ---------- rule: translation-readiness (canon § Translations) ----------
 //
 // Every v1 ships translation-READY: no user-facing copy hardcoded in
@@ -1418,6 +1457,7 @@ const CANONICAL_RULES = [
   ruleTrustCoreCovered,
   ruleFlowHasAssertions,
   ruleFlowDrift,
+  ruleActionsMapped,
   ruleNoHardcodedStrings,
   ruleScreenshotCaptionNoPrice,
   ruleDemoFramesValid,

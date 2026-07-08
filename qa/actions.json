@@ -1,0 +1,779 @@
+{
+  "$comment": "Action-coverage registry (Uplevel-3 T3). Every user-facing action mapped to its proof: tier2-assert (a qa/journey.json waypoint) | rntl (a component test) | unit (a trust-core test) | none (a gap to backfill). Maintained by scripts/qa/action-coverage.mjs — it appends new-in-code actions + flags stale ones, never rewrites a proof by hand.",
+  "actions": [
+    {
+      "id": "components/AboutRow#pressable-56",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/AboutRow.tsx:56",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/AddIngredientsSheet#common.done",
+      "label": "common.done",
+      "where": "src/components/AddIngredientsSheet.tsx:81",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/AddItemsSheet#pressable-88",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/AddItemsSheet.tsx:88",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/AddItemsSheet#common.done",
+      "label": "common.done",
+      "where": "src/components/AddItemsSheet.tsx:114",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/Credits#common.back",
+      "label": "common.back",
+      "where": "src/components/Credits.tsx:45",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/Credits#pressable-66",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/Credits.tsx:66",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/Dialogs#common.closemenu",
+      "label": "common.closeMenu",
+      "where": "src/components/Dialogs.tsx:115",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/Dialogs#pressable-121",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/Dialogs.tsx:121",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/Dialogs#pressable-128",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/Dialogs.tsx:128",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/Dialogs#common.cancel",
+      "label": "common.cancel",
+      "where": "src/components/Dialogs.tsx:142",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/Dialogs#common.cancel-2",
+      "label": "common.cancel",
+      "where": "src/components/Dialogs.tsx:224",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/Dialogs#pressable-230",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/Dialogs.tsx:230",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/Dialogs#textinput-237",
+      "label": "TextInput (dynamic label)",
+      "where": "src/components/Dialogs.tsx:237",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "TextInput · onSubmitEditing · dynamic/child-text label"
+    },
+    {
+      "id": "components/Dialogs#common.cancel-3",
+      "label": "common.cancel",
+      "where": "src/components/Dialogs.tsx:250",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/Dialogs#pressable-258",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/Dialogs.tsx:258",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/DonationModal#donate.supporta11y",
+      "label": "donate.supportA11y",
+      "where": "src/components/DonationModal.tsx:77",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/DonationModal#common.maybelater",
+      "label": "common.maybeLater",
+      "where": "src/components/DonationModal.tsx:85",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/FundingFooter#about.support",
+      "label": "about.support",
+      "where": "src/components/FundingFooter.tsx:78",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/FundingFooter#about.feedback",
+      "label": "about.feedback",
+      "where": "src/components/FundingFooter.tsx:89",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/ItemEditor#common.close",
+      "label": "common.close",
+      "where": "src/components/ItemEditor.tsx:171",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/ItemEditor#pressable-177",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/ItemEditor.tsx:177",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/ItemEditor#common.done",
+      "label": "common.done",
+      "where": "src/components/ItemEditor.tsx:187",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/ItemEditor#pressable-240",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/ItemEditor.tsx:240",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/ItemEditor#detail.newaisle",
+      "label": "detail.newAisle",
+      "where": "src/components/ItemEditor.tsx:262",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/ItemEditor#detail.newaisleplaceholder",
+      "label": "detail.newAislePlaceholder",
+      "where": "src/components/ItemEditor.tsx:282",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "TextInput · onSubmitEditing"
+    },
+    {
+      "id": "components/ItemEditor#common.add",
+      "label": "common.add",
+      "where": "src/components/ItemEditor.tsx:294",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/ItemEditor#pressable-321",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/ItemEditor.tsx:321",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/ItemEditor#detail.remove",
+      "label": "detail.remove",
+      "where": "src/components/ItemEditor.tsx:350",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/ItemPicker#pressable-353",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/ItemPicker.tsx:353",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/ItemPicker#pressable-376",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/ItemPicker.tsx:376",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/ItemPicker#pressable-394",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/ItemPicker.tsx:394",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/ItemPicker#detail.edititema11y",
+      "label": "detail.editItemA11y",
+      "where": "src/components/ItemPicker.tsx:413",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/ItemPicker#detail.searchoradd",
+      "label": "detail.searchOrAdd",
+      "where": "src/components/ItemPicker.tsx:441",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "TextInput · onSubmitEditing"
+    },
+    {
+      "id": "components/ItemPicker#common.close",
+      "label": "common.close",
+      "where": "src/components/ItemPicker.tsx:456",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/KitPicker#kits.addkita11y",
+      "label": "kits.addKitA11y",
+      "where": "src/components/KitPicker.tsx:117",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/LanguageSetting#pressable-95",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/LanguageSetting.tsx:95",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/LanguageSetting#common.cancel",
+      "label": "common.cancel",
+      "where": "src/components/LanguageSetting.tsx:113",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/LanguageSetting#pressable-114",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/LanguageSetting.tsx:114",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/LanguageSetting#common.done",
+      "label": "common.done",
+      "where": "src/components/LanguageSetting.tsx:117",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/LanguageSetting#pressable-135",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/LanguageSetting.tsx:135",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/MoreFromJA#pressable-58",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/MoreFromJA.tsx:58",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/ReviewModal#review.leavea11y",
+      "label": "review.leaveA11y",
+      "where": "src/components/ReviewModal.tsx:119",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/ReviewModal#common.notnow",
+      "label": "common.notNow",
+      "where": "src/components/ReviewModal.tsx:127",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/ScreenHeader#common.back",
+      "label": "common.back",
+      "where": "src/components/ScreenHeader.tsx:35",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/SettingsAbout#about.learnmorea11y",
+      "label": "about.learnMoreA11y",
+      "where": "src/components/SettingsAbout.tsx:68",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/Snackbar#pressable-69",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/Snackbar.tsx:69",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/Stepper#pressable-81",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/Stepper.tsx:81",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/Stepper#stepper.increase",
+      "label": "stepper.increase",
+      "where": "src/components/Stepper.tsx:114",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/SwipeRow#pressable-130",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/SwipeRow.tsx:130",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/SyncStatusBar#detail.sync.a11y",
+      "label": "detail.sync.a11y",
+      "where": "src/components/SyncStatusBar.tsx:61",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/TipJarSheet#common.done",
+      "label": "common.done",
+      "where": "src/components/TipJarSheet.tsx:132",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/TipJarSheet#tip.tiera11y",
+      "label": "tip.tierA11y",
+      "where": "src/components/TipJarSheet.tsx:166",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/TipJarSheet#common.maybelater",
+      "label": "common.maybeLater",
+      "where": "src/components/TipJarSheet.tsx:194",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/KitDetailScreen#pressable-154",
+      "label": "Pressable (dynamic label)",
+      "where": "src/screens/KitDetailScreen.tsx:154",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "screens/KitDetailScreen#detail.edititema11y",
+      "label": "detail.editItemA11y",
+      "where": "src/screens/KitDetailScreen.tsx:188",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/KitDetailScreen#common.back",
+      "label": "common.back",
+      "where": "src/screens/KitDetailScreen.tsx:208",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/KitDetailScreen#kits.renamea11y",
+      "label": "kits.renameA11y",
+      "where": "src/screens/KitDetailScreen.tsx:217",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/KitDetailScreen#kits.kitoptions",
+      "label": "kits.kitOptions",
+      "where": "src/screens/KitDetailScreen.tsx:240",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/KitDetailScreen#kits.addingredient",
+      "label": "kits.addIngredient",
+      "where": "src/screens/KitDetailScreen.tsx:252",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/KitsHomeScreen#kits.kitsummary",
+      "label": "kits.kitSummary",
+      "where": "src/screens/KitsHomeScreen.tsx:101",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/KitsHomeScreen#common.optionsfor",
+      "label": "common.optionsFor",
+      "where": "src/screens/KitsHomeScreen.tsx:117",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/KitsHomeScreen#kits.newkit",
+      "label": "kits.newKit",
+      "where": "src/screens/KitsHomeScreen.tsx:140",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/KitsHomeScreen#settings.title",
+      "label": "settings.title",
+      "where": "src/screens/KitsHomeScreen.tsx:150",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/KitsHomeScreen#kits.createfirst",
+      "label": "kits.createFirst",
+      "where": "src/screens/KitsHomeScreen.tsx:172",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ListDetailScreen#detail.checkeda11y",
+      "label": "detail.checkedA11y",
+      "where": "src/screens/ListDetailScreen.tsx:278",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ListDetailScreen#pressable-306",
+      "label": "Pressable (dynamic label)",
+      "where": "src/screens/ListDetailScreen.tsx:306",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "screens/ListDetailScreen#detail.edititema11y",
+      "label": "detail.editItemA11y",
+      "where": "src/screens/ListDetailScreen.tsx:339",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ListDetailScreen#common.back",
+      "label": "common.back",
+      "where": "src/screens/ListDetailScreen.tsx:362",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ListDetailScreen#pressable-371",
+      "label": "Pressable (dynamic label)",
+      "where": "src/screens/ListDetailScreen.tsx:371",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "screens/ListDetailScreen#detail.listoptions",
+      "label": "detail.listOptions",
+      "where": "src/screens/ListDetailScreen.tsx:411",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ListDetailScreen#detail.additem",
+      "label": "detail.addItem",
+      "where": "src/screens/ListDetailScreen.tsx:427",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ListDetailScreen#detail.finishshopa11y",
+      "label": "detail.finishShopA11y",
+      "where": "src/screens/ListDetailScreen.tsx:456",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ListsHomeScreen#pressable-121",
+      "label": "Pressable (dynamic label)",
+      "where": "src/screens/ListsHomeScreen.tsx:121",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "screens/ListsHomeScreen#common.optionsfor",
+      "label": "common.optionsFor",
+      "where": "src/screens/ListsHomeScreen.tsx:154",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ListsHomeScreen#home.newlist",
+      "label": "home.newList",
+      "where": "src/screens/ListsHomeScreen.tsx:177",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ListsHomeScreen#settings.title",
+      "label": "settings.title",
+      "where": "src/screens/ListsHomeScreen.tsx:187",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ListsHomeScreen#home.createfirst",
+      "label": "home.createFirst",
+      "where": "src/screens/ListsHomeScreen.tsx:220",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ReorderAislesScreen#common.done",
+      "label": "common.done",
+      "where": "src/screens/ReorderAislesScreen.tsx:74",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ReorderAislesScreen#reorder.moveup",
+      "label": "reorder.moveUp",
+      "where": "src/screens/ReorderAislesScreen.tsx:93",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ReorderAislesScreen#reorder.movedown",
+      "label": "reorder.moveDown",
+      "where": "src/screens/ReorderAislesScreen.tsx:113",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ReorderAislesScreen#reorder.remove",
+      "label": "reorder.remove",
+      "where": "src/screens/ReorderAislesScreen.tsx:134",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/SettingsScreen#common.back",
+      "label": "common.back",
+      "where": "src/screens/SettingsScreen.tsx:96",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/SettingsScreen#settings.learnmorea11y",
+      "label": "settings.learnMoreA11y",
+      "where": "src/screens/SettingsScreen.tsx:133",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ShareScreen#common.close",
+      "label": "common.close",
+      "where": "src/screens/ShareScreen.tsx:84",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ShareScreen#share.sendlink",
+      "label": "share.sendLink",
+      "where": "src/screens/ShareScreen.tsx:119",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "screens/ShareScreen#share.scaninsteada11y",
+      "label": "share.scanInsteadA11y",
+      "where": "src/screens/ShareScreen.tsx:128",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    }
+  ]
+}
