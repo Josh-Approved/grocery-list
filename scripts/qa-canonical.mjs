@@ -990,7 +990,14 @@ const ruleNoHardcodedStrings = () => {
   for (const f of files) {
     const raw = readText(f);
     if (!raw) continue;
-    const text = stripComments(raw);
+    // Type-alias declarations (`type Props = CompositeScreenProps<A, B>;`) are
+    // pure type-land — their generic params (`>, Name<`) pattern-match the JSX
+    // scan below as fake copy (found 2026-07-08 on the home-maintenance build:
+    // `…'Due'>, NativeStackScreenProps<…`). Strip them before scanning.
+    const text = stripComments(raw).replace(
+      /^[ \t]*(?:export\s+)?type\s+[A-Za-z0-9_]+\s*=[^;]*;/gm,
+      ''
+    );
     // 1) Raw JSX text content: >copy< (no braces/tags inside). The opening `>`
     //    must close a tag (not be an operator like `=>` / `>=`) and the closing
     //    `<` must open a tag (a tag-name letter or a `/`), never a comparison
