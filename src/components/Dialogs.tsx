@@ -281,6 +281,104 @@ export function usePrompt(): {
 }
 
 // ---------------------------------------------------------------------------
+// Destructive confirmation (canon § Interaction safety)
+// ---------------------------------------------------------------------------
+//
+// A titled Cancel / Confirm card for unrecoverable actions (delete a whole list
+// or kit, remove a custom aisle). Mirrors usePrompt's card chrome; the confirm
+// button carries the danger tint so the stakes read at a glance. A mis-tap on
+// the original control now costs one extra deliberate tap, not the data.
+
+interface ConfirmConfig {
+  title: string;
+  message?: string;
+  /** Label on the destructive button (defaults to "Delete"). */
+  confirmLabel?: string;
+  onConfirm: () => void;
+}
+
+interface ConfirmState extends ConfirmConfig {
+  visible: boolean;
+}
+
+export function useConfirm(): {
+  open: (cfg: ConfirmConfig) => void;
+  element: React.ReactElement;
+} {
+  const { c } = useTheme();
+  const s = makeStyles(c);
+  const reduced = useReducedMotion();
+  const [state, setState] = useState<ConfirmState>({
+    visible: false,
+    title: '',
+    onConfirm: () => {},
+  });
+
+  const close = useCallback(
+    () => setState((p) => ({ ...p, visible: false })),
+    []
+  );
+
+  const open = useCallback(
+    (cfg: ConfirmConfig) => setState({ ...cfg, visible: true }),
+    []
+  );
+
+  const confirm = useCallback(() => {
+    close();
+    state.onConfirm();
+  }, [state, close]);
+
+  const element = (
+    <Modal
+      visible={state.visible}
+      transparent
+      animationType={reduced ? 'none' : 'fade'}
+      statusBarTranslucent
+      onRequestClose={close}
+    >
+      <Pressable
+        style={s.centerOverlay}
+        onPress={close}
+        accessibilityRole="button"
+        accessibilityLabel={t('common.cancel')}
+      >
+        <Pressable style={s.card} onPress={(e) => e.stopPropagation()}>
+          <Text style={s.cardTitle} accessibilityRole="header">
+            {state.title}
+          </Text>
+          {state.message ? (
+            <Text style={s.cardMessage}>{state.message}</Text>
+          ) : null}
+          <View style={s.cardActions}>
+            <Pressable
+              style={({ pressed }) => [s.btnGhost, pressed && s.pressed]}
+              onPress={close}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.cancel')}
+            >
+              <Text style={s.btnGhostText}>{t('common.cancel')}</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [s.btnDanger, pressed && s.pressed]}
+              onPress={confirm}
+              accessibilityRole="button"
+              accessibilityLabel={state.confirmLabel ?? t('common.delete')}
+            >
+              <Text style={s.btnDangerText}>
+                {state.confirmLabel ?? t('common.delete')}
+              </Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+
+  return { open, element };
+}
+
+// ---------------------------------------------------------------------------
 
 function makeStyles(c: Colors) {
   return StyleSheet.create({
@@ -403,6 +501,18 @@ function makeStyles(c: Colors) {
       ...ty.base,
       fontFamily: fontFamily.sansSemibold,
       color: c.inkButtonText,
+    },
+    btnDanger: {
+      minHeight: target.min,
+      justifyContent: 'center',
+      backgroundColor: c.danger,
+      borderRadius: radius.md,
+      paddingHorizontal: space.s7,
+    },
+    btnDangerText: {
+      ...ty.base,
+      fontFamily: fontFamily.sansSemibold,
+      color: c.fgOnAccent,
     },
     btnDisabled: { opacity: 0.4 },
   });

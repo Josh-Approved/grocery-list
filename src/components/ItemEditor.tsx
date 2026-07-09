@@ -243,6 +243,7 @@ export function useItemEditor(): {
                           target_ &&
                           recategorize(target_.listId, target_.itemId, cat)
                         }
+                        hitSlop={6}
                         accessibilityRole="button"
                         accessibilityState={{ selected: on }}
                         accessibilityLabel={categoryLabel(cat)}
@@ -261,6 +262,7 @@ export function useItemEditor(): {
                   {!addingAisle ? (
                     <Pressable
                       onPress={() => setAddingAisle(true)}
+                      hitSlop={6}
                       accessibilityRole="button"
                       accessibilityLabel={t('detail.newAisle')}
                       style={({ pressed }) => [

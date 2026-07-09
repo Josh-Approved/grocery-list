@@ -124,6 +124,7 @@ export const APP_STRINGS = {
     reorderAisles: 'Reorder aisles',
     addUsuals: 'Add usuals',
     deleteList: 'Delete list',
+    deleteListConfirm: 'Delete this list and everything on it? This cannot be undone.',
     sync: {
       connected: 'Connected',
       offline: 'Offline',
@@ -149,6 +150,10 @@ export const APP_STRINGS = {
     moveUp: 'Move {name} up',
     moveDown: 'Move {name} down',
     remove: 'Remove {name}',
+    empty: 'No aisles to reorder yet.',
+    removeConfirmTitle: 'Remove aisle',
+    removeConfirmBody: 'Remove {name}? Items in it move to Other.',
+    removeConfirmLabel: 'Remove',
   },
   stepper: {
     remove: 'Remove',
@@ -164,6 +169,7 @@ export const APP_STRINGS = {
     renameKit: 'Rename kit',
     renameA11y: '{name}, rename',
     deleteKit: 'Delete kit',
+    deleteKitConfirm: 'Delete this kit? This cannot be undone.',
     duplicate: 'Duplicate',
     kitOptions: 'Kit options',
     kitSummary: '{name}, {count} items',

@@ -21,7 +21,7 @@ import { Plus, MoreHorizontal, ChevronRight, Settings, Link2 } from 'lucide-reac
 import type { ListsTabProps } from './navTypes';
 import { useListsStore } from '../store/lists';
 import { listStats, type GroceryList } from '../data/list';
-import { useActionMenu, usePrompt } from '../components/Dialogs';
+import { useActionMenu, usePrompt, useConfirm } from '../components/Dialogs';
 import TipJarSheet from '../components/TipJarSheet';
 import { FundingFooter } from '../components/FundingFooter';
 import { TIP_PRODUCT_IDS } from '../constants/tipProducts';
@@ -52,6 +52,7 @@ export default function ListsHomeScreen({ navigation }: Props) {
 
   const menu = useActionMenu();
   const prompt = usePrompt();
+  const confirm = useConfirm();
   const [tipVisible, setTipVisible] = useState(false);
   const {
     pullToReveal,
@@ -104,12 +105,17 @@ export default function ListsHomeScreen({ navigation }: Props) {
           {
             label: t('common.delete'),
             destructive: true,
-            onPress: () => deleteList(list.id),
+            onPress: () =>
+              confirm.open({
+                title: t('home.deleteList'),
+                message: t('home.deleteListConfirm'),
+                onConfirm: () => deleteList(list.id),
+              }),
           },
         ],
       });
     },
-    [menu, prompt, renameList, duplicateList, deleteList, navigation]
+    [menu, prompt, confirm, renameList, duplicateList, deleteList, navigation]
   );
 
   const renderItem = useCallback(
@@ -251,6 +257,7 @@ export default function ListsHomeScreen({ navigation }: Props) {
 
       {menu.element}
       {prompt.element}
+      {confirm.element}
     </SafeAreaView>
   );
 }

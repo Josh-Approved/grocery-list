@@ -17,7 +17,7 @@ import { Plus, MoreHorizontal, ChevronRight, Settings } from 'lucide-react-nativ
 import type { KitsTabProps } from './navTypes';
 import { useKitsStore } from '../store/kits';
 import { kitItemCount, visibleKits, type Kit } from '../data/kit';
-import { useActionMenu, usePrompt } from '../components/Dialogs';
+import { useActionMenu, usePrompt, useConfirm } from '../components/Dialogs';
 import { t } from '../i18n';
 import {
   useTheme,
@@ -44,6 +44,7 @@ export default function KitsHomeScreen({ navigation }: Props) {
 
   const menu = useActionMenu();
   const prompt = usePrompt();
+  const confirm = useConfirm();
 
   // Live kits, newest activity first.
   const data = React.useMemo(
@@ -86,12 +87,17 @@ export default function KitsHomeScreen({ navigation }: Props) {
           {
             label: t('common.delete'),
             destructive: true,
-            onPress: () => deleteKit(kit.id),
+            onPress: () =>
+              confirm.open({
+                title: t('kits.deleteKit'),
+                message: t('kits.deleteKitConfirm'),
+                onConfirm: () => deleteKit(kit.id),
+              }),
           },
         ],
       });
     },
-    [menu, prompt, renameKit, duplicateKit, deleteKit]
+    [menu, prompt, confirm, renameKit, duplicateKit, deleteKit]
   );
 
   const renderItem = useCallback(
@@ -183,6 +189,7 @@ export default function KitsHomeScreen({ navigation }: Props) {
 
       {menu.element}
       {prompt.element}
+      {confirm.element}
     </SafeAreaView>
   );
 }

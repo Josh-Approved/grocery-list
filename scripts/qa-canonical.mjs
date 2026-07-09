@@ -281,10 +281,18 @@ const rulePackageJsonNoAnalytics = () => {
 // return` guards) because nothing mechanical caught the pattern.
 
 const SRC_EXTENSIONS = /\.(jsx?|tsx?)$/i;
+// A test/spec file or anything under a __tests__ dir. Test files are not
+// shippable UI: they legitimately carry literal strings ("Settings"), fixed
+// sizes, no empty states, etc., so every CONTENT rule (i18n, ux, parity, size)
+// must skip them or it false-positives on the RNTL exemplar (found 2026-07-08,
+// T3 backfill). Defined here so srcSourceFiles can exclude by default.
+const TEST_FILE_RE = /(?:\.(?:test|spec)\.[jt]sx?$)|(?:[\\/]__tests__[\\/])/;
 
 // Walk <app>/src for source files. Plain fs walk (not git) so it works on a
 // fresh checkout / pre-commit; src/ is always tracked in our apps anyway.
-const srcSourceFiles = () => {
+// Excludes test files by default (they aren't shippable source); pass
+// { includeTests: true } for the rule that counts them (trust-core-covered).
+const srcSourceFiles = ({ includeTests = false } = {}) => {
   const root = join(appDir, 'src');
   if (!exists(root)) return [];
   const out = [];
@@ -302,7 +310,7 @@ const srcSourceFiles = () => {
     }
   };
   walk(root);
-  return out;
+  return includeTests ? out : out.filter((f) => !TEST_FILE_RE.test(f));
 };
 
 // Strip line + block comments so a banned name mentioned in a doc comment
@@ -901,11 +909,10 @@ const ruleTestScriptPresent = () => {
 // __tests__ dir) under src/. Deliberately a presence check, not coverage %:
 // the bar is "the trust core is covered", which a human/reviewer judges; this
 // only catches the all-too-common "test script wired, zero tests written".
-const TEST_FILE_RE = /(?:\.(?:test|spec)\.[jt]sx?$)|(?:[\\/]__tests__[\\/])/;
 const ruleTrustCoreCovered = () => {
   const root = join(appDir, 'src');
   if (!exists(root)) return skip('test/trust-core-covered', 'No src/ directory');
-  const files = srcSourceFiles().filter((f) => TEST_FILE_RE.test(f));
+  const files = srcSourceFiles({ includeTests: true }).filter((f) => TEST_FILE_RE.test(f));
   if (!files.length) {
     return testWarn('test/trust-core-covered',
       'No *.test / *.spec / __tests__ files under src/ — the trust core (the module a bug silently corrupts) must have unit tests');
@@ -1526,6 +1533,11 @@ const detectSmallTouchTargets = (code) => {
       for (const ref of styleVal.matchAll(/\b(?:styles?|s|st)\.(\w+)/g)) {
         styleText += '\n' + resolveNamedStyle(code, ref[1]);
       }
+      // A shadow/text-shadow offset is `{ width: 0, height: 4 }` — a shadow
+      // vector, NOT a tap-target dimension. Strip these before measuring so a
+      // FAB's own `shadowOffset: { width: 0 }` doesn't read as a 0dp target
+      // (packing-list FAB, found 2026-07-08 T3 backfill).
+      styleText = styleText.replace(/(?:shadowOffset|textShadowOffset)\s*:\s*\{[^}]*\}/g, '');
       if (TARGET_TOKEN_RE.test(styleText)) continue;         // uses target.min / hitSlop → fine
       STYLE_SIZE_RE.lastIndex = 0;
       let sm, small = null;
@@ -1619,13 +1631,26 @@ const ruleEmptyStatePresent = () => {
 // spots (err toward silence): a lower-case `list.remove(item)` data delete is not
 // matched; a confirm that lives in a different file than the delete reads as
 // unguarded (fires) — cleared by co-locating the confirm or a baseline skip.
-const DELETE_CALL_RE = /\b(?:delete|remove)[A-Z]\w*\s*\(/g;
+const DELETE_CALL_RE = /\b(?:delete|remove)([A-Z]\w*)\s*\(/g;
 const DELETE_DENYLIST = /\b(?:removeListener|removeEventListener|removeAllListeners|removeItem|removeChangeListener|removeSubscription|removeChild|removeClippedSubviews)\b/;
 // `undo` is matched as a substring (not a bounded word): real undo affordances
 // are camelCase identifiers — showUndoToast, undoDelete, handleUndo — where the
 // token is embedded, not standalone. Comments are already stripped, so a prose
 // "undo" can't match.
-const CONFIRM_OR_UNDO_RE = /\bAlert\s*\.\s*alert\s*\(|\bconfirm\w*\s*\(|<\s*Confirm|undo/i;
+// A guard is: an Alert.alert, a confirm*( call, a <Confirm…> element, an `undo`
+// affordance, OR the canonical cross-platform `useConfirm()` primitive (its
+// `confirm.open({…})` opens a titled Cancel/Confirm card — grocery-list's Dialogs,
+// added 2026-07-08 for the T3 destructive-confirm backfill). `confirm.open(` is
+// not caught by `confirm\w*\(` (the dot breaks the \w run), so match it explicitly.
+const CONFIRM_OR_UNDO_RE = /\bAlert\s*\.\s*alert\s*\(|\bconfirm\w*\s*\(|\buseConfirm\b|<\s*Confirm|undo/i;
+// A remove<Noun>( that has a symmetric add<Noun>( / set<Noun>( in the same file
+// is a reversible TOGGLE (mark/unmark a "usual", pin/unpin), not an unrecoverable
+// data delete — one tap flips it straight back. Matching it trained the linter to
+// cry wolf on every toggle (grocery-list's ItemEditor `toggleUsual`: addStaple /
+// removeStaple). So a remove whose noun has a same-file add/set counterpart is
+// excused (found 2026-07-08, T3 backfill).
+const hasToggleCounterpart = (code, noun) =>
+  new RegExp(`\\b(?:add|set)${noun}\\s*\\(`).test(code);
 const detectUnconfirmedDeletes = (code) => {
   const hasGuard = CONFIRM_OR_UNDO_RE.test(code);
   const hits = [];
@@ -1634,8 +1659,9 @@ const detectUnconfirmedDeletes = (code) => {
   while ((m = DELETE_CALL_RE.exec(code)) !== null) {
     const window = code.slice(Math.max(0, m.index - 24), m.index + m[0].length + 4);
     if (DELETE_DENYLIST.test(window)) continue;
+    if (/^remove/.test(m[0]) && hasToggleCounterpart(code, m[1])) continue; // reversible toggle
     const line = code.slice(0, m.index).split(/\r?\n/).length;
-    hits.push({ line, call: m[0].trim() });
+    hits.push({ line, call: `${m[0].trim()}` });
   }
   if (!hits.length) return null;
   return hasGuard ? false : hits;
@@ -1680,21 +1706,44 @@ const ruleDestructiveConfirm = () => {
 const completionReferenced = (callerTexts) =>
   callerTexts.some((t) => typeof t === 'string' && t.includes('recordSuccessfulCompletion'));
 
+// A `src/lib/*` file is a legitimate wiring-indirection layer: an app may
+// centralize its success moment in e.g. lib/reviewTrigger.ts (which calls
+// recordSuccessfulCompletion) and have a screen import THAT. Count such a lib
+// file as a caller only when a screen/App actually imports it (by basename), so
+// the indirection is real, not a dead re-export (packing-list, found 2026-07-08).
+const libWiringCallerTexts = (appDir, screenAppTexts) => {
+  const out = [];
+  const libDir = join(appDir, 'src', 'lib');
+  if (!exists(libDir)) return out;
+  const importedBases = new Set();
+  for (const text of screenAppTexts) {
+    for (const m of text.matchAll(/from\s+['"][^'"]*\/lib\/([A-Za-z0-9_]+)['"]/g)) importedBases.add(m[1]);
+  }
+  for (const f of srcSourceFiles()) {
+    const rel = relative(join(appDir, 'src'), f).replace(/\\/g, '/');
+    if (!rel.startsWith('lib/')) continue;
+    const base = rel.replace(/^lib\//, '').replace(/\.(t|j)sx?$/, '');
+    if (importedBases.has(base)) out.push(readText(f) || '');
+  }
+  return out;
+};
+
 const ruleReviewPromptWired = () => {
   const id = 'review-prompt/wired';
   if (surface !== 'rn') return skip(id, 'Not an RN app');
   const mod = join(appDir, 'src', 'storage', 'reviewPrompt.ts');
   if (!exists(mod)) return skip(id, 'No src/storage/reviewPrompt.ts (no review prompt module)');
-  const callers = [
+  const screenApp = [
     ...srcSourceFiles().filter((f) => relative(join(appDir, 'src'), f).replace(/\\/g, '/').startsWith('screens/')),
     join(appDir, 'App.tsx'),
   ].map((f) => readText(f) || '');
+  const callers = [...screenApp, ...libWiringCallerTexts(appDir, screenApp)];
   if (!completionReferenced(callers)) {
     return warn(id,
-      'Review prompt is dead: src/storage/reviewPrompt.ts exists but recordSuccessfulCompletion is never called from a screen or App.tsx, so the prompt can never fire. Call it at the app\'s genuine success moment, or delete the module',
-      ['recordSuccessfulCompletion not referenced from src/screens/** or App.tsx']);
+      'Review prompt is dead: src/storage/reviewPrompt.ts exists but recordSuccessfulCompletion is never called from a screen, App.tsx, or a screen-imported src/lib wiring file, so the prompt can never fire. Call it at the app\'s genuine success moment, or delete the module',
+      ['recordSuccessfulCompletion not referenced from src/screens/**, App.tsx, or a screen-imported src/lib/*']);
   }
-  return pass(id, 'Review prompt is wired (recordSuccessfulCompletion called from a screen/App)');
+  return pass(id, 'Review prompt is wired (recordSuccessfulCompletion reachable from a screen/App)');
 };
 
 const ruleTipJarWired = () => {
@@ -1809,6 +1858,8 @@ function runSelfTest() {
     'touch-target: named StyleSheet ref resolved to a sub-44 size fires');
   assert(detectSmallTouchTargets(`<View style={{ height: 20 }}/>`).length === 0,
     'touch-target: a non-pressable View is not measured');
+  assert(detectSmallTouchTargets(`const s = StyleSheet.create({ fab: { width: 56, height: 56, shadowOffset: { width: 0, height: 4 } } });\n<Pressable style={s.fab} onPress={x}/>`).length === 0,
+    'touch-target: a shadowOffset { width: 0 } on a 56dp FAB is NOT a 0dp target');
 
   // ux/empty-state-present
   assert(detectMissingEmptyState(`<FlatList data={x} renderItem={r}/>`) === true,
@@ -1833,6 +1884,12 @@ function runSelfTest() {
     'destructive-confirm: a bare subscription .remove() is NOT a data delete (no fire)');
   assert(detectUnconfirmedDeletes(`<Text>just copy</Text>`) === null,
     'destructive-confirm: no destructive call is not applicable');
+  assert(detectUnconfirmedDeletes(`function toggle(){ if(on) removeStaple(name); else addStaple(name); }`) === null,
+    'destructive-confirm: a remove with a same-file add counterpart is a reversible toggle (no fire)');
+  assert(Array.isArray(detectUnconfirmedDeletes(`function onTap(){ removeStaple(name); }`)),
+    'destructive-confirm: a remove with NO add counterpart still fires');
+  assert(detectUnconfirmedDeletes(`import { useConfirm } from './Dialogs'; function S(){ const confirm = useConfirm(); return confirm.open({ onConfirm: () => deleteList(id) }); }`) === false,
+    'destructive-confirm: a delete guarded by the useConfirm() primitive passes');
 
   // rn/keyboard-dismiss-escape (promoted to FAIL)
   assert(keyboardTrapped(`<TextInput blurOnSubmit={false} onSubmitEditing={s}/>`) === true,

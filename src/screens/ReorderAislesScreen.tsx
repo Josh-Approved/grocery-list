@@ -15,6 +15,8 @@ import { ChevronUp, ChevronDown, X, Trash2 } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { useListsStore } from '../store/lists';
+import { useConfirm } from '../components/Dialogs';
+import { EmptyState } from '../components/EmptyState';
 import {
   categoryLabel,
   isBuiltinCategory,
@@ -43,6 +45,7 @@ export default function ReorderAislesScreen({ route, navigation }: Props) {
   const list = useListsStore((st) => st.lists.find((l) => l.id === listId));
   const reorderAisles = useListsStore((st) => st.reorderAisles);
   const removeCategory = useListsStore((st) => st.removeCategory);
+  const confirm = useConfirm();
   const [order, setOrder] = useState<Category[]>(list?.categoryOrder ?? []);
 
   const move = useCallback(
@@ -61,10 +64,17 @@ export default function ReorderAislesScreen({ route, navigation }: Props) {
 
   const remove = useCallback(
     (cat: Category) => {
-      removeCategory(listId, cat);
-      setOrder((prev) => prev.filter((c) => c !== cat));
+      confirm.open({
+        title: t('reorder.removeConfirmTitle'),
+        message: t('reorder.removeConfirmBody', { name: categoryLabel(cat) }),
+        confirmLabel: t('reorder.removeConfirmLabel'),
+        onConfirm: () => {
+          removeCategory(listId, cat);
+          setOrder((prev) => prev.filter((c) => c !== cat));
+        },
+      });
     },
-    [listId, removeCategory]
+    [listId, removeCategory, confirm]
   );
 
   return (
@@ -87,6 +97,7 @@ export default function ReorderAislesScreen({ route, navigation }: Props) {
         keyExtractor={(cat) => cat}
         contentContainerStyle={s.listContent}
         ItemSeparatorComponent={() => <View style={s.sep} />}
+        ListEmptyComponent={<EmptyState message={t('reorder.empty')} />}
         renderItem={({ item, index }) => (
           <View style={s.row}>
             <Text style={s.rowText}>{categoryLabel(item)}</Text>
@@ -146,6 +157,7 @@ export default function ReorderAislesScreen({ route, navigation }: Props) {
           </View>
         )}
       />
+      {confirm.element}
     </SafeAreaView>
   );
 }

@@ -211,7 +211,7 @@
     {
       "id": "components/ItemEditor#detail.newaisle",
       "label": "detail.newAisle",
-      "where": "src/components/ItemEditor.tsx:262",
+      "where": "src/components/ItemEditor.tsx:263",
       "proof": {
         "kind": "none"
       },
@@ -220,7 +220,7 @@
     {
       "id": "components/ItemEditor#detail.newaisleplaceholder",
       "label": "detail.newAislePlaceholder",
-      "where": "src/components/ItemEditor.tsx:282",
+      "where": "src/components/ItemEditor.tsx:284",
       "proof": {
         "kind": "none"
       },
@@ -229,25 +229,16 @@
     {
       "id": "components/ItemEditor#common.add",
       "label": "common.add",
-      "where": "src/components/ItemEditor.tsx:294",
+      "where": "src/components/ItemEditor.tsx:296",
       "proof": {
         "kind": "none"
       },
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/ItemEditor#pressable-321",
-      "label": "Pressable (dynamic label)",
-      "where": "src/components/ItemEditor.tsx:321",
-      "proof": {
-        "kind": "none"
-      },
-      "note": "Pressable · onPress · dynamic/child-text label"
-    },
-    {
       "id": "components/ItemEditor#detail.remove",
       "label": "detail.remove",
-      "where": "src/components/ItemEditor.tsx:350",
+      "where": "src/components/ItemEditor.tsx:352",
       "proof": {
         "kind": "none"
       },
@@ -535,7 +526,7 @@
     {
       "id": "screens/KitsHomeScreen#kits.kitsummary",
       "label": "kits.kitSummary",
-      "where": "src/screens/KitsHomeScreen.tsx:101",
+      "where": "src/screens/KitsHomeScreen.tsx:107",
       "proof": {
         "kind": "none"
       },
@@ -544,7 +535,7 @@
     {
       "id": "screens/KitsHomeScreen#common.optionsfor",
       "label": "common.optionsFor",
-      "where": "src/screens/KitsHomeScreen.tsx:117",
+      "where": "src/screens/KitsHomeScreen.tsx:123",
       "proof": {
         "kind": "none"
       },
@@ -553,7 +544,7 @@
     {
       "id": "screens/KitsHomeScreen#kits.newkit",
       "label": "kits.newKit",
-      "where": "src/screens/KitsHomeScreen.tsx:140",
+      "where": "src/screens/KitsHomeScreen.tsx:146",
       "proof": {
         "kind": "none"
       },
@@ -562,7 +553,7 @@
     {
       "id": "screens/KitsHomeScreen#settings.title",
       "label": "settings.title",
-      "where": "src/screens/KitsHomeScreen.tsx:150",
+      "where": "src/screens/KitsHomeScreen.tsx:156",
       "proof": {
         "kind": "none"
       },
@@ -571,7 +562,7 @@
     {
       "id": "screens/KitsHomeScreen#kits.createfirst",
       "label": "kits.createFirst",
-      "where": "src/screens/KitsHomeScreen.tsx:172",
+      "where": "src/screens/KitsHomeScreen.tsx:178",
       "proof": {
         "kind": "none"
       },
@@ -650,18 +641,9 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "screens/ListsHomeScreen#pressable-121",
-      "label": "Pressable (dynamic label)",
-      "where": "src/screens/ListsHomeScreen.tsx:121",
-      "proof": {
-        "kind": "none"
-      },
-      "note": "Pressable · onPress · dynamic/child-text label"
-    },
-    {
       "id": "screens/ListsHomeScreen#common.optionsfor",
       "label": "common.optionsFor",
-      "where": "src/screens/ListsHomeScreen.tsx:154",
+      "where": "src/screens/ListsHomeScreen.tsx:160",
       "proof": {
         "kind": "none"
       },
@@ -670,7 +652,7 @@
     {
       "id": "screens/ListsHomeScreen#home.newlist",
       "label": "home.newList",
-      "where": "src/screens/ListsHomeScreen.tsx:177",
+      "where": "src/screens/ListsHomeScreen.tsx:183",
       "proof": {
         "kind": "none"
       },
@@ -679,7 +661,7 @@
     {
       "id": "screens/ListsHomeScreen#settings.title",
       "label": "settings.title",
-      "where": "src/screens/ListsHomeScreen.tsx:187",
+      "where": "src/screens/ListsHomeScreen.tsx:193",
       "proof": {
         "kind": "none"
       },
@@ -688,7 +670,7 @@
     {
       "id": "screens/ListsHomeScreen#home.createfirst",
       "label": "home.createFirst",
-      "where": "src/screens/ListsHomeScreen.tsx:220",
+      "where": "src/screens/ListsHomeScreen.tsx:226",
       "proof": {
         "kind": "none"
       },
@@ -697,7 +679,7 @@
     {
       "id": "screens/ReorderAislesScreen#common.done",
       "label": "common.done",
-      "where": "src/screens/ReorderAislesScreen.tsx:74",
+      "where": "src/screens/ReorderAislesScreen.tsx:84",
       "proof": {
         "kind": "none"
       },
@@ -706,7 +688,7 @@
     {
       "id": "screens/ReorderAislesScreen#reorder.moveup",
       "label": "reorder.moveUp",
-      "where": "src/screens/ReorderAislesScreen.tsx:93",
+      "where": "src/screens/ReorderAislesScreen.tsx:104",
       "proof": {
         "kind": "none"
       },
@@ -715,7 +697,7 @@
     {
       "id": "screens/ReorderAislesScreen#reorder.movedown",
       "label": "reorder.moveDown",
-      "where": "src/screens/ReorderAislesScreen.tsx:113",
+      "where": "src/screens/ReorderAislesScreen.tsx:124",
       "proof": {
         "kind": "none"
       },
@@ -724,7 +706,7 @@
     {
       "id": "screens/ReorderAislesScreen#reorder.remove",
       "label": "reorder.remove",
-      "where": "src/screens/ReorderAislesScreen.tsx:134",
+      "where": "src/screens/ReorderAislesScreen.tsx:145",
       "proof": {
         "kind": "none"
       },
@@ -774,6 +756,60 @@
         "kind": "none"
       },
       "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/Dialogs#common.cancel-4",
+      "label": "common.cancel",
+      "where": "src/components/Dialogs.tsx:340",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/Dialogs#pressable-346",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/Dialogs.tsx:346",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/Dialogs#common.cancel-5",
+      "label": "common.cancel",
+      "where": "src/components/Dialogs.tsx:354",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/Dialogs#pressable-362",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/Dialogs.tsx:362",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "components/ItemEditor#pressable-323",
+      "label": "Pressable (dynamic label)",
+      "where": "src/components/ItemEditor.tsx:323",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "screens/ListsHomeScreen#pressable-127",
+      "label": "Pressable (dynamic label)",
+      "where": "src/screens/ListsHomeScreen.tsx:127",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
     }
   ]
 }
