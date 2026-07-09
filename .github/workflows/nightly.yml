@@ -1,0 +1,406 @@
+name: Nightly deep suites
+
+# THE NIGHTLY ENGINE (Uplevel 3 / T5 — uplevel3/05-nightly-engine.md).
+#
+# The deep suites are too heavy for the per-PR gate (qa-e2e.yml, ~15 min sacred
+# budget) and too important for "when a session remembers." Industry cadence is
+# universal: fast hermetic gate on every change, everything heavy nightly. This
+# workflow is that nightly tier.
+#
+# ── NIGHTLY IS NEVER BLOCKING ────────────────────────────────────────────────
+# A red nightly must NEVER block a PR or a ship. Nothing gates on this workflow's
+# conclusion — it is not in any branch-protection required-checks list, and every
+# substantive step is `continue-on-error: true` so the run reaches its artifact
+# upload no matter what breaks. When a deep suite finds a defect it FILES it:
+#   • the deep jest run writes normalized lines to qa/defect-intake.jsonl (the
+#     synced qa/defect-reporter.cjs) + a JUnit XML,
+#   • fuzz counterexamples crystallize into qa/regressions/<id>.json,
+#   • the Android monkey uploads its logcat slice.
+# The daily digest job (nightly-digest.mjs, T5 Stage 2) downloads these artifacts
+# and folds them into the tracked ledger via `defects.mjs ingest`. The ledger +
+# the Factory-tab digest are the surface — not this workflow's ✓/✗. (Only a real
+# decision ever reaches the Josh Block; a nightly red never emits one directly.)
+#
+# ── WHAT RUNS ────────────────────────────────────────────────────────────────
+#   macOS job (iOS sim):  full Maestro (journeys + state-survival subflows)
+#                         + intent-fuzz numRuns:2000 (FUZZ_PROFILE=nightly)
+#                         + regression replay (rides npm test) + Stryker
+#                         incremental.
+#   Android job:          pinned API 31 via reactivecircus/android-emulator-runner
+#                         with AVD snapshot cache + one retry-on-boot-failure;
+#                         full Maestro + state-survival + bounded monkey.
+#   Both:                 quarantined tests run in their OWN non-blocking step
+#                         (QUARANTINE_MODE=run) so T0's reinstatement counter
+#                         still gets the signal even while they're excluded from
+#                         the blocking path.
+#
+# GH Actions minutes (incl. macOS) are free for public repos, so the nightly
+# breadth costs nothing. The emulator-heavy pieces CI can't run reliably (full
+# device matrix, two-device chaos E2E) run on local hardware via the T5
+# `nightly-local` job, NOT here — see uplevel3/05-nightly-engine.md § Stage 2.
+#
+# Build is `eas build --local` (never raw xcodebuild / gradlew), same as the PR
+# gate — see stack/eas-build.md. Surface gating runs in the `detect` job, never a
+# job-level `if: hashFiles(...)` (that fails at registration because the workspace
+# isn't checked out at job-eligibility time — see qa-e2e.yml.template).
+#
+# Required repo secret: EXPO_TOKEN.
+
+on:
+  # ~07:00 UTC — after the US-evening dev window, before the morning digest tick.
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+# Never run two nightlies for the same ref at once; a new dispatch supersedes.
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      is-rn: ${{ steps.check.outputs.is-rn }}
+      has-flow: ${{ steps.check.outputs.has-flow }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: check
+        run: |
+          [ -f app.json ] && echo "is-rn=true" >> "$GITHUB_OUTPUT" || echo "is-rn=false" >> "$GITHUB_OUTPUT"
+          # has-flow gates the sim jobs: no journey.json AND no committed flow means
+          # nothing for Maestro to drive. The flow is GENERATED from journey.json at
+          # CI time, so journey.json presence counts even though qa/flows/mobile.yaml
+          # isn't committed. (Same rule as qa-e2e.yml.template.)
+          if [ -f qa/journey.json ] || [ -f qa/flows/mobile.yaml ]; then echo "has-flow=true" >> "$GITHUB_OUTPUT"; else echo "has-flow=false" >> "$GITHUB_OUTPUT"; fi
+
+  ios-nightly:
+    needs: detect
+    if: needs.detect.outputs.is-rn == 'true' && needs.detect.outputs.has-flow == 'true'
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      EXPO_PUBLIC_QA_MODE: '1'
+      MAESTRO_DRIVER_STARTUP_TIMEOUT: '300000'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install Maestro
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> $GITHUB_PATH
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          # See qa-eyaml pin rationale: eas.json's `image` is ignored for --local.
+          xcode-version: '26.2.0'
+      - name: npm ci
+        run: npm ci
+
+      # ── The deep JS suites (platform-agnostic; run once, on the macOS job) ──
+      # intent-fuzz numRuns:2000 (FUZZ_PROFILE=nightly) + regression replay (both
+      # ride jest) + the trust-core unit tests. Non-blocking: a counterexample is
+      # crystallized into qa/regressions/ and filed to qa/defect-intake.jsonl by
+      # the harness / defect-reporter — the digest ingests it; it never reds a ship.
+      - name: Deep jest — intent-fuzz (nightly 2000) + regression replay + trust core
+        continue-on-error: true
+        env:
+          FUZZ_PROFILE: nightly
+          JEST_JUNIT_OUTPUT_DIR: test-results
+          JEST_JUNIT_OUTPUT_NAME: jest-nightly-ios.xml
+        run: |
+          mkdir -p test-results
+          npm install --no-save jest-junit
+          # Explicit reporter list = default + JUnit + the synced defect-reporter
+          # (rides this template via the `qa` sync module). Overriding --reporters
+          # replaces the config's reporters but NOT setupFilesAfterEnv, so the
+          # quarantine.setup.cjs blocking-skip still applies (quarantined tests get
+          # their own run below).
+          REPORTERS="--reporters=default --reporters=jest-junit"
+          if [ -f qa/defect-reporter.cjs ]; then REPORTERS="$REPORTERS --reporters=<rootDir>/qa/defect-reporter.cjs"; fi
+          npx jest --ci $REPORTERS --passWithNoTests
+
+      # The flake set is EXCLUDED from every blocking run; this is the non-blocking
+      # sweep that keeps it running (QUARANTINE_MODE=run), so T0's flaky.mjs sweep
+      # gathers the green-counter that eventually reinstates a test. Zero effect
+      # when the quarantine list is empty.
+      - name: Quarantined tests (non-blocking signal for T0)
+        continue-on-error: true
+        env:
+          QUARANTINE_MODE: run
+        run: npx jest --ci --passWithNoTests || true
+
+      # Stryker incremental — "test the tests." Nightly-class by design (a full
+      # run is unaffordable). Survivors are a work queue, never a gate; skipped
+      # cleanly when the app hasn't adopted mutation testing.
+      - name: Stryker incremental (mutation)
+        continue-on-error: true
+        run: |
+          if [ -f stryker.config.json ]; then
+            npx stryker run --incremental || true
+          else
+            echo "no stryker.config.json — app has not adopted mutation testing (sync.mjs mutation)"
+          fi
+
+      # ── The iOS sim device suite ──
+      - name: Setup Expo + EAS CLI
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: EAS local build (iOS simulator)
+        run: |
+          set -o pipefail
+          eas build \
+            --platform ios \
+            --profile preview \
+            --local \
+            --non-interactive \
+            --output "$GITHUB_WORKSPACE/ios-build.tar.gz" 2>&1 | tee eas-build-ios.log
+      - name: Upload eas build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-eas-build-log
+          path: eas-build-ios.log
+      - name: Extract simulator .app
+        id: extract
+        run: |
+          mkdir -p extracted-ios
+          tar -xzf "$GITHUB_WORKSPACE/ios-build.tar.gz" -C extracted-ios
+          APP_PATH=$(find extracted-ios -maxdepth 3 -name "*.app" -type d -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::no .app bundle found in ios-build.tar.gz"
+            ls -laR extracted-ios | head -80
+            exit 1
+          fi
+          echo "app-path=$APP_PATH" >> "$GITHUB_OUTPUT"
+      - name: Boot iPhone 16 Pro Max (iOS 26.2)
+        id: sim
+        run: |
+          UDID=$(xcrun simctl create "qa-iphone" "iPhone 16 Pro Max" "com.apple.CoreSimulator.SimRuntime.iOS-26-2")
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override \
+            --time "9:41" \
+            --batteryState charged --batteryLevel 100 \
+            --cellularBars 4 --wifiBars 3
+      - name: Install app on simulator
+        run: xcrun simctl install ${{ steps.sim.outputs.udid }} "${{ steps.extract.outputs.app-path }}"
+      - name: Compile + lint flow (fail fast on drift)
+        # Generates qa/flows/mobile.yaml AND qa/flows/state-survival.yaml (the
+        # `survival` block projection) from journey.json, then lints anchors.
+        run: |
+          if [ -f qa/journey.json ]; then
+            node scripts/qa/compile-flow.mjs
+            node scripts/qa/lint-flows.mjs
+          else
+            echo "no qa/journey.json — using committed qa/flows/mobile.yaml as-is"
+          fi
+      - name: Full Maestro flow (journeys)
+        continue-on-error: true
+        run: |
+          mkdir -p qa/captures/ios
+          maestro test qa/flows/mobile.yaml --env=PLATFORM=ios --env=STORE=ios --debug-output maestro-debug-ios
+      - name: State-survival subflow (kill + relaunch, assert persisted write)
+        # T4 chaos net — deliberately separate from mobile.yaml (it kills the app),
+        # so it belongs in nightly, never the per-PR gate. Clean SKIP if the app
+        # declares no `survival` block. Non-blocking; a real loss is filed locally.
+        continue-on-error: true
+        run: node scripts/qa/run-survival.mjs . --platform ios || true
+      - name: Show Maestro debug on failure
+        if: failure()
+        run: |
+          echo "=== maestro.log ==="
+          for f in $(find maestro-debug-ios -name "maestro.log" 2>/dev/null | sort | tail -1); do cat "$f"; done
+          echo "=== app UI hierarchy now ==="
+          maestro hierarchy 2>&1 | head -200 || true
+      - name: Upload iOS nightly artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-ios
+          include-hidden-files: true
+          path: |
+            test-results/
+            qa/defect-intake.jsonl
+            qa/test-run.json
+            qa/regressions/
+            qa/captures/ios/
+            reports/mutation/
+            maestro-debug-ios/
+
+  android-nightly:
+    needs: detect
+    if: needs.detect.outputs.is-rn == 'true' && needs.detect.outputs.has-flow == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      EXPO_PUBLIC_QA_MODE: '1'
+      # Deterministic-but-logged monkey seed (rotates per run, replays exactly).
+      MONKEY_SEED: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Maestro
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> $GITHUB_PATH
+      - name: npm ci
+        run: npm ci
+      - name: Compile + lint flow (fail fast on drift)
+        run: |
+          if [ -f qa/journey.json ]; then
+            node scripts/qa/compile-flow.mjs
+            node scripts/qa/lint-flows.mjs
+          else
+            echo "no qa/journey.json — using committed qa/flows/mobile.yaml as-is"
+          fi
+      - name: Setup Expo + EAS CLI
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: EAS local build (Android APK)
+        env:
+          GRADLE_OPTS: '-Xmx4g -XX:MaxMetaspaceSize=1g'
+        run: |
+          set -o pipefail
+          eas build \
+            --platform android \
+            --profile preview \
+            --local \
+            --non-interactive \
+            --output "$GITHUB_WORKSPACE/build.apk" 2>&1 | tee eas-build-android.log
+      - name: Upload eas build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-eas-build-log
+          path: eas-build-android.log
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Write Android nightly script to file
+        run: |
+          # android-emulator-runner@v2 runs each `script:` line in its own sh -c,
+          # so cross-line variables don't propagate — write the whole run to a file.
+          cat > /tmp/run-android-nightly.sh <<'SCRIPT_EOF'
+          #!/usr/bin/env bash
+          set -e
+          # hide_error_dialogs: on the 2-core swiftshader CI emulator the Pixel
+          # Launcher itself intermittently ANRs; its system dialog renders OVER the
+          # app so Maestro's hierarchy query returns aerr_* and every assertion
+          # fails against a healthy screen. This makes the emulator deterministic.
+          # (Diagnosed P0 2026-06-10; same mitigation as qa-e2e.yml.template.)
+          adb shell settings put global hide_error_dialogs 1
+          adb install -r "$GITHUB_WORKSPACE/build.apk"
+          PKG=$(adb shell pm list packages | grep -i joshapproved | head -1 | tr -d '\r' | sed 's/package://')
+          echo "package under test: $PKG"
+          mkdir -p qa/captures/android maestro-debug-android
+          adb logcat -c
+          adb logcat > maestro-debug-android/logcat.txt &
+          LOGCAT_PID=$!
+          set +e
+          # Full Maestro (journeys). Non-fatal — nightly files defects, never blocks.
+          maestro test qa/flows/mobile.yaml --env=PLATFORM=android --env=STORE=android --debug-output maestro-debug-android
+          MAESTRO_RC=$?
+          # T4 chaos net — state-survival (kill + relaunch, assert persisted write).
+          # Clean skip if the app declares no `survival` block.
+          node scripts/qa/run-survival.mjs . --platform android || true
+          # T4 chaos net — bounded seeded monkey (crash-hunt smoke). CI event count
+          # is bounded (2000, vs monkey.mjs's local 50000) to keep the run cheap;
+          # full triage + ledger filing is monkey.mjs's job on the nightly-local
+          # tick. Here we just exercise + keep the logcat for the digest. Non-fatal.
+          if [ -n "$PKG" ]; then
+            adb shell monkey -p "$PKG" -s "$MONKEY_SEED" --pct-syskeys 0 --throttle 50 2000 || true
+          fi
+          kill $LOGCAT_PID || true
+          if [ $MAESTRO_RC -ne 0 ]; then
+            echo "=== maestro.log ==="
+            for f in $(find maestro-debug-android -name "maestro.log" 2>/dev/null | sort | tail -1); do cat "$f"; done
+            echo "=== app UI hierarchy now ==="
+            maestro hierarchy 2>&1 | head -200 || true
+            echo "=== logcat (tail 150) ==="
+            tail -150 maestro-debug-android/logcat.txt 2>/dev/null || true
+          fi
+          # NIGHTLY IS NON-BLOCKING: always exit 0 so the artifact upload runs and
+          # the digest — not this job's conclusion — is the signal. Maestro's real
+          # verdict is preserved in the uploaded debug bundle + defect intake.
+          exit 0
+          SCRIPT_EOF
+          chmod +x /tmp/run-android-nightly.sh
+
+      # AVD snapshot cache — the documented android-emulator-runner flake
+      # mitigation: warm a snapshot once, reuse it so the boot is fast + reliable.
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api31-nightly
+      - name: Create AVD snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+
+      # First attempt. continue-on-error so the retry can fire; the script itself
+      # already exits 0 (nightly is non-blocking) so a non-zero here means the
+      # EMULATOR failed to boot — which is exactly what the one retry covers.
+      - name: Run Android nightly (attempt 1)
+        id: android1
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none
+          disable-animations: true
+          script: /tmp/run-android-nightly.sh
+      - name: Run Android nightly (retry on boot failure)
+        if: steps.android1.outcome == 'failure'
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none
+          disable-animations: true
+          script: /tmp/run-android-nightly.sh
+
+      - name: Upload Android nightly artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-android
+          include-hidden-files: true
+          path: |
+            qa/defect-intake.jsonl
+            qa/regressions/
+            qa/captures/android/
+            maestro-debug-android/
