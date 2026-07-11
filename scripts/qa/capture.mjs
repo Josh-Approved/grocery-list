@@ -45,6 +45,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { withHeavyLock, concurrency } from '../lib/heavy.mjs';
 
 // store → how to build, what device, how to normalize.
 // NOTE: iOS device names are Xcode-version-specific — the boot step greps
@@ -126,7 +127,7 @@ function sourceHash() {
   return h.digest('hex');
 }
 
-function buildArtifact() {
+async function buildArtifact() {
   const ext = platform === 'ios' ? 'tar.gz' : 'apk';
   const outPath = path.join(appDir, 'qa', 'captures', `.build-${platform}.${ext}`);
   const hashPath = path.join(appDir, 'qa', 'captures', `.build-${platform}.hash`);
@@ -149,14 +150,21 @@ function buildArtifact() {
   // can't be gated and is always cleaned.
   const workingdir = path.join(os.homedir(), '.eas-build', path.basename(appDir));
   if (!dry) { try { fs.rmSync(workingdir, { recursive: true, force: true }); } catch {} }
-  run(`build — eas build --local (${platform}, QA_MODE)`, 'eas', [
-    'build', '--platform', platform, '--profile', 'preview', '--local',
-    '--non-interactive', '--output', outPath,
-  ], { env: {
-    EXPO_PUBLIC_QA_MODE: '1',
-    EAS_LOCAL_BUILD_WORKINGDIR: workingdir,
-    GRADLE_OPTS: '-Xmx4g -XX:MaxMetaspaceSize=1g',
-  } });
+  // Load governor (Uplevel 3 / T5): the local EAS build is the heavy step. On the
+  // 8 GB mini it must run one-at-a-time, so it holds the machine-wide heavy lock
+  // (a no-op on a full-size machine; re-entrant, so matrix.mjs → capture doesn't
+  // double-lock). The Gradle heap is profile-driven — 2048m on the low-RAM mini,
+  // 4096m (the old hardcoded -Xmx4g) on a full machine.
+  await withHeavyLock(`capture:${path.basename(appDir)}:${platform}`, () => {
+    run(`build — eas build --local (${platform}, QA_MODE)`, 'eas', [
+      'build', '--platform', platform, '--profile', 'preview', '--local',
+      '--non-interactive', '--output', outPath,
+    ], { env: {
+      EXPO_PUBLIC_QA_MODE: '1',
+      EAS_LOCAL_BUILD_WORKINGDIR: workingdir,
+      GRADLE_OPTS: `-Xmx${concurrency().gradleJvmMaxMB}m -XX:MaxMetaspaceSize=1g`,
+    } });
+  });
   if (!dry) fs.writeFileSync(hashPath, hash + '\n');
   return outPath;
 }
@@ -353,7 +361,7 @@ if (!fs.existsSync(path.join(appDir, 'qa', 'journey.json'))) {
   process.exit(1);
 }
 
-const artifact = buildArtifact();
+const artifact = await buildArtifact();
 if (platform === 'ios') iosPrepare(artifact); else androidPrepare(artifact);
 compileFlow();
 

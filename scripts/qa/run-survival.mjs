@@ -28,6 +28,22 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const SURVIVAL_FLOW = path.join('qa', 'flows', 'state-survival.yaml');
+const SURVIVAL_REPORT = path.join('qa', 'survival-report.json');
+
+// Merge a per-platform survival result into qa/survival-report.json so the
+// read-only run-qa `survival` tier (T5) can gate on it without a device — same
+// artifact-derived contract as the matrix/two-device/upgrade tiers. ok = every
+// recorded platform passed.
+function writeSurvivalReport(appDir, platform, ok) {
+  const p = path.join(appDir, SURVIVAL_REPORT);
+  let report = { platforms: {} };
+  try { report = JSON.parse(fs.readFileSync(p, 'utf8')); report.platforms = report.platforms || {}; } catch { /* fresh */ }
+  report.platforms[platform || 'device'] = ok;
+  report.ok = Object.values(report.platforms).every(Boolean);
+  report.ranAt = new Date().toISOString();
+  report.verdict = report.ok ? 'state survived process death on all recorded platforms' : 'state DID NOT survive on at least one platform';
+  try { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(report, null, 2) + '\n'); } catch { /* best effort */ }
+}
 
 /**
  * Does this app declare a survival block? Pure (reads a parsed journey), so the
@@ -109,9 +125,11 @@ function main() {
     process.exit(1);
   }
   if (r.status !== 0) {
+    writeSurvivalReport(appDir, platform, false);
     console.error(`run-survival: state DID NOT survive the kill on ${path.basename(appDir)} — a production-class defect. File it: node scripts/defects.mjs open --app ${path.basename(appDir)} --found-by chaos-net --title "state lost across process death"`);
     process.exit(1);
   }
+  writeSurvivalReport(appDir, platform, true);
   console.log(`run-survival: ${path.basename(appDir)} — state survived process death. ✓`);
 }
 

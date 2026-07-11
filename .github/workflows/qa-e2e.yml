@@ -258,7 +258,7 @@ jobs:
     needs: [detect, unit]
     if: needs.detect.outputs.is-rn == 'true' && needs.detect.outputs.has-flow == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       EXPO_PUBLIC_QA_MODE: '1'
     steps:
@@ -320,6 +320,19 @@ jobs:
         with:
           name: android-eas-build-log
           path: eas-build-android.log
+      - name: Free disk for the emulator
+        # A cold EAS build (e.g. during a GitHub cache-service outage) can leave
+        # <3 GB free, and the emulator FATALs creating its 7.4 GB userdata
+        # partition ("Not enough space to create userdata partition"), after
+        # which the boot-wait polls a dead emulator for the full 600s (seen on
+        # home-maintenance PR#1, 2026-07-10). The APK is already extracted to
+        # $GITHUB_WORKSPACE/build.apk; the build intermediates and the runner's
+        # unused toolchains can all go.
+        run: |
+          sudo rm -rf ~/.gradle /tmp/eas-build-local* ~/.cache/eas-build-local* 2>/dev/null || true
+          rm -rf android 2>/dev/null || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/lib/android/sdk/ndk 2>/dev/null || true
+          df -h /
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

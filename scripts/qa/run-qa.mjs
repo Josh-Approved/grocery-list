@@ -287,6 +287,65 @@ function runProveGates(profile) {
     : { status: 'fail', dead: rep.dead || [], reason: rep.verdict || `dead sensor(s): ${(rep.dead || []).join(', ')}` };
 }
 
+// ---------- Tier "nightly": last nightly green or its defects triaged (T5) ----------
+// The nightly deep-suites engine (templates/qa/nightly.yml.template) runs the
+// heavy tiers off the sacred per-PR budget and NEVER blocks — a red nightly files
+// defects. This tier makes production honour that signal: a new production
+// release requires the app's last nightly to have gone green on both platforms
+// OR every defect it filed to be triaged (closed/waived/no longer open). Read-
+// only: it reads the digest cache (scripts/qa/nightly-digest.mjs) + the ledger,
+// never runs a suite. Rollout doctrine (mirrors device-net/two-device/upgrade):
+// no digest yet → skip unless the app opts in with qa/baseline.json
+// "nightly/enforce": true.
+function runNightly(app, profile) {
+  if (profile !== 'production') return { status: 'skip', reason: 'nightly gate is production-only' };
+  const baseline = readJson(path.join(appDir, 'qa', 'baseline.json')) || {};
+  const enforce = baseline['nightly/enforce'] === true;
+  const digest = readJson(path.join(__dirname, '..', '..', 'scratch', 'cache', 'nightly-digest.json'));
+  const entry = digest && digest.apps ? digest.apps[app] : null;
+  if (!entry) {
+    return { status: enforce ? 'fail' : 'skip',
+      reason: enforce ? 'nightly enforced but no digest yet (run scripts/qa/nightly-digest.mjs)' : 'no nightly digest yet (nightly engine rolling out)' };
+  }
+  if (entry.netGreen) return { status: 'pass', platforms: entry.platforms };
+  // Not green — pass only if every net-found defect has been triaged.
+  const cli = path.join(__dirname, '..', 'defects.mjs');
+  let open = [];
+  if (exists(cli)) {
+    try {
+      const out = execFileSync('node', [cli, 'list', '--app', app, '--json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      const recs = JSON.parse(out);
+      open = (Array.isArray(recs) ? recs : []).filter((r) => r.status !== 'closed' && r.status !== 'waived' && r.foundBy === 'net' && ['correctness', 'build', 'ux'].includes(r.class));
+    } catch { /* no ledger → nothing open */ }
+  }
+  if (!open.length) return { status: 'pass', triaged: true, reason: 'nightly not green but all filed defects triaged' };
+  const p = entry.platforms || {};
+  return { status: enforce ? 'fail' : 'skip',
+    reason: `last nightly not green (iOS ${p.ios || 'none'}, Android ${p.android || 'none'}); ${open.length} open net-found defect(s): ${open.map((r) => r.id).slice(0, 4).join(', ')}` };
+}
+
+// ---------- Tier "survival": chaos subflows green (T4/T5) ----------
+// The state-survival subflow (kill + relaunch, assert the persisted write) is a
+// chaos-net subflow that runs in the full profile / nightly, not per-PR. Read-
+// only like the device tiers: it reads qa/survival-report.json (written by
+// scripts/qa/run-survival.mjs on a Mac-present run). Rollout doctrine: no
+// survival block → skip; no run recorded → skip unless "survival/enforce".
+function runSurvival(profile) {
+  if (profile !== 'production') return { status: 'skip', reason: 'chaos subflows are a production-gate concern' };
+  const journey = readJson(path.join(appDir, 'qa', 'journey.json'));
+  const hasBlock = !!(journey && journey.survival && Array.isArray(journey.survival.steps) && journey.survival.steps.length);
+  if (!hasBlock) return { status: 'skip', reason: 'no journey.json "survival" block (chaos subflow rolling out)' };
+  const baseline = readJson(path.join(appDir, 'qa', 'baseline.json')) || {};
+  const enforce = baseline['survival/enforce'] === true;
+  const report = readJson(path.join(appDir, 'qa', 'survival-report.json'));
+  if (!report) {
+    return { status: enforce ? 'fail' : 'skip',
+      reason: enforce ? 'survival enforced but no run recorded (run scripts/qa/run-survival.mjs on a Mac)' : 'survival wired; no device run recorded yet (rolling out)' };
+  }
+  if (report.ok === true) return { status: 'pass', platforms: report.platforms };
+  return { status: enforce ? 'fail' : 'skip', reason: report.verdict || 'state did not survive process death' };
+}
+
 // ---------- Lint: qa-canonical testing tiers ----------
 function runLintTiers() {
   const canon = path.join(appDir, 'scripts', 'qa-canonical.mjs');
@@ -312,6 +371,8 @@ const twoDevice = await runTwoDevice(profile);
 const upgrade = runUpgrade(profile);
 const defects = runDefectGate(path.basename(appDir), profile);
 const proveGates = runProveGates(profile);
+const nightly = runNightly(path.basename(appDir), profile);
+const survival = runSurvival(profile);
 
 // Gate: a tier that ERRORs or FAILs blocks; SKIP/PASS are fine.
 const unitOk = unit.status === 'pass' || unit.status === 'skip';
@@ -322,9 +383,11 @@ const twoDeviceFailed = twoDevice.status === 'fail';
 const upgradeFailed = upgrade.status === 'fail';
 const defectsFailed = defects.status === 'fail';
 const proveGatesFailed = proveGates.status === 'fail' || proveGates.status === 'error';
+const nightlyFailed = nightly.status === 'fail';
+const survivalFailed = survival.status === 'fail';
 const ok = profile === 'testflight'
   ? unitOk && !lintFailed && !matrixFailed       // Tier 1 + lint + device smoke; Tier 2 is smoke/optional
-  : unitOk && !flowFailed && !lintFailed && !matrixFailed && !twoDeviceFailed && !upgradeFailed && !defectsFailed && !proveGatesFailed;  // production: Tier 2 + full matrix + two-device sync + upgrade migration + no unproven fix + no dead sensor
+  : unitOk && !flowFailed && !lintFailed && !matrixFailed && !twoDeviceFailed && !upgradeFailed && !defectsFailed && !proveGatesFailed && !nightlyFailed && !survivalFailed;  // production: Tier 2 + full matrix + two-device sync + upgrade migration + no unproven fix + no dead sensor + last nightly green/triaged + chaos subflows survived
 
 const report = {
   app: path.basename(appDir),
@@ -333,7 +396,7 @@ const report = {
   // NOTE: timestamp intentionally omitted — Date.now() is unavailable in some
   // factory contexts and would make the artifact non-deterministic. CI/commit
   // metadata carries the time.
-  tiers: { unit, flow, lint, matrix, twoDevice, upgrade, defects, proveGates },
+  tiers: { unit, flow, lint, matrix, twoDevice, upgrade, defects, proveGates, nightly, survival },
   // The agent's reading guide — what to do, in one line, without opening logs.
   verdict: ok
     ? `OK for ${profile}: ${unit.status === 'skip' ? 'no unit tests' : unit.passed + ' tests pass'}${flow.status === 'pass' ? ', flow static green' : ''}${matrix.status === 'pass' ? ', device matrix green' : ''}.`
@@ -346,6 +409,8 @@ const report = {
         upgrade.status === 'fail' && (upgrade.reason || `upgrade migration: data lost across install-over (run scripts/qa/upgrade-test.mjs)`),
         defects.status === 'fail' && `${defects.proving} defect(s) unproven at release (${(defects.ids || []).join(', ')}) — run scripts/qa/regression-gate.mjs to prove the failing-first test, or waive`,
         proveGatesFailed && (proveGates.reason || `dead sensor(s): ${(proveGates.dead || []).join(', ')} — a gate reports green over its known-bad; fix the gate (run scripts/qa/prove-gates.mjs)`),
+        nightly.status === 'fail' && (nightly.reason || 'last nightly not green and its defects are not triaged (run scripts/qa/nightly-digest.mjs, then triage the ledger)'),
+        survival.status === 'fail' && (survival.reason || 'chaos state-survival subflow did not survive process death (run scripts/qa/run-survival.mjs)'),
       ].filter(Boolean).join('; ')}`,
 };
 

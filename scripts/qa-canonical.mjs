@@ -856,6 +856,65 @@ const ruleTipJarNoGmsGuard = () => {
   return pass('rn/tip-jar-nogms-guard', 'Tip jar degrades gracefully without Google Play Services');
 };
 
+// Pure core (self-tested): find require() calls whose argument is NOT a static
+// string literal. Metro's bundler resolves require targets at BUILD time by
+// static analysis, so require(<expression>) — a variable, a member/call, a
+// concatenation, or an interpolated template — silently never bundles the target;
+// the asset/module is simply absent at runtime with no error. A plain string
+// literal or a static (non-interpolated) template literal is fine. Comments are
+// stripped by the caller so a doc-comment mentioning `require(variable)` (the
+// feedback modules document exactly this trap) never false-positives.
+export function detectNonLiteralRequires(code) {
+  const src = stripComments(code || '');
+  const hits = [];
+  const re = /\brequire\s*\(\s*/g;
+  // Is the whole argument just this one literal? (next non-ws token is the close paren)
+  const soleArg = (rest, closeIdx) => /^\s*\)/.test(rest.slice(closeIdx + 1));
+  let m;
+  while ((m = re.exec(src))) {
+    const rest = src.slice(re.lastIndex);
+    const first = rest[0];
+    if (first === "'" || first === '"') {
+      const end = rest.indexOf(first, 1);
+      if (end >= 0 && soleArg(rest, end)) continue; // sole string literal → OK
+      // a leading string that is part of a larger expression, e.g. concatenation
+    } else if (first === '`') {
+      const end = rest.indexOf('`', 1);
+      const body = end >= 0 ? rest.slice(1, end) : rest;
+      if (end >= 0 && !/\$\{/.test(body) && soleArg(rest, end)) continue; // sole static template → OK
+      if (/\$\{/.test(body)) { hits.push('require(`…${…}`) interpolated template — Metro cannot statically resolve it'); continue; }
+    } else if (first === ')') {
+      continue; // require() with no argument — not this class
+    }
+    const snippet = rest.slice(0, 48).split(/[\n)]/)[0].trim();
+    hits.push(`require(${snippet}) — non-literal argument; Metro will not bundle it (use a string literal or a static import)`);
+  }
+  return hits;
+}
+
+// A require() under Metro MUST take a static string literal. tend's opt-in
+// diagnostics log was pulled into the feedback email with a non-literal require(),
+// so Metro never bundled it and the attachment was always silently missing
+// (tend-20260704-1; fixed by a static import, tend build 9). FAIL: the whole class
+// is a silent runtime absence with no error, and the fix is mechanical (a string
+// literal or a top-level static import). Test files are excluded — they run under
+// jest/node, not Metro, where dynamic require is legitimate.
+const ruleNoNonliteralAssetRequire = () => {
+  if (surface !== 'rn') return skip('rn/no-nonliteral-require', 'Not an RN app');
+  const files = srcSourceFiles();
+  if (!files.length) return skip('rn/no-nonliteral-require', 'No src/ source files');
+  const hits = [];
+  for (const f of files) {
+    for (const h of detectNonLiteralRequires(readText(f) || '')) hits.push(`${relative(appDir, f)}: ${h}`);
+  }
+  if (hits.length) {
+    return fail('rn/no-nonliteral-require',
+      'Non-literal require() under Metro: require() resolves its target at build time by static analysis, so require(<expression>) silently fails to bundle the asset/module — it is simply absent at runtime with no error. Use a string-literal require or a top-level static import. This is the class behind the missing diagnostics attachment (tend-20260704-1).',
+      hits);
+  }
+  return pass('rn/no-nonliteral-require', 'All require() calls take a static string literal');
+};
+
 // ---------- rules: Chrome-extension-specific (manifest.json) ----------
 
 const KNOWN_PERMISSIONS_TIGHT = new Set(['activeTab', 'scripting', 'storage', 'sidePanel', 'offscreen']);
@@ -1794,6 +1853,7 @@ const CANONICAL_RULES = [
   ruleTipJarWired,
   ruleSplashWordmarkClip,
   ruleTipJarNoGmsGuard,
+  ruleNoNonliteralAssetRequire,
   ruleManifestMv3,
   ruleManifestPermissionsTight,
   ruleTestScriptPresent,
@@ -1908,6 +1968,22 @@ function runSelfTest() {
     'tip-jar/wired: a render site is detected');
   assert(/onSupport\s*=\s*\{/.test(`<FundingFooter onSupport={openTipJar}/>`) === true,
     'tip-jar/wired: an onSupport handler pass is detected');
+
+  // rn/no-nonliteral-require (Metro bundles only static-literal require targets)
+  assert(detectNonLiteralRequires(`const p = getPath(); const f = require(p);`).length === 1,
+    'nonliteral-require: require(variable) fires');
+  assert(detectNonLiteralRequires(`source={require('../../assets/splash-icon.png')}`).length === 0,
+    'nonliteral-require: a string-literal asset require passes');
+  assert(detectNonLiteralRequires('const f = require(`../assets/${name}.png`);').length === 1,
+    'nonliteral-require: an interpolated template require fires');
+  assert(detectNonLiteralRequires('const f = require(`../assets/logo.png`);').length === 0,
+    'nonliteral-require: a static template-literal require passes');
+  assert(detectNonLiteralRequires(`// package ROOT — never require(variable), Metro rejects it`).length === 0,
+    'nonliteral-require: a mention inside a line comment does not fire');
+  assert(detectNonLiteralRequires(`/**\n * a dynamic require(variable) does not bundle\n */`).length === 0,
+    'nonliteral-require: a mention inside a block comment does not fire');
+  assert(detectNonLiteralRequires(`const m = require('react-native' + suffix);`).length === 1,
+    'nonliteral-require: a string-concatenation require fires');
 
   console.log(failed ? `\nqa-canonical self-test FAILED (${failed})` : '\nqa-canonical self-test PASSED');
   process.exit(failed ? 1 : 0);

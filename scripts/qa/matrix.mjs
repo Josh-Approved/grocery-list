@@ -269,6 +269,10 @@ function main() {
 
   const results = [];
   for (const c of cells) {
+    // Load governor (Uplevel 3 / T5): do NOT lock here — this is an orchestrator.
+    // Each cell shells out to capture.mjs, which owns the heavy lock around its
+    // own EAS build (leaf-owns-lock). A second lock here would just nest as a
+    // no-op via JA_HEAVY_HELD.
     const argv = [
       path.join('scripts', 'qa', 'capture.mjs'), '.',
       '--store', c.store, '--platform', c.platform,
