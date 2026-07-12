@@ -5,7 +5,7 @@
  * across a backward OS-clock jump, advancing past peer timestamps, and clamping
  * a grossly-wrong peer so it can't poison the local clock.
  */
-import { LogicalClock } from '../clock';
+import { LogicalClock, initClock, now, observe, peek, _resetForTest } from '../clock';
 
 /** A controllable physical-time source. */
 function fakeTime(start: number) {
@@ -88,10 +88,70 @@ test('persistence is throttled to the configured granularity', () => {
   expect(writes[0]).toBe(T0 + 2500);
 });
 
+test('persistence fires exactly at the granularity boundary', () => {
+  const time = fakeTime(T0);
+  const writes: number[] = [];
+  const c = new LogicalClock({ physicalNow: time.fn, persistGranularityMs: 2000 });
+  c.init(T0, (v) => writes.push(v));
+  time.advance(2000); // exactly the granularity, not past it
+  c.now();
+  expect(writes).toEqual([T0 + 2000]);
+});
+
+test('observe() ignores a non-finite peer stamp entirely', () => {
+  const time = fakeTime(T0);
+  const c = new LogicalClock({ physicalNow: time.fn, maxSkewMs: 60_000 });
+  c.observe(Infinity);
+  c.observe(-Infinity);
+  c.observe(NaN);
+  expect(c.peek()).toBe(0);
+});
+
+test('an observe() that does not advance the clock never touches persistence', () => {
+  const time = fakeTime(T0);
+  const writes: number[] = [];
+  // Granularity 0 makes every clock advance persist, so any write after the
+  // no-advance observe below could only come from that observe itself.
+  const c = new LogicalClock({ physicalNow: time.fn, persistGranularityMs: 0 });
+  c.init(T0, (v) => writes.push(v));
+  c.now(); // physical time frozen at T0 -> advances to T0 + 1, persists
+  expect(writes).toEqual([T0 + 1]);
+  c.observe(c.peek()); // equal to the high-water mark: must be a no-op
+  expect(writes).toEqual([T0 + 1]);
+});
+
 test('init() raises the high-water mark but never lowers it', () => {
   const c = new LogicalClock({ physicalNow: () => T0 });
   c.init(T0 + 99_999, () => {});
   expect(c.peek()).toBe(T0 + 99_999);
   c.init(T0, () => {}); // a lower persisted value must not regress it
   expect(c.peek()).toBe(T0 + 99_999);
+});
+
+// The shared default instance runs on real Date.now, so these use peer stamps
+// safely inside the 24h skew ceiling relative to the wall clock.
+describe('shared default instance (module-level exports)', () => {
+  afterEach(() => _resetForTest());
+
+  test('observe() and peek() drive the shared clock', () => {
+    _resetForTest();
+    const target = Date.now() + 60_000;
+    observe(target);
+    expect(peek()).toBe(target);
+  });
+
+  test('initClock() restores the persisted high-water mark', () => {
+    _resetForTest();
+    const persisted = Date.now() + 60_000;
+    initClock(persisted, () => {});
+    expect(peek()).toBe(persisted);
+    expect(now()).toBeGreaterThan(persisted);
+  });
+
+  test('_resetForTest() clears the shared clock', () => {
+    observe(Date.now() + 60_000);
+    expect(peek()).toBeGreaterThan(0);
+    _resetForTest();
+    expect(peek()).toBe(0);
+  });
 });

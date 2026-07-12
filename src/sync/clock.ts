@@ -80,6 +80,7 @@ export class LogicalClock {
     const p = Number.isFinite(persisted) ? Math.floor(persisted) : 0;
     const cap = this.physicalNow() + this.maxSkewMs;
     const target = Math.min(p, cap);
+    // Stryker disable next-line EqualityOperator: equivalent mutant, `>=` rewrites the same value when target === this.last
     if (target > this.last) this.last = target;
     this.lastPersisted = this.last;
     this.sink = persistSink;

@@ -65,7 +65,7 @@ describe('ReviewModal', () => {
       )
     );
     await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
-    expect(markReviewOpened).toHaveBeenCalled();
+    expect(mockMarkReviewOpened).toHaveBeenCalled();
     openURL.mockRestore();
   });
 
@@ -81,7 +81,7 @@ describe('ReviewModal', () => {
     await user.press(screen.getByRole('button', { name: 'Not now' }));
 
     await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
-    expect(dismissReviewPrompt).toHaveBeenCalled();
+    expect(mockDismissReviewPrompt).toHaveBeenCalled();
     expect(openURL).not.toHaveBeenCalled();
     openURL.mockRestore();
   });
