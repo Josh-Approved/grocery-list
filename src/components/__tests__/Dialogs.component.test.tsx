@@ -35,6 +35,12 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 
 import { useActionMenu, usePrompt, useConfirm } from '../Dialogs';
 
+// The first test in this file pays the jest-expo/RNTL cold-start cost (module
+// transform + first render); on a loaded CI runner that alone can exceed the
+// default 5000ms, timing out before any real assertion runs (seen in CI, not
+// locally). Give the whole file more headroom rather than just the first test.
+jest.setTimeout(15000);
+
 function wrap(ui: React.ReactElement) {
   return <SafeAreaProvider initialMetrics={METRICS}>{ui}</SafeAreaProvider>;
 }
