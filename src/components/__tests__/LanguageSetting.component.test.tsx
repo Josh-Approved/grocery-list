@@ -53,9 +53,11 @@ describe('LanguageSetting', () => {
     // Spanish autonym is "Español" (grocery-list ships translations).
     await user.press(screen.getByRole('radio', { name: 'Español' }));
 
-    // The sheet closed (no radios) and the trigger now shows the chosen language.
+    // The sheet closed (no radios) and the trigger now shows the chosen
+    // language — the label prefix localizes too ("Language" → "Idioma"),
+    // since the a11y label re-renders under the newly selected locale.
     expect(screen.queryByRole('radio', { name: 'English' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Language, Español' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Idioma, Español' })).toBeTruthy();
   });
 
   it('closes without changing the language when the scrim (Cancel) is pressed', async () => {
@@ -89,6 +91,7 @@ describe('LanguageSetting', () => {
     await user.press(screen.getByRole('button', { name: 'Language, System' }));
     await user.press(screen.getByRole('radio', { name: 'Deutsch' }));
 
-    expect(screen.getByRole('button', { name: 'Language, Deutsch' })).toBeTruthy();
+    // Same localized-prefix behavior — German locale renders "Sprache".
+    expect(screen.getByRole('button', { name: 'Sprache, Deutsch' })).toBeTruthy();
   });
 });

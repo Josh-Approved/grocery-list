@@ -70,50 +70,55 @@ async function renderPicker(props: Partial<React.ComponentProps<typeof ItemPicke
 test('tapping an item row adds that item', async () => {
   const { onAdd, searchBox, getByLabelText } = await renderPicker();
   // Type a partial term that surfaces the built-in "apple" seed row.
-  fireEvent.changeText(searchBox(), 'app');
-  fireEvent.press(getByLabelText('Add apple'));
+  await fireEvent.changeText(searchBox(), 'app');
+  await fireEvent.press(getByLabelText('Add apple'));
   expect(onAdd).toHaveBeenCalledWith('apple', expect.anything());
 });
 
 test('typing a term and submitting (return key) adds the typed item', async () => {
   const { onAdd, searchBox } = await renderPicker();
-  fireEvent.changeText(searchBox(), 'Dragonfruit');
-  const box = searchBox(); console.error("VAL:", box.props.value, "hasHandler:", typeof box.props.onSubmitEditing);
-  fireEvent(box, 'submitEditing');
+  await fireEvent.changeText(searchBox(), 'Dragonfruit');
+  await fireEvent(searchBox(), 'submitEditing');
   expect(onAdd).toHaveBeenCalledWith('Dragonfruit', undefined);
 });
 
 test('submitting an empty search box closes the sheet', async () => {
   const { onAdd, onClose, searchBox } = await renderPicker();
-  fireEvent(searchBox(), 'submitEditing');
+  await fireEvent(searchBox(), 'submitEditing');
   expect(onClose).toHaveBeenCalledTimes(1);
   expect(onAdd).not.toHaveBeenCalled();
 });
 
 test('tapping the clear button empties the search box', async () => {
   const { searchBox, getByLabelText } = await renderPicker();
-  fireEvent.changeText(searchBox(), 'milk');
+  await fireEvent.changeText(searchBox(), 'milk');
   expect(searchBox().props.value).toBe('milk');
   // The clear affordance carries the "Close" a11y label.
-  fireEvent.press(getByLabelText('Close'));
+  await fireEvent.press(getByLabelText('Close'));
   expect(searchBox().props.value).toBe('');
 });
 
 test('tapping the star toggle saves an item as a usual', async () => {
   const { searchBox, getByLabelText } = await renderPicker();
-  fireEvent.changeText(searchBox(), 'app');
-  // "apple" is not yet a usual → the toggle offers to save it.
-  fireEvent.press(getByLabelText('Save as usual'));
+  // A short prefix like "app" matches several catalog entries (apple, apple
+  // pie, ...) — even "brocc" also substring-matches "frozen broccoli" — so
+  // more than one "Save as a usual" button would be on screen. "aspar" is a
+  // prefix no other catalog item contains, matching only "asparagus".
+  await fireEvent.changeText(searchBox(), 'aspar');
+  // "asparagus" is not yet a usual → the toggle offers to save it.
+  await fireEvent.press(getByLabelText('Save as a usual'));
   expect(useAccountStore.getState().staples.map((n) => n.toLowerCase())).toContain(
-    'apple'
+    'asparagus'
   );
 });
 
 test('tapping the star on an existing usual removes it', async () => {
-  useAccountStore.setState({ staples: ['Apple'] });
+  // The store always keeps staples lowercase (see account.ts's addStaple) —
+  // seed it the same way so usualSet lookups (also lowercase) match.
+  useAccountStore.setState({ staples: ['apple'] });
   const { getByLabelText } = await renderPicker();
   // Browsing (no query) shows the usuals section; "Apple" is a usual.
-  fireEvent.press(getByLabelText('Remove from usuals'));
+  await fireEvent.press(getByLabelText('Remove from usuals'));
   expect(useAccountStore.getState().staples).not.toContain('Apple');
 });
 
@@ -124,18 +129,21 @@ test('the edit (pencil) on a recent row opens the edit menu', async () => {
     staples: [],
   });
   const { getByLabelText, getByText } = await renderPicker();
-  fireEvent.press(getByLabelText('Edit Butter'));
+  await fireEvent.press(getByLabelText('Edit Butter'));
   // The action menu opened → its Edit / Delete options are now on screen.
   expect(getByText('Delete')).toBeTruthy();
 });
 
 test('the "Show all" usuals toggle expands the peeked list', async () => {
-  // 10 usuals > USUALS_PEEK(8) so the "more" toggle renders while browsing.
-  const many = Array.from({ length: 10 }, (_, i) => `Usual${i}`);
+  // 9 usuals > USUALS_PEEK(8) so the "more" toggle renders while browsing.
+  // Kept at 9 (not more) so header+rows stay within FlatList's default
+  // initialNumToRender window in the test renderer — a bigger dataset would
+  // window out the last row regardless of showAllUsuals.
+  const many = Array.from({ length: 9 }, (_, i) => `Usual${i}`);
   useAccountStore.setState({ staples: many });
   const { getByLabelText, queryByLabelText } = await renderPicker();
   // Only the first 8 are shown initially.
-  expect(queryByLabelText('Add Usual9')).toBeNull();
-  fireEvent.press(getByLabelText('Show all'));
-  expect(getByLabelText('Add Usual9')).toBeTruthy();
+  expect(queryByLabelText('Add Usual8')).toBeNull();
+  await fireEvent.press(getByLabelText('Show all'));
+  expect(getByLabelText('Add Usual8')).toBeTruthy();
 });

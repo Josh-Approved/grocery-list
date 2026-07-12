@@ -24,15 +24,15 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 // Controllable IAP hook — set by each test before render.
-const tipMock = jest.fn();
-let tipState: {
+const mockTip = jest.fn();
+let mockTipState: {
   status: string;
   products: { id: string; displayPrice: string }[];
   pendingSku: string | null;
 };
 jest.mock('../../lib/tipJar', () => ({
   isStoreKnownUnavailable: () => false,
-  useTipJar: () => ({ ...tipState, tip: tipMock }),
+  useTipJar: () => ({ ...mockTipState, tip: mockTip }),
 }));
 
 import TipJarSheet from '../TipJarSheet';
@@ -45,7 +45,7 @@ beforeEach(() => {
 
 describe('TipJarSheet', () => {
   it('fires onTip with the product id when a tier is pressed', async () => {
-    tipState = {
+    mockTipState = {
       status: 'ready',
       products: [
         { id: 'tip.small', displayPrice: '$1.99' },
@@ -61,11 +61,11 @@ describe('TipJarSheet', () => {
 
     // Tiers are buttons labelled "Tip <price>".
     await user.press(screen.getByRole('button', { name: 'Tip $4.99' }));
-    expect(tipMock).toHaveBeenCalledWith('tip.medium');
+    expect(mockTip).toHaveBeenCalledWith('tip.medium');
   });
 
   it('dismisses when Maybe later is pressed', async () => {
-    tipState = { status: 'ready', products: [], pendingSku: null };
+    mockTipState = { status: 'ready', products: [], pendingSku: null };
     const onDismiss = jest.fn();
     const user = userEvent.setup();
 
@@ -78,7 +78,7 @@ describe('TipJarSheet', () => {
   });
 
   it('dismisses when Done is pressed in the thank-you state', async () => {
-    tipState = { status: 'thanks', products: [], pendingSku: null };
+    mockTipState = { status: 'thanks', products: [], pendingSku: null };
     const onDismiss = jest.fn();
     const user = userEvent.setup();
 
