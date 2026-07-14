@@ -38,6 +38,7 @@ import SettingsScreen from './src/screens/SettingsScreen';
 import ShareScreen from './src/screens/ShareScreen';
 import Credits from './src/components/Credits';
 import { startSyncEngine, stopSyncEngine, flushSyncEngine } from './src/sync';
+import { drainPendingSiriItems, startSiriListSync } from './src/siri';
 import { parseShareLink } from './src/sync/share';
 import { t } from './src/i18n';
 import { QA_MODE } from './src/qa/qaMode';
@@ -136,6 +137,15 @@ export default function App() {
     return () => stopSyncEngine();
   }, [hydrated]);
 
+  // Siri (iOS only; no-op elsewhere): once the store is ready, pull in any
+  // items dictated to Siri while we were closed, and keep Siri's view of the
+  // lists mirrored so "add milk to <list>" can resolve the right list.
+  useEffect(() => {
+    if (!hydrated) return;
+    void drainPendingSiriItems();
+    return startSiriListSync();
+  }, [hydrated]);
+
   // On the way to the background, durably flush local state and push the latest
   // copy to peers immediately. Without this, a check made just before switching
   // apps can be lost (fire-and-forget save not yet landed) or never published
@@ -148,6 +158,10 @@ export default function App() {
         flushSyncEngine();
         useListsStore.getState().flushPending();
         useKitsStore.getState().flushPending();
+      }
+      // Coming back to the foreground: drain anything added via Siri while away.
+      if (next === 'active') {
+        void drainPendingSiriItems();
       }
     });
     return () => sub.remove();

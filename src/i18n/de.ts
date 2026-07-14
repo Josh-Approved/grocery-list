@@ -183,6 +183,10 @@ const de = {
     addedListsOne: '{count} Liste hinzugefügt.',
     addedListsOther: '{count} Listen hinzugefügt.',
     learnMoreA11y: 'Mehr erfahren auf joshapproved.com',
+    siri: 'Siri',
+    siriHint: 'Artikel per Sprache hinzufügen. Sag: "Add milk to Grocery List".',
+    siriDefaultList: 'Standardliste',
+    siriAskEachTime: 'Jedes Mal fragen',
   },
 };
 export default de;

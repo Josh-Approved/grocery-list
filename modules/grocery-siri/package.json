@@ -1,0 +1,7 @@
+{
+  "name": "grocery-siri",
+  "version": "1.0.0",
+  "description": "Local Expo module: App Group bridge for the Siri add-item integration (iOS only).",
+  "main": "index.ts",
+  "private": true
+}

@@ -32,6 +32,8 @@ import { exportLists, pickAndParseLists } from '../lib/transfer';
 import { AboutRow } from '../components/AboutRow';
 import { Wordmark } from '../components/Wordmark';
 import { LanguageSetting } from '../components/LanguageSetting';
+import { SiriSetting } from '../components/SiriSetting';
+import { isSiriSupported } from '../siri';
 import TipJarSheet from '../components/TipJarSheet';
 import { TIP_PRODUCT_IDS } from '../constants/tipProducts';
 import { t } from '../i18n';
@@ -67,6 +69,7 @@ export default function SettingsScreen({ navigation }: Props) {
   const importLists = useListsStore((st) => st.importLists);
   const [status, setStatus] = useState<string | null>(null);
   const [tipVisible, setTipVisible] = useState(false);
+  const siriSupported = React.useMemo(() => isSiriSupported(), []);
 
   const onExport = useCallback(() => {
     exportLists(lists).catch(() => setStatus(t('settings.couldntExport')));
@@ -112,6 +115,14 @@ export default function SettingsScreen({ navigation }: Props) {
 
         <Text style={s.sectionLabel}>{t('settings.language')}</Text>
         <LanguageSetting />
+
+        {siriSupported && (
+          <>
+            <Text style={s.sectionLabel}>{t('settings.siri')}</Text>
+            <Text style={s.status}>{t('settings.siriHint')}</Text>
+            <SiriSetting />
+          </>
+        )}
 
         <Text style={s.sectionLabel}>{t('settings.yourData')}</Text>
         <AboutRow label={t('settings.exportLists')} icon={Upload} onPress={onExport} />

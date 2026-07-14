@@ -131,6 +131,15 @@ merge-participating field with `clock.now()`, never `Date.now()`.
   overwrite-synced from a shared template — edit them upstream, not here, or a
   re-sync will clobber your change.
 
+## Siri (iOS)
+
+"Add milk to Grocery List" spoken to Siri adds an item without opening the app.
+It's iOS-only (no shippable Android voice equivalent exists in 2026 — an
+explicit, recorded scope decision). A Swift App Intent in the app target writes
+to a shared App Group container; the JS side (`src/siri/`) mirrors the lists in
+and drains dictated items into the store on launch. Full design, the platform
+rationale, and the Android-deferral plan: [`docs/siri.md`](docs/siri.md).
+
 ## Run, test, ship
 
 ```
