@@ -49,6 +49,7 @@
         }
       ],
       "./plugins/withGradleJvmArgs",
+      "./plugins/withSiriIntents",
       "expo-mail-composer"
     ],
     "extra": {

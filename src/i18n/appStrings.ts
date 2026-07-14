@@ -206,5 +206,9 @@ export const APP_STRINGS = {
     addedListsOne: 'Added {count} list.',
     addedListsOther: 'Added {count} lists.',
     learnMoreA11y: 'Learn more at joshapproved.com',
+    siri: 'Siri',
+    siriHint: 'Add items hands-free. Say "Add milk to Grocery List."',
+    siriDefaultList: 'Default list',
+    siriAskEachTime: 'Ask each time',
   },
 } as const;

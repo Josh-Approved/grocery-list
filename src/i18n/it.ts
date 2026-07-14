@@ -180,6 +180,10 @@ const it = {
     addedListsOne: 'Aggiunta {count} lista.',
     addedListsOther: 'Aggiunte {count} liste.',
     learnMoreA11y: 'Scopri di più su joshapproved.com',
+    siri: 'Siri',
+    siriHint: 'Aggiungi articoli con la voce. Di\': "Add milk to Grocery List".',
+    siriDefaultList: 'Lista predefinita',
+    siriAskEachTime: 'Chiedi ogni volta',
   },
 };
 export default it;

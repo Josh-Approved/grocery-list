@@ -182,6 +182,10 @@ const ja = {
     addedListsOne: '{count}件のリストを追加しました。',
     addedListsOther: '{count}件のリストを追加しました。',
     learnMoreA11y: 'joshapproved.comで詳しく見る',
+    siri: 'Siri',
+    siriHint: '声で商品を追加できます。「Add milk to Grocery List」と話しかけてください。',
+    siriDefaultList: 'デフォルトのリスト',
+    siriAskEachTime: '毎回確認する',
   },
 };
 export default ja;
