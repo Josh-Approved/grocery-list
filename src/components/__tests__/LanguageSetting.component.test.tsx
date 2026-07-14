@@ -55,7 +55,7 @@ describe('LanguageSetting', () => {
 
     // The sheet closed (no radios) and the trigger now shows the chosen language.
     expect(screen.queryByRole('radio', { name: 'English' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Language, Español' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Idioma, Español' })).toBeTruthy();
   });
 
   it('closes without changing the language when the scrim (Cancel) is pressed', async () => {
@@ -89,6 +89,6 @@ describe('LanguageSetting', () => {
     await user.press(screen.getByRole('button', { name: 'Language, System' }));
     await user.press(screen.getByRole('radio', { name: 'Deutsch' }));
 
-    expect(screen.getByRole('button', { name: 'Language, Deutsch' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Sprache, Deutsch' })).toBeTruthy();
   });
 });

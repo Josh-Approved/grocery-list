@@ -14,7 +14,7 @@
  */
 
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { render, fireEvent, userEvent } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import ItemPicker from '../ItemPicker';
 import { useAccountStore } from '../../store/account';
@@ -70,51 +70,52 @@ async function renderPicker(props: Partial<React.ComponentProps<typeof ItemPicke
 test('tapping an item row adds that item', async () => {
   const { onAdd, searchBox, getByLabelText } = await renderPicker();
   // Type a partial term that surfaces the built-in "apple" seed row.
-  fireEvent.changeText(searchBox(), 'app');
-  fireEvent.press(getByLabelText('Add apple'));
+  await fireEvent.changeText(searchBox(), 'app');
+  await fireEvent.press(getByLabelText('Add apple'));
   expect(onAdd).toHaveBeenCalledWith('apple', expect.anything());
 });
 
 test('typing a term and submitting (return key) adds the typed item', async () => {
   const { onAdd, searchBox } = await renderPicker();
-  fireEvent.changeText(searchBox(), 'Dragonfruit');
-  const box = searchBox(); console.error("VAL:", box.props.value, "hasHandler:", typeof box.props.onSubmitEditing);
-  fireEvent(box, 'submitEditing');
+  await fireEvent.changeText(searchBox(), 'Dragonfruit');
+  await fireEvent(searchBox(), 'submitEditing');
   expect(onAdd).toHaveBeenCalledWith('Dragonfruit', undefined);
 });
 
 test('submitting an empty search box closes the sheet', async () => {
   const { onAdd, onClose, searchBox } = await renderPicker();
-  fireEvent(searchBox(), 'submitEditing');
+  await fireEvent(searchBox(), 'submitEditing');
   expect(onClose).toHaveBeenCalledTimes(1);
   expect(onAdd).not.toHaveBeenCalled();
 });
 
 test('tapping the clear button empties the search box', async () => {
   const { searchBox, getByLabelText } = await renderPicker();
-  fireEvent.changeText(searchBox(), 'milk');
+  await fireEvent.changeText(searchBox(), 'milk');
   expect(searchBox().props.value).toBe('milk');
   // The clear affordance carries the "Close" a11y label.
-  fireEvent.press(getByLabelText('Close'));
+  await fireEvent.press(getByLabelText('Close'));
   expect(searchBox().props.value).toBe('');
 });
 
 test('tapping the star toggle saves an item as a usual', async () => {
-  const { searchBox, getByLabelText } = await renderPicker();
-  fireEvent.changeText(searchBox(), 'app');
-  // "apple" is not yet a usual → the toggle offers to save it.
-  fireEvent.press(getByLabelText('Save as usual'));
+  const { searchBox, getAllByLabelText } = await renderPicker();
+  await fireEvent.changeText(searchBox(), 'app');
+  // Several seed rows match "app", each with a star; the top-ranked row is
+  // "apple" — press its star (the assertion below pins that it was apple).
+  await fireEvent.press(getAllByLabelText('Save as a usual')[0]);
   expect(useAccountStore.getState().staples.map((n) => n.toLowerCase())).toContain(
     'apple'
   );
 });
 
 test('tapping the star on an existing usual removes it', async () => {
-  useAccountStore.setState({ staples: ['Apple'] });
+  // The store keeps staples lowercase (addStaple normalizes) — seed the same shape.
+  useAccountStore.setState({ staples: ['apple'] });
   const { getByLabelText } = await renderPicker();
-  // Browsing (no query) shows the usuals section; "Apple" is a usual.
-  fireEvent.press(getByLabelText('Remove from usuals'));
-  expect(useAccountStore.getState().staples).not.toContain('Apple');
+  // Browsing (no query) shows the usuals section; "apple" is a usual.
+  await fireEvent.press(getByLabelText('Remove from usuals'));
+  expect(useAccountStore.getState().staples).not.toContain('apple');
 });
 
 test('the edit (pencil) on a recent row opens the edit menu', async () => {
@@ -123,8 +124,10 @@ test('the edit (pencil) on a recent row opens the edit menu', async () => {
     history: [{ name: 'Butter', count: 1, lastUsed: Date.now() }] as any,
     staples: [],
   });
+  const user = userEvent.setup();
   const { getByLabelText, getByText } = await renderPicker();
-  fireEvent.press(getByLabelText('Edit Butter'));
+  // userEvent (not fireEvent) so the action-menu Modal flushes under fake timers.
+  await user.press(getByLabelText('Edit Butter'));
   // The action menu opened → its Edit / Delete options are now on screen.
   expect(getByText('Delete')).toBeTruthy();
 });
@@ -134,8 +137,11 @@ test('the "Show all" usuals toggle expands the peeked list', async () => {
   const many = Array.from({ length: 10 }, (_, i) => `Usual${i}`);
   useAccountStore.setState({ staples: many });
   const { getByLabelText, queryByLabelText } = await renderPicker();
-  // Only the first 8 are shown initially.
-  expect(queryByLabelText('Add Usual9')).toBeNull();
-  fireEvent.press(getByLabelText('Show all'));
-  expect(getByLabelText('Add Usual9')).toBeTruthy();
+  // Only the first 8 are shown initially — Usual8 is peeked out.
+  expect(queryByLabelText('Add Usual8')).toBeNull();
+  await fireEvent.press(getByLabelText('Show all'));
+  // The toggle flipped and a previously-hidden usual now renders. (Usual9, the
+  // very last row, stays virtualized out of the test render by FlatList.)
+  expect(getByLabelText('Show less')).toBeTruthy();
+  expect(getByLabelText('Add Usual8')).toBeTruthy();
 });
