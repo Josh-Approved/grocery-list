@@ -571,25 +571,16 @@
     {
       "id": "screens/ListDetailScreen#detail.checkeda11y",
       "label": "detail.checkedA11y",
-      "where": "src/screens/ListDetailScreen.tsx:278",
+      "where": "src/screens/ListDetailScreen.tsx:279",
       "proof": {
         "kind": "none"
       },
       "note": "Pressable · onPress"
     },
     {
-      "id": "screens/ListDetailScreen#pressable-306",
-      "label": "Pressable (dynamic label)",
-      "where": "src/screens/ListDetailScreen.tsx:306",
-      "proof": {
-        "kind": "none"
-      },
-      "note": "Pressable · onPress · dynamic/child-text label"
-    },
-    {
       "id": "screens/ListDetailScreen#detail.edititema11y",
       "label": "detail.editItemA11y",
-      "where": "src/screens/ListDetailScreen.tsx:339",
+      "where": "src/screens/ListDetailScreen.tsx:340",
       "proof": {
         "kind": "none"
       },
@@ -598,25 +589,16 @@
     {
       "id": "screens/ListDetailScreen#common.back",
       "label": "common.back",
-      "where": "src/screens/ListDetailScreen.tsx:362",
+      "where": "src/screens/ListDetailScreen.tsx:363",
       "proof": {
         "kind": "none"
       },
       "note": "Pressable · onPress"
     },
     {
-      "id": "screens/ListDetailScreen#pressable-371",
-      "label": "Pressable (dynamic label)",
-      "where": "src/screens/ListDetailScreen.tsx:371",
-      "proof": {
-        "kind": "none"
-      },
-      "note": "Pressable · onPress · dynamic/child-text label"
-    },
-    {
       "id": "screens/ListDetailScreen#detail.listoptions",
       "label": "detail.listOptions",
-      "where": "src/screens/ListDetailScreen.tsx:411",
+      "where": "src/screens/ListDetailScreen.tsx:423",
       "proof": {
         "kind": "none"
       },
@@ -625,7 +607,7 @@
     {
       "id": "screens/ListDetailScreen#detail.additem",
       "label": "detail.addItem",
-      "where": "src/screens/ListDetailScreen.tsx:427",
+      "where": "src/screens/ListDetailScreen.tsx:439",
       "proof": {
         "kind": "none"
       },
@@ -634,7 +616,7 @@
     {
       "id": "screens/ListDetailScreen#detail.finishshopa11y",
       "label": "detail.finishShopA11y",
-      "where": "src/screens/ListDetailScreen.tsx:456",
+      "where": "src/screens/ListDetailScreen.tsx:468",
       "proof": {
         "kind": "none"
       },
@@ -806,6 +788,33 @@
       "id": "screens/ListsHomeScreen#pressable-127",
       "label": "Pressable (dynamic label)",
       "where": "src/screens/ListsHomeScreen.tsx:127",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "screens/ListDetailScreen#pressable-307",
+      "label": "Pressable (dynamic label)",
+      "where": "src/screens/ListDetailScreen.tsx:307",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "screens/ListDetailScreen#pressable-372",
+      "label": "Pressable (dynamic label)",
+      "where": "src/screens/ListDetailScreen.tsx:372",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress · dynamic/child-text label"
+    },
+    {
+      "id": "screens/ListDetailScreen#pressable-412",
+      "label": "Pressable (dynamic label)",
+      "where": "src/screens/ListDetailScreen.tsx:412",
       "proof": {
         "kind": "none"
       },
