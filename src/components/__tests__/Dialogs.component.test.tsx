@@ -10,7 +10,7 @@
  */
 
 import React from 'react';
-import { render, screen, userEvent } from '@testing-library/react-native';
+import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { View, Text, Pressable } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -87,7 +87,9 @@ describe('useActionMenu', () => {
     expect(onRename).toHaveBeenCalledTimes(1);
     expect(onDelete).not.toHaveBeenCalled();
     // Choosing an option closes the sheet — the title header is gone.
-    expect(screen.queryByRole('header', { name: 'List options' })).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByRole('header', { name: 'List options' })).toBeNull()
+    );
   });
 
   it('closes without firing an option when Cancel is pressed', async () => {
@@ -105,7 +107,9 @@ describe('useActionMenu', () => {
     await user.press(screen.getByRole('button', { name: 'trigger' }));
     await user.press(screen.getByRole('button', { name: 'Cancel' }));
     expect(onPress).not.toHaveBeenCalled();
-    expect(screen.queryByRole('header', { name: 'List options' })).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByRole('header', { name: 'List options' })).toBeNull()
+    );
   });
 
   it('closes without firing when the scrim (Close menu) is pressed', async () => {
@@ -123,7 +127,9 @@ describe('useActionMenu', () => {
     await user.press(screen.getByRole('button', { name: 'trigger' }));
     await user.press(screen.getByRole('button', { name: 'Close menu' }));
     expect(onPress).not.toHaveBeenCalled();
-    expect(screen.queryByRole('header', { name: 'List options' })).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByRole('header', { name: 'List options' })).toBeNull()
+    );
   });
 });
 
