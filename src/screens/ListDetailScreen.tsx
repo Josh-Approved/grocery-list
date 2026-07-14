@@ -32,6 +32,7 @@ import {
   ChevronDown,
   ChevronRight,
   Link2,
+  Share2,
 } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
@@ -407,6 +408,17 @@ export default function ListDetailScreen({ route, navigation }: Props) {
                   total: stats.total,
                 })}
           </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => navigation.navigate('Share', { listId })}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={t(
+            list.shareIdentity ? 'detail.sharingSettings' : 'detail.shareThis'
+          )}
+          style={({ pressed }) => [s.iconBtn, pressed && s.pressed]}
+        >
+          <Share2 size={22} color={c.fg} strokeWidth={1.5} />
         </Pressable>
         <Pressable
           onPress={openListMenu}
