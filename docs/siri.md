@@ -89,9 +89,17 @@ assistant layer would be new.
   (App Shortcut string catalogs) is a follow-up. The Settings copy is translated
   in all six locales regardless.
 - **A brand-new list may take a moment to be sayable by name.** Naming a list
-  ("Add milk to Cabin") relies on Siri having indexed the list entities; iOS
-  re-indexes periodically and on app foreground. The **default-list path works
-  immediately** and doesn't depend on indexing.
+  ("Add to Cabin in Grocery List") relies on Siri having indexed the list
+  entities; iOS re-indexes periodically and on app foreground. The
+  **default-list path works immediately** and doesn't depend on indexing.
+- **Open the app once after installing.** App Shortcuts index (and the lists
+  sync to the App Group) when the app first *runs*, not merely when it installs.
+  Fresh installs are voice-enabled by default.
+- **"Grocery list" is Apple Reminders' territory.** Saying *"Add milk to grocery
+  list"* (item embedded, Reminders' canonical phrasing) routes to Reminders, not
+  this app. The invoking phrase is *"Add to Grocery List"* → Siri asks the item.
+  If this collision ever proves too costly, the fix is distinct Siri invocation
+  names (`INAlternativeAppNames`) — not yet needed (device-verified 2026-07-15).
 
 ## Testing
 
@@ -99,3 +107,11 @@ assistant layer would be new.
 native path can only be verified on a real device (Siri does not run in the
 Simulator): install via TestFlight, then speak the phrases and confirm the item
 appears after reopening the app.
+
+**Verified on device 2026-07-15** (TestFlight 1.0.7 build 44): *"Add to Grocery
+List"* → Siri prompts for the item → it lands on the list. **Gotcha found:**
+upgrading over an older build that lacked App Intents can leave the app's Siri
+toggle stale/off (Shortcuts app → the shortcut → Siri), so voice does nothing
+until toggled on — but a **clean install is voice-enabled by default** and needs
+no settings change. So test Siri with a delete-and-reinstall, never an upgrade,
+or you'll chase a phantom "it doesn't work."
