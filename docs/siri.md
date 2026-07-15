@@ -1,16 +1,30 @@
 # Siri "add an item" (iOS)
 
-Say *"Add milk to Grocery List"* to Siri and the item lands on your list — no
+Say *"Add to Grocery List"* to Siri and it adds an item to your list — no
 tapping, no opening the app. This is an iOS-only feature; see **Platform scope**
 below for why, and the plan for Android.
 
 ## What the user gets
 
-- **One list:** *"Add milk to Grocery List"* adds to it. Done.
+You invoke the action, and Siri asks what to add:
+
+- *"Add to Grocery List"* → Siri: *"What would you like to add?"* → *"milk"* →
+  added.
+
+Why the two beats: an **App Shortcut spoken phrase can't contain a free-text
+value** — Apple's App Intents compiler only allows the app name and at most one
+*entity* parameter in a phrase, never an arbitrary String. So the item can't be
+in the phrase; Siri prompts for it. (A user who wants a true one-breath *"Add
+milk…"* can still record their own phrase in the Shortcuts app.)
+
+Which list it lands on:
+
+- **One list:** it just goes there.
 - **Several lists:**
-  - Name one: *"Add milk to Cabin"* → goes to Cabin.
+  - Name one in the phrase (the list IS an entity, so this is allowed):
+    *"Add to Cabin in Grocery List"* → Cabin, then Siri asks the item.
   - Don't name one: it goes to the **default list** you pick in Settings → Siri.
-  - No default set: Siri asks *"Which list?"* and you say the name.
+  - No default set: Siri asks *"Which list?"*.
 
 Everything stays local and private — the item is written to the same on-device
 store as a hand-typed one, and rides the normal shared-list sync.
