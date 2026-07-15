@@ -241,7 +241,7 @@ class DeleteItem implements fc.Command<Model, Real> {
   toString = () => `d${this.devIdx}.delete(#${this.itemIdx})`;
 }
 
-class FinishShop implements fc.Command<Model, Real> {
+class ClearChecked implements fc.Command<Model, Real> {
   constructor(readonly gap: number, readonly devIdx: number) {}
   check = () => true;
   run(m: Model, r: Real): void {
@@ -249,13 +249,13 @@ class FinishShop implements fc.Command<Model, Real> {
     const wall = advance(r, this.gap);
     const lid = listIdOn(dev, r.secret);
     const bought = visible(dev, r.secret).filter((it) => it.checked);
-    on(dev, () => dev.store.getState().finishShop(lid));
+    on(dev, () => dev.store.getState().clearChecked(lid));
     for (const b of bought) {
       record(m.exist, norm(b.name), { wall, exists: false });
       record(m.rowFate, b.id, { wall, exists: false });
     }
   }
-  toString = () => `d${this.devIdx}.finishShop`;
+  toString = () => `d${this.devIdx}.clearChecked`;
 }
 
 class Exchange implements fc.Command<Model, Real> {
@@ -322,7 +322,7 @@ const commands: fc.Arbitrary<fc.Command<Model, Real>>[] = [
   fc.tuple(gap, dIdx, idx).map(([g, d, i]) => new ToggleCheck(g, d, i)),
   fc.tuple(gap, dIdx, idx, fc.boolean(), fc.nat({ max: 4 })).map(([g, d, i, note, q]) => new ContentEdit(g, d, i, note, q)),
   fc.tuple(gap, dIdx, idx).map(([g, d, i]) => new DeleteItem(g, d, i)),
-  fc.tuple(gap, dIdx).map(([g, d]) => new FinishShop(g, d)),
+  fc.tuple(gap, dIdx).map(([g, d]) => new ClearChecked(g, d)),
   fc.tuple(gap, dIdx, dIdx).map(([g, a, b]) => new Exchange(g, a, b)),
   fc.tuple(gap, dIdx, dIdx).map(([g, d, o]) => new Publish(g, d, o)),
   fc.tuple(gap, dIdx, idx).map(([g, v, h]) => new StaleReplay(g, v, h)),
@@ -408,7 +408,7 @@ function atQuiescence(s: { model: Model; real: Real }): void {
     }
   }
 
-  // I6 payload bound (pruning happens through the real finishShop calls).
+  // I6 payload bound (pruning happens through the real clearChecked calls).
   for (const d of devs) {
     const bytes = JSON.stringify(sharedListOf(d, secret)).length;
     if (bytes > PAYLOAD_LIMIT) breaches.push(`I6 payload ${bytes}B on ${d.name}`);

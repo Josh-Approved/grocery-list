@@ -99,9 +99,15 @@ export const APP_STRINGS = {
     newAislePlaceholder: 'Name this aisle',
     emptyTitle: 'Nothing on this list yet',
     emptyBody: "Type an item above and it'll sort itself into the right aisle.",
-    finishShop: 'Finish shop ({count})',
-    finishShopA11y: 'Finish shop, clear {count} checked items',
-    finishShopClear: 'Finish shop (clear {count})',
+    // Ambient "tidy away what you've crossed off" — no moment-in-time finish.
+    clearChecked: 'Clear',
+    clearCheckedA11y: 'Clear {count} crossed-off items',
+    clearCheckedMenu: 'Clear crossed off ({count})',
+    // Light-haptic toast shown when you cross an item off.
+    crossedOff: 'Crossed off {name}',
+    // Gentle reopen prompt to clear last shop's leftovers.
+    clearPromptOne: 'Clear {count} item crossed off last time?',
+    clearPromptOther: 'Clear {count} items crossed off last time?',
     removed: 'Removed {name}',
     clearedOne: 'Cleared {count} item',
     clearedOther: 'Cleared {count} items',

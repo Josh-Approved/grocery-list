@@ -142,11 +142,13 @@ interface ListsState {
   /** Soft-delete (tombstone) an item. */
   deleteItem: (listId: string, itemId: string) => void;
 
-  /** Tombstone every checked item ("bought"); returns their pre-change
-   *  snapshots so the caller can offer Undo. */
-  finishShop: (listId: string) => GroceryItem[];
+  /** Tombstone every checked item (what you've crossed off); returns their
+   *  pre-change snapshots so the caller can offer Undo. This is the "tidy away
+   *  what you bought" primitive — invoked from ambient Clear affordances, not a
+   *  moment-in-time "finish shop" gate (that ceremony was removed 2026-07-15). */
+  clearChecked: (listId: string) => GroceryItem[];
   /** Undo primitive: write the given item snapshots back verbatim (clears a
-   *  tombstone, restores checked state). Used by delete + finish-shop undo. */
+   *  tombstone, restores checked state). Used by delete + clear-checked undo. */
   restoreItems: (listId: string, items: GroceryItem[]) => void;
 
   /** Mint (or return the existing) share secret for a list. Sharing is
@@ -542,7 +544,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
       );
     },
 
-    finishShop: (listId) => {
+    clearChecked: (listId) => {
       const list = get().lists.find((l) => l.id === listId);
       if (!list) return [];
       const bought = list.items.filter(
@@ -552,8 +554,8 @@ export const useListsStore = create<ListsState>()((set, get) => {
       const snapshots = bought.map((it) => ({ ...it }));
       const boughtIds = new Set(bought.map((it) => it.id));
       const at = clockNow();
-      // Prune in the same motion — finish-shop is where tombstones are minted,
-      // so it's also where the dead weight is kept bounded between launches.
+      // Prune in the same motion — clearing checked is where tombstones are
+      // minted, so it's also where the dead weight is kept bounded between launches.
       mutate(listId, (l) =>
         pruneTombstones(
           {
