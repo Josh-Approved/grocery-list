@@ -2,12 +2,15 @@
  * List detail — the core screen.
  *
  * Add items (auto-sorted into aisles), tap to check them off, adjust
- * quantities, and "Finish shop" to clear what you bought — with Undo, because
- * accidental check/delete is the universal grocery-app complaint and the
- * tenet here is "hard to lose."
+ * quantities. Crossing an item off is a small tangible moment (light haptic +
+ * a brief toast with Undo), because accidental check/delete is the universal
+ * grocery-app complaint and the tenet here is "hard to lose."
  *
- * Checked items dim and sink into a collapsed group so the working list stays
- * what's left to get. Sharing (build step 4) will surface here later.
+ * Checked items dim and sink into a group so the working list stays what's
+ * left to get. There is deliberately NO moment-in-time "finish shop" gate
+ * (removed 2026-07-15): clearing crossed-off items is ambient — a "Clear" on
+ * the Checked header, plus a gentle prompt to clear last shop's leftovers when
+ * you reopen the list. Nothing important hinges on remembering a tap.
  */
 
 import React, {
@@ -24,6 +27,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import {
   ChevronLeft,
   MoreHorizontal,
@@ -33,6 +37,7 @@ import {
   ChevronRight,
   Link2,
   Share2,
+  X,
 } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
@@ -71,6 +76,11 @@ import { boundedContent } from '../theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ListDetail'>;
 
+// Checked items whose most-recent cross-off is older than this are treated as
+// "left over from a previous shop" — the trigger for the gentle reopen prompt
+// to tidy them. Long enough that a single long shop never trips it.
+const STALE_CHECKED_MS = 6 * 60 * 60 * 1000; // 6 hours
+
 type Row =
   | { kind: 'section'; key: string; category: Category }
   | { kind: 'item'; key: string; item: GroceryItem; divider?: boolean }
@@ -87,7 +97,7 @@ export default function ListDetailScreen({ route, navigation }: Props) {
   const deleteItem = useListsStore((st) => st.deleteItem);
   const renameList = useListsStore((st) => st.renameList);
   const deleteList = useListsStore((st) => st.deleteList);
-  const finishShop = useListsStore((st) => st.finishShop);
+  const clearChecked = useListsStore((st) => st.clearChecked);
   const restoreItems = useListsStore((st) => st.restoreItems);
 
   const recordUse = useAccountStore((st) => st.recordUse);
@@ -109,6 +119,9 @@ export default function ListDetailScreen({ route, navigation }: Props) {
   // something off should visibly land it somewhere, not vanish behind a
   // collapsed header (Josh, 2026-06-19).
   const [checkedOpen, setCheckedOpen] = useState(true);
+  // The reopen "clear last shop's leftovers?" prompt is dismissible for the
+  // session; clearing also resolves it. Resets on next open (a fresh mount).
+  const [stalePromptDismissed, setStalePromptDismissed] = useState(false);
   const [reviewVisible, setReviewVisible] = useState(false);
   const [snack, setSnack] = useState<{
     message: string;
@@ -123,6 +136,18 @@ export default function ListDetailScreen({ route, navigation }: Props) {
   }, [list, navigation]);
 
   const stats = list ? listStats(list) : { total: 0, checked: 0 };
+
+  // How many crossed-off items look left over from a previous shop. Recomputed
+  // when the list changes; the newest cross-off gates it (checkedItems is
+  // sorted most-recent-first), so items checked during THIS shop never count.
+  const staleCheckedCount = useMemo(() => {
+    if (!list) return 0;
+    const done = checkedItems(list);
+    if (done.length === 0) return 0;
+    const newest = done[0].checkedAt ?? 0;
+    return Date.now() - newest > STALE_CHECKED_MS ? done.length : 0;
+  }, [list]);
+  const showStalePrompt = !stalePromptDismissed && staleCheckedCount > 0;
 
   const rows: Row[] = useMemo(() => {
     if (!list) return [];
@@ -185,9 +210,29 @@ export default function ListDetailScreen({ route, navigation }: Props) {
     [deleteItem, restoreItems, listId]
   );
 
-  const doFinishShop = useCallback(() => {
-    const snaps = finishShop(listId);
+  // Crossing an item off: a small tangible beat. Light haptic + a brief toast
+  // with Undo when you check something ON; unchecking is silent (no false
+  // "done" signal). Undo just flips the check back.
+  const toggleChecked = useCallback(
+    (item: GroceryItem) => {
+      const next = !item.checked;
+      setChecked(listId, item.id, next);
+      if (next) {
+        Haptics.selectionAsync().catch(() => {});
+        setSnack({
+          message: t('detail.crossedOff', { name: item.name }),
+          undo: () => setChecked(listId, item.id, false),
+        });
+      }
+    },
+    [setChecked, listId]
+  );
+
+  const doClearChecked = useCallback(() => {
+    const snaps = clearChecked(listId);
     if (snaps.length === 0) return;
+    // Clearing resolves the reopen prompt too.
+    setStalePromptDismissed(true);
     setSnack({
       message: t(
         snaps.length === 1 ? 'detail.clearedOne' : 'detail.clearedOther',
@@ -195,14 +240,15 @@ export default function ListDetailScreen({ route, navigation }: Props) {
       ),
       undo: () => restoreItems(listId, snaps),
     });
-    // Finishing a shop is this app's genuine "satisfying success" — the
+    // Clearing what you bought is this app's genuine "successful shop" — the
     // canonical review prompt's only trigger here (never on launch/error).
+    // Re-anchored from the removed "Finish shop" gate (2026-07-15).
     recordSuccessfulCompletion()
       .then((show) => {
         if (show) setReviewVisible(true);
       })
       .catch(() => {});
-  }, [finishShop, restoreItems, listId]);
+  }, [clearChecked, restoreItems, listId]);
 
   const openListMenu = useCallback(() => {
     if (!list) return;
@@ -236,8 +282,8 @@ export default function ListDetailScreen({ route, navigation }: Props) {
         ...(stats.checked > 0
           ? [
               {
-                label: t('detail.finishShopClear', { count: stats.checked }),
-                onPress: doFinishShop,
+                label: t('detail.clearCheckedMenu', { count: stats.checked }),
+                onPress: doClearChecked,
               },
             ]
           : []),
@@ -258,7 +304,7 @@ export default function ListDetailScreen({ route, navigation }: Props) {
     stats.checked,
     staples.length,
     addUsuals,
-    doFinishShop,
+    doClearChecked,
     renameList,
     deleteList,
     navigation,
@@ -276,24 +322,37 @@ export default function ListDetailScreen({ route, navigation }: Props) {
       }
       if (row.kind === 'checkedHeader') {
         return (
-          <Pressable
-            style={({ pressed }) => [s.checkedHeader, pressed && s.pressed]}
-            onPress={() => setCheckedOpen((v) => !v)}
-            accessibilityRole="button"
-            accessibilityLabel={t('detail.checkedA11y', {
-              count: row.count,
-              state: checkedOpen ? t('detail.collapse') : t('detail.expand'),
-            })}
-          >
-            {checkedOpen ? (
-              <ChevronDown size={16} color={c.fgMuted} strokeWidth={1.5} />
-            ) : (
-              <ChevronRight size={16} color={c.fgMuted} strokeWidth={1.5} />
-            )}
-            <Text style={s.checkedHeaderText}>
-              {t('detail.checked', { count: row.count })}
-            </Text>
-          </Pressable>
+          <View style={s.checkedHeader}>
+            <Pressable
+              style={({ pressed }) => [s.checkedToggle, pressed && s.pressed]}
+              onPress={() => setCheckedOpen((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={t('detail.checkedA11y', {
+                count: row.count,
+                state: checkedOpen ? t('detail.collapse') : t('detail.expand'),
+              })}
+            >
+              {checkedOpen ? (
+                <ChevronDown size={16} color={c.fgMuted} strokeWidth={1.5} />
+              ) : (
+                <ChevronRight size={16} color={c.fgMuted} strokeWidth={1.5} />
+              )}
+              <Text style={s.checkedHeaderText}>
+                {t('detail.checked', { count: row.count })}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={doClearChecked}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t('detail.clearCheckedA11y', {
+                count: row.count,
+              })}
+              style={({ pressed }) => [s.clearBtn, pressed && s.pressed]}
+            >
+              <Text style={s.clearBtnText}>{t('detail.clearChecked')}</Text>
+            </Pressable>
+          </View>
         );
       }
       const it = row.item;
@@ -306,7 +365,7 @@ export default function ListDetailScreen({ route, navigation }: Props) {
         <View style={[s.itemRow, row.divider && s.itemDivider]}>
           <Pressable
             style={s.itemTap}
-            onPress={() => setChecked(listId, it.id, !it.checked)}
+            onPress={() => toggleChecked(it)}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: it.checked }}
             accessibilityLabel={
@@ -352,7 +411,7 @@ export default function ListDetailScreen({ route, navigation }: Props) {
         </SwipeRow>
       );
     },
-    [s, c, listId, checkedOpen, setChecked, removeWithUndo, openEditor]
+    [s, c, listId, checkedOpen, toggleChecked, doClearChecked, removeWithUndo, openEditor]
   );
 
   if (!list) return null;
@@ -447,6 +506,38 @@ export default function ListDetailScreen({ route, navigation }: Props) {
         </Pressable>
       </View>
 
+      {showStalePrompt ? (
+        <View style={s.staleBar} accessibilityLiveRegion="polite">
+          <Text style={s.staleText} numberOfLines={2}>
+            {t(
+              staleCheckedCount === 1
+                ? 'detail.clearPromptOne'
+                : 'detail.clearPromptOther',
+              { count: staleCheckedCount }
+            )}
+          </Text>
+          <Pressable
+            onPress={doClearChecked}
+            accessibilityRole="button"
+            accessibilityLabel={t('detail.clearCheckedA11y', {
+              count: staleCheckedCount,
+            })}
+            style={({ pressed }) => [s.staleAction, pressed && s.pressed]}
+          >
+            <Text style={s.staleActionText}>{t('detail.clearChecked')}</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setStalePromptDismissed(true)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.close')}
+            style={({ pressed }) => [s.staleDismiss, pressed && s.pressed]}
+          >
+            <X size={18} color={c.fgMuted} strokeWidth={1.5} />
+          </Pressable>
+        </View>
+      ) : null}
+
       <FlatList
         data={rows}
         keyExtractor={(r) => r.key}
@@ -462,23 +553,6 @@ export default function ListDetailScreen({ route, navigation }: Props) {
           </View>
         }
       />
-
-      {stats.checked > 0 ? (
-        <View style={s.finishWrap}>
-          <Pressable
-            onPress={doFinishShop}
-            accessibilityRole="button"
-            accessibilityLabel={t('detail.finishShopA11y', {
-              count: stats.checked,
-            })}
-            style={({ pressed }) => [s.finishBtn, pressed && s.pressed]}
-          >
-            <Text style={s.finishText}>
-              {t('detail.finishShop', { count: stats.checked })}
-            </Text>
-          </Pressable>
-        </View>
-      ) : null}
 
       <AddItemsSheet
         visible={addSheetOpen}
@@ -589,9 +663,16 @@ function makeStyles(c: Colors) {
     checkedHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.s2,
+      justifyContent: 'space-between',
       minHeight: target.min,
       marginTop: space.s5,
+    },
+    checkedToggle: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.s2,
+      minHeight: target.min,
     },
     checkedHeaderText: {
       ...ty.xs,
@@ -599,6 +680,54 @@ function makeStyles(c: Colors) {
       color: c.fgMuted,
       textTransform: 'uppercase',
       letterSpacing: 0.5,
+    },
+    clearBtn: {
+      minHeight: target.min,
+      justifyContent: 'center',
+      paddingLeft: space.s4,
+    },
+    clearBtnText: {
+      ...ty.sm,
+      fontFamily: fontFamily.sansSemibold,
+      color: c.accent,
+    },
+
+    staleBar: {
+      ...boundedContent,
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginHorizontal: space.s6,
+      marginBottom: space.s4,
+      paddingLeft: space.s5,
+      paddingRight: space.s2,
+      minHeight: target.min,
+      backgroundColor: c.bgElevated,
+      borderWidth: hairline,
+      borderColor: c.hairlineStrong,
+      borderRadius: radius.md,
+    },
+    staleText: {
+      ...ty.sm,
+      flex: 1,
+      fontFamily: fontFamily.sans,
+      color: c.fg,
+      paddingVertical: space.s3,
+    },
+    staleAction: {
+      minHeight: target.min,
+      justifyContent: 'center',
+      paddingHorizontal: space.s3,
+    },
+    staleActionText: {
+      ...ty.sm,
+      fontFamily: fontFamily.sansSemibold,
+      color: c.accent,
+    },
+    staleDismiss: {
+      width: target.min,
+      height: target.min,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
 
     itemRow: {
@@ -664,25 +793,5 @@ function makeStyles(c: Colors) {
       textAlign: 'center',
     },
 
-    finishWrap: {
-      paddingHorizontal: space.s6,
-      paddingTop: space.s4,
-      paddingBottom: space.s4,
-      borderTopWidth: hairline,
-      borderTopColor: c.hairline,
-      backgroundColor: c.bg,
-    },
-    finishBtn: {
-      minHeight: target.min,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: c.inkButton,
-      borderRadius: radius.md,
-    },
-    finishText: {
-      ...ty.base,
-      fontFamily: fontFamily.sansSemibold,
-      color: c.inkButtonText,
-    },
   });
 }

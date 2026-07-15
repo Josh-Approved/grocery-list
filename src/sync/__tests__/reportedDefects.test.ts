@@ -344,7 +344,7 @@ describe('R2d: full-state payload stays under relay event-size limits', () => {
       for (const it of list.items.filter((x) => x.deletedAt == null)) {
         on(a, () => a.store.getState().setChecked(listId, it.id, true));
       }
-      on(a, () => a.store.getState().finishShop(listId));
+      on(a, () => a.store.getState().clearChecked(listId));
     }
 
     const json = JSON.stringify(a.store.getState().getList(listId)!);
