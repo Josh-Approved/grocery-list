@@ -106,7 +106,7 @@ describe('useItemEditor', () => {
   beforeEach(() => seed());
 
   it('recategorizes the item to another aisle when a chip is pressed', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await render(wrap(<Harness />));
     await openEditor(user);
 
@@ -116,7 +116,7 @@ describe('useItemEditor', () => {
   });
 
   it('steps quantity up via the Stepper', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await render(wrap(<Harness />));
     await openEditor(user);
 
@@ -126,7 +126,7 @@ describe('useItemEditor', () => {
   });
 
   it('creates a new aisle and moves the item into it (New aisle → type → Add)', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await render(wrap(<Harness />));
     await openEditor(user);
 
@@ -140,7 +140,7 @@ describe('useItemEditor', () => {
   });
 
   it('marks the item as a usual and unmarks it (reversible toggle)', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await render(wrap(<Harness />));
     await openEditor(user);
 
@@ -157,7 +157,7 @@ describe('useItemEditor', () => {
   });
 
   it('commits an edited name on Done and closes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await render(wrap(<Harness />));
     await openEditor(user);
 
@@ -172,7 +172,7 @@ describe('useItemEditor', () => {
   });
 
   it('commits an edited note on close', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await render(wrap(<Harness />));
     await openEditor(user);
 
@@ -184,7 +184,7 @@ describe('useItemEditor', () => {
   });
 
   it('closes via the scrim (Close) committing pending edits', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await render(wrap(<Harness />));
     await openEditor(user);
 
@@ -198,7 +198,7 @@ describe('useItemEditor', () => {
   });
 
   it('bubbles the item to onRemove and closes when Remove is pressed', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onRemove = jest.fn();
     await render(wrap(<Harness onRemove={onRemove} />));
     await openEditor(user);
