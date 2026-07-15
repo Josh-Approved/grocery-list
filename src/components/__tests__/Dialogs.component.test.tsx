@@ -65,7 +65,7 @@ function MenuHarness({
 
 describe('useActionMenu', () => {
   it('fires an option handler and closes the menu when a row is pressed', async () => {
-    const user = userEvent.setup({ delay: null });
+    const user = userEvent.setup({ delay: 0 });
     const onRename = jest.fn();
     const onDelete = jest.fn();
     await render(
@@ -93,7 +93,7 @@ describe('useActionMenu', () => {
   });
 
   it('closes without firing an option when Cancel is pressed', async () => {
-    const user = userEvent.setup({ delay: null });
+    const user = userEvent.setup({ delay: 0 });
     const onPress = jest.fn();
     await render(
       wrap(
@@ -113,7 +113,7 @@ describe('useActionMenu', () => {
   });
 
   it('closes without firing when the scrim (Close menu) is pressed', async () => {
-    const user = userEvent.setup({ delay: null });
+    const user = userEvent.setup({ delay: 0 });
     const onPress = jest.fn();
     await render(
       wrap(
@@ -169,7 +169,7 @@ function PromptHarness({
 
 describe('usePrompt', () => {
   it('submits the typed text and closes when Save is pressed', async () => {
-    const user = userEvent.setup({ delay: null });
+    const user = userEvent.setup({ delay: 0 });
     const onSubmit = jest.fn();
     await render(wrap(<PromptHarness onSubmit={onSubmit} />));
 
@@ -185,7 +185,7 @@ describe('usePrompt', () => {
   });
 
   it('submits via the keyboard return (onSubmitEditing)', async () => {
-    const user = userEvent.setup({ delay: null });
+    const user = userEvent.setup({ delay: 0 });
     const onSubmit = jest.fn();
     await render(
       wrap(<PromptHarness onSubmit={onSubmit} initialValue="Pantry" />)
@@ -199,7 +199,7 @@ describe('usePrompt', () => {
   });
 
   it('closes without submitting when Cancel is pressed', async () => {
-    const user = userEvent.setup({ delay: null });
+    const user = userEvent.setup({ delay: 0 });
     const onSubmit = jest.fn();
     await render(
       wrap(<PromptHarness onSubmit={onSubmit} initialValue="Keep me" />)
@@ -215,7 +215,7 @@ describe('usePrompt', () => {
   });
 
   it('uses a custom confirm label when provided', async () => {
-    const user = userEvent.setup({ delay: null });
+    const user = userEvent.setup({ delay: 0 });
     const onSubmit = jest.fn();
     await render(
       wrap(
@@ -266,7 +266,7 @@ function ConfirmHarness({
 
 describe('useConfirm', () => {
   it('fires onConfirm and closes when the confirm button is pressed', async () => {
-    const user = userEvent.setup({ delay: null });
+    const user = userEvent.setup({ delay: 0 });
     const onConfirm = jest.fn();
     await render(wrap(<ConfirmHarness onConfirm={onConfirm} />));
 
@@ -282,7 +282,7 @@ describe('useConfirm', () => {
   });
 
   it('closes without confirming when Cancel is pressed', async () => {
-    const user = userEvent.setup({ delay: null });
+    const user = userEvent.setup({ delay: 0 });
     const onConfirm = jest.fn();
     await render(wrap(<ConfirmHarness onConfirm={onConfirm} />));
 
@@ -294,7 +294,7 @@ describe('useConfirm', () => {
   });
 
   it('uses a custom confirm label when provided', async () => {
-    const user = userEvent.setup({ delay: null });
+    const user = userEvent.setup({ delay: 0 });
     const onConfirm = jest.fn();
     await render(
       wrap(<ConfirmHarness onConfirm={onConfirm} confirmLabel="Remove aisle" />)
