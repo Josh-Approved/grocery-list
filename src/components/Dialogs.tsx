@@ -1,10 +1,12 @@
 /**
- * Cross-platform action menu + text-input prompt.
+ * Cross-platform action menu, text-input prompt, and confirm dialog.
  *
- * Replaces `ActionSheetIOS` and `Alert.prompt` (both iOS-only — the latter is
- * silently undefined on Android), so list/item management works identically on
- * both platforms. Studio tenet: functional parity is mandatory; no OS-specific
- * frameworks for core functionality (canon § Cross-platform functional parity).
+ * Replaces `ActionSheetIOS`, `Alert.prompt`, and `Alert.alert` (all iOS-only or
+ * iOS-divergent), so every management flow works identically on both platforms.
+ * Studio tenet: functional parity is mandatory; no OS-specific frameworks for
+ * core functionality (canon § Cross-platform functional parity).
+ *
+ * Canonical, app-agnostic — synced by `sync.mjs app-shell`; do not fork.
  *
  * Styling mirrors the canonical ReviewModal (same scrim/card tokens) so every
  * dialog reads as a sibling. Reduced motion collapses the present animation to
@@ -26,7 +28,6 @@ import {
   Platform,
   AccessibilityInfo,
 } from 'react-native';
-import { t } from '../i18n';
 import {
   useTheme,
   fontFamily,
@@ -37,6 +38,7 @@ import {
   hairline,
   type Colors,
 } from '../theme';
+import { t } from '../i18n';
 
 export function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
@@ -45,10 +47,7 @@ export function useReducedMotion(): boolean {
     AccessibilityInfo.isReduceMotionEnabled().then((v) => {
       if (alive) setReduced(v);
     });
-    const sub = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      setReduced
-    );
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduced);
     return () => {
       alive = false;
       sub.remove();
@@ -80,28 +79,24 @@ export function useActionMenu(): {
   const { c } = useTheme();
   const s = makeStyles(c);
   const reduced = useReducedMotion();
-  const [state, setState] = useState<MenuState>({
-    visible: false,
-    options: [],
-  });
+  const [state, setState] = useState<MenuState>({ visible: false, options: [] });
 
-  const close = useCallback(
-    () => setState((p) => ({ ...p, visible: false })),
-    []
-  );
-
+  const close = useCallback(() => setState((p) => ({ ...p, visible: false })), []);
   const open = useCallback(
     (cfg: { title?: string; options: ActionOption[] }) =>
       setState({ visible: true, title: cfg.title, options: cfg.options }),
-    []
+    [],
   );
-
   const choose = useCallback(
     (opt: ActionOption) => {
       close();
-      opt.onPress();
+      // Let the sheet finish dismissing before the action runs. Native
+      // presentations (the OS share sheet, the image picker) are rejected by
+      // iOS if they try to present while this Modal is still animating closed,
+      // so defer past the slide-out. Harmless for non-presenting actions.
+      setTimeout(() => opt.onPress(), 260);
     },
-    [close]
+    [close],
   );
 
   const element = (
@@ -132,9 +127,7 @@ export function useActionMenu(): {
               accessibilityRole="button"
               accessibilityLabel={opt.label}
             >
-              <Text
-                style={[s.sheetRowText, opt.destructive && s.sheetRowDanger]}
-              >
+              <Text style={[s.sheetRowText, opt.destructive && s.sheetRowDanger]}>
                 {opt.label}
               </Text>
             </Pressable>
@@ -165,8 +158,12 @@ interface PromptConfig {
   placeholder?: string;
   initialValue?: string;
   confirmLabel?: string;
+  keyboardType?: 'default' | 'numeric' | 'decimal-pad' | 'email-address';
+  autoCapitalize?: 'none' | 'sentences' | 'words';
   /** Select the initial value on focus (rename flows). */
   selectAll?: boolean;
+  /** Allow submitting an empty value (e.g. clearing an optional field). */
+  allowEmpty?: boolean;
   onSubmit: (text: string) => void;
 }
 
@@ -189,25 +186,19 @@ export function usePrompt(): {
     onSubmit: () => {},
   });
 
-  const close = useCallback(
-    () => setState((p) => ({ ...p, visible: false })),
-    []
-  );
-
+  const close = useCallback(() => setState((p) => ({ ...p, visible: false })), []);
   const open = useCallback(
-    (cfg: PromptConfig) =>
-      setState({ ...cfg, visible: true, value: cfg.initialValue ?? '' }),
-    []
+    (cfg: PromptConfig) => setState({ ...cfg, visible: true, value: cfg.initialValue ?? '' }),
+    [],
   );
-
   const submit = useCallback(() => {
     const trimmed = state.value.trim();
-    if (!trimmed) return;
+    if (!trimmed && !state.allowEmpty) return;
     close();
     state.onSubmit(trimmed);
   }, [state, close]);
 
-  const canSubmit = state.value.trim().length > 0;
+  const canSubmit = state.allowEmpty || state.value.trim().length > 0;
 
   const element = (
     <Modal
@@ -217,10 +208,7 @@ export function usePrompt(): {
       statusBarTranslucent
       onRequestClose={close}
     >
-      <KeyboardAvoidingView
-        style={s.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Pressable
           style={s.centerOverlay}
           onPress={close}
@@ -231,9 +219,7 @@ export function usePrompt(): {
             <Text style={s.cardTitle} accessibilityRole="header">
               {state.title}
             </Text>
-            {state.message ? (
-              <Text style={s.cardMessage}>{state.message}</Text>
-            ) : null}
+            {state.message ? <Text style={s.cardMessage}>{state.message}</Text> : null}
             <TextInput
               style={s.input}
               value={state.value}
@@ -241,6 +227,8 @@ export function usePrompt(): {
               placeholder={state.placeholder}
               placeholderTextColor={c.fgSubtle}
               autoFocus
+              keyboardType={state.keyboardType ?? 'default'}
+              autoCapitalize={state.autoCapitalize ?? 'sentences'}
               selectTextOnFocus={state.selectAll}
               returnKeyType="done"
               onSubmitEditing={submit}
@@ -256,19 +244,13 @@ export function usePrompt(): {
                 <Text style={s.btnGhostText}>{t('common.cancel')}</Text>
               </Pressable>
               <Pressable
-                style={({ pressed }) => [
-                  s.btnPrimary,
-                  !canSubmit && s.btnDisabled,
-                  pressed && s.pressed,
-                ]}
+                style={({ pressed }) => [s.btnPrimary, !canSubmit && s.btnDisabled, pressed && s.pressed]}
                 onPress={submit}
                 disabled={!canSubmit}
                 accessibilityRole="button"
                 accessibilityLabel={state.confirmLabel ?? t('common.save')}
               >
-                <Text style={s.btnPrimaryText}>
-                  {state.confirmLabel ?? t('common.save')}
-                </Text>
+                <Text style={s.btnPrimaryText}>{state.confirmLabel ?? t('common.save')}</Text>
               </Pressable>
             </View>
           </Pressable>
@@ -281,19 +263,20 @@ export function usePrompt(): {
 }
 
 // ---------------------------------------------------------------------------
-// Destructive confirmation (canon § Interaction safety)
+// Confirm dialog (canon § Interaction safety)
 // ---------------------------------------------------------------------------
 //
-// A titled Cancel / Confirm card for unrecoverable actions (delete a whole list
-// or kit, remove a custom aisle). Mirrors usePrompt's card chrome; the confirm
-// button carries the danger tint so the stakes read at a glance. A mis-tap on
-// the original control now costs one extra deliberate tap, not the data.
+// A titled Cancel / Confirm card for consequential actions. Pass
+// `destructive: true` for unrecoverable ones (delete a list, remove a member)
+// — the confirm button carries the danger tint so the stakes read at a glance,
+// and a mis-tap on the original control costs one extra deliberate tap, not
+// the data.
 
 interface ConfirmConfig {
   title: string;
   message?: string;
-  /** Label on the destructive button (defaults to "Delete"). */
   confirmLabel?: string;
+  destructive?: boolean;
   onConfirm: () => void;
 }
 
@@ -308,22 +291,10 @@ export function useConfirm(): {
   const { c } = useTheme();
   const s = makeStyles(c);
   const reduced = useReducedMotion();
-  const [state, setState] = useState<ConfirmState>({
-    visible: false,
-    title: '',
-    onConfirm: () => {},
-  });
+  const [state, setState] = useState<ConfirmState>({ visible: false, title: '', onConfirm: () => {} });
 
-  const close = useCallback(
-    () => setState((p) => ({ ...p, visible: false })),
-    []
-  );
-
-  const open = useCallback(
-    (cfg: ConfirmConfig) => setState({ ...cfg, visible: true }),
-    []
-  );
-
+  const close = useCallback(() => setState((p) => ({ ...p, visible: false })), []);
+  const open = useCallback((cfg: ConfirmConfig) => setState({ ...cfg, visible: true }), []);
   const confirm = useCallback(() => {
     close();
     state.onConfirm();
@@ -347,9 +318,7 @@ export function useConfirm(): {
           <Text style={s.cardTitle} accessibilityRole="header">
             {state.title}
           </Text>
-          {state.message ? (
-            <Text style={s.cardMessage}>{state.message}</Text>
-          ) : null}
+          {state.message ? <Text style={s.cardMessage}>{state.message}</Text> : null}
           <View style={s.cardActions}>
             <Pressable
               style={({ pressed }) => [s.btnGhost, pressed && s.pressed]}
@@ -360,13 +329,13 @@ export function useConfirm(): {
               <Text style={s.btnGhostText}>{t('common.cancel')}</Text>
             </Pressable>
             <Pressable
-              style={({ pressed }) => [s.btnDanger, pressed && s.pressed]}
+              style={({ pressed }) => [s.btnPrimary, state.destructive && s.btnDanger, pressed && s.pressed]}
               onPress={confirm}
               accessibilityRole="button"
-              accessibilityLabel={state.confirmLabel ?? t('common.delete')}
+              accessibilityLabel={state.confirmLabel ?? t('common.confirm')}
             >
-              <Text style={s.btnDangerText}>
-                {state.confirmLabel ?? t('common.delete')}
+              <Text style={[s.btnPrimaryText, state.destructive && s.btnDangerText]}>
+                {state.confirmLabel ?? t('common.confirm')}
               </Text>
             </Pressable>
           </View>
@@ -385,11 +354,7 @@ function makeStyles(c: Colors) {
     flex: { flex: 1 },
     pressed: { opacity: 0.6 },
 
-    sheetOverlay: {
-      flex: 1,
-      backgroundColor: c.bgScrim,
-      justifyContent: 'flex-end',
-    },
+    sheetOverlay: { flex: 1, backgroundColor: c.bgScrim, justifyContent: 'flex-end' },
     sheet: {
       backgroundColor: c.bgElevated,
       borderTopLeftRadius: radius.lg,
@@ -399,25 +364,9 @@ function makeStyles(c: Colors) {
       paddingVertical: space.s4,
       paddingBottom: space.s7,
     },
-    sheetTitle: {
-      ...ty.sm,
-      fontFamily: fontFamily.sans,
-      color: c.fgMuted,
-      textAlign: 'center',
-      paddingVertical: space.s4,
-    },
-    sheetRow: {
-      minHeight: target.min,
-      justifyContent: 'center',
-      paddingHorizontal: space.s7,
-      paddingVertical: space.s4,
-    },
-    sheetRowText: {
-      ...ty.base,
-      fontFamily: fontFamily.sans,
-      color: c.fg,
-      textAlign: 'center',
-    },
+    sheetTitle: { ...ty.sm, fontFamily: fontFamily.sans, color: c.fgMuted, textAlign: 'center', paddingVertical: space.s4 },
+    sheetRow: { minHeight: target.min, justifyContent: 'center', paddingHorizontal: space.s7, paddingVertical: space.s4 },
+    sheetRowText: { ...ty.base, fontFamily: fontFamily.sans, color: c.fg, textAlign: 'center' },
     sheetRowDanger: { color: c.danger },
     sheetCancel: {
       minHeight: target.min,
@@ -428,40 +377,20 @@ function makeStyles(c: Colors) {
       borderTopColor: c.hairline,
       paddingTop: space.s4,
     },
-    sheetCancelText: {
-      ...ty.base,
-      fontFamily: fontFamily.sansSemibold,
-      color: c.fgMuted,
-      textAlign: 'center',
-    },
+    sheetCancelText: { ...ty.base, fontFamily: fontFamily.sansSemibold, color: c.fgMuted, textAlign: 'center' },
 
-    centerOverlay: {
-      flex: 1,
-      backgroundColor: c.bgScrim,
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: space.s7,
-    },
+    centerOverlay: { flex: 1, backgroundColor: c.bgScrim, justifyContent: 'center', alignItems: 'center', padding: space.s7 },
     card: {
       width: '100%',
+      maxWidth: 420,
       backgroundColor: c.bgElevated,
       borderRadius: radius.lg,
       borderWidth: hairline,
       borderColor: c.hairline,
       padding: space.s7,
     },
-    cardTitle: {
-      ...ty.md,
-      fontFamily: fontFamily.sansSemibold,
-      color: c.fg,
-      marginBottom: space.s3,
-    },
-    cardMessage: {
-      ...ty.sm,
-      fontFamily: fontFamily.sans,
-      color: c.fgMuted,
-      marginBottom: space.s4,
-    },
+    cardTitle: { ...ty.md, fontFamily: fontFamily.sansSemibold, color: c.fg, marginBottom: space.s3 },
+    cardMessage: { ...ty.sm, fontFamily: fontFamily.sans, color: c.fgMuted, marginBottom: space.s4 },
     input: {
       ...ty.base,
       fontFamily: fontFamily.sans,
@@ -474,46 +403,13 @@ function makeStyles(c: Colors) {
       minHeight: target.min,
       marginBottom: space.s6,
     },
-    cardActions: {
-      flexDirection: 'row',
-      justifyContent: 'flex-end',
-      alignItems: 'center',
-    },
-    btnGhost: {
-      minHeight: target.min,
-      justifyContent: 'center',
-      paddingHorizontal: space.s5,
-      marginRight: space.s3,
-    },
-    btnGhostText: {
-      ...ty.base,
-      fontFamily: fontFamily.sans,
-      color: c.fgMuted,
-    },
-    btnPrimary: {
-      minHeight: target.min,
-      justifyContent: 'center',
-      backgroundColor: c.inkButton,
-      borderRadius: radius.md,
-      paddingHorizontal: space.s7,
-    },
-    btnPrimaryText: {
-      ...ty.base,
-      fontFamily: fontFamily.sansSemibold,
-      color: c.inkButtonText,
-    },
-    btnDanger: {
-      minHeight: target.min,
-      justifyContent: 'center',
-      backgroundColor: c.danger,
-      borderRadius: radius.md,
-      paddingHorizontal: space.s7,
-    },
-    btnDangerText: {
-      ...ty.base,
-      fontFamily: fontFamily.sansSemibold,
-      color: c.fgOnAccent,
-    },
+    cardActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' },
+    btnGhost: { minHeight: target.min, justifyContent: 'center', paddingHorizontal: space.s5, marginRight: space.s3 },
+    btnGhostText: { ...ty.base, fontFamily: fontFamily.sans, color: c.fgMuted },
+    btnPrimary: { minHeight: target.min, justifyContent: 'center', backgroundColor: c.inkButton, borderRadius: radius.md, paddingHorizontal: space.s7 },
+    btnPrimaryText: { ...ty.base, fontFamily: fontFamily.sansSemibold, color: c.inkButtonText },
+    btnDanger: { backgroundColor: c.dangerBg },
+    btnDangerText: { color: c.danger },
     btnDisabled: { opacity: 0.4 },
   });
 }

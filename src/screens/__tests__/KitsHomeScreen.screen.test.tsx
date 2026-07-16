@@ -13,7 +13,7 @@
  */
 
 import React from 'react';
-import { render, screen, userEvent } from '@testing-library/react-native';
+import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 const METRICS = {
@@ -122,7 +122,8 @@ describe('KitsHomeScreen', () => {
       screen.getByRole('button', { name: 'Options for Old name' })
     );
     await user.press(screen.getByRole('button', { name: 'Rename' }));
-    const input = screen.getByLabelText('Rename kit');
+    // Menu actions are deferred past the sheet dismissal (~260ms).
+    const input = await screen.findByLabelText('Rename kit');
     await user.clear(input);
     await user.type(input, 'New name');
     await user.press(screen.getByRole('button', { name: 'Save' }));
@@ -138,8 +139,11 @@ describe('KitsHomeScreen', () => {
     await user.press(screen.getByRole('button', { name: 'Options for Base' }));
     await user.press(screen.getByRole('button', { name: 'Duplicate' }));
 
-    const names = useKitsStore.getState().kits.map((k) => k.name).sort();
-    expect(names).toEqual(['Base', 'Base (copy)']);
+    // Menu actions are deferred past the sheet dismissal (~260ms).
+    await waitFor(() => {
+      const names = useKitsStore.getState().kits.map((k) => k.name).sort();
+      expect(names).toEqual(['Base', 'Base (copy)']);
+    });
   });
 
   it('DELETE is guarded by a confirm dialog — no delete until confirmed', async () => {
@@ -157,8 +161,9 @@ describe('KitsHomeScreen', () => {
       useKitsStore.getState().kits.find((k) => k.id === id)?.deletedAt
     ).toBeUndefined();
 
-    // The confirm dialog's Delete button is what actually deletes.
-    await user.press(screen.getByRole('button', { name: 'Delete' }));
+    // The confirm dialog's Delete button is what actually deletes. The dialog
+    // opens after the menu's deferred dismissal (~260ms), so find, not get.
+    await user.press(await screen.findByRole('button', { name: 'Delete' }));
     expect(
       useKitsStore.getState().kits.find((k) => k.id === id)?.deletedAt
     ).toEqual(expect.any(Number));

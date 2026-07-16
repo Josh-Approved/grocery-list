@@ -12,6 +12,8 @@ export const SHELL_STRINGS = {
   common: {
     back: 'Back',
     cancel: 'Cancel',
+    closeMenu: 'Close menu',
+    confirm: 'Confirm',
     done: 'Done',
     save: 'Save',
     delete: 'Delete',

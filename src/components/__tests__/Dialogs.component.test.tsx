@@ -1,12 +1,19 @@
 /**
  * Component test — the cross-platform dialog hooks (Uplevel-3 T3 action coverage).
  *
+ * Canonical, app-agnostic — rides `sync.mjs app-shell` with the Dialogs.tsx it
+ * tests; do not fork.
+ *
  * useActionMenu / usePrompt / useConfirm each return `{ open, element }`. A tiny
  * harness component calls the hook, renders `element`, and exposes a test-only
  * "trigger" button that fires `open(config)` so the dialog becomes visible; we
  * then press its real buttons and assert the observable outcome (a config
  * callback fired, or the dialog closed). Queries go by role/label/text only —
  * no testID, no snapshots.
+ *
+ * Menu-option handlers are deferred ~260ms past the sheet dismissal (so native
+ * presentations aren't rejected by iOS mid-animation) — those assertions go
+ * through waitFor, never a bare expect right after the press.
  */
 
 import React from 'react';
@@ -19,11 +26,17 @@ const METRICS = {
   insets: { top: 47, left: 0, right: 0, bottom: 34 },
 };
 
-jest.mock('expo-haptics', () => ({
-  selectionAsync: () => Promise.resolve(),
-  notificationAsync: () => Promise.resolve(),
-  NotificationFeedbackType: { Warning: 'warning' },
-}));
+// Virtual: not every app ships expo-haptics; the mock applies when it does and
+// is inert when it doesn't.
+jest.mock(
+  'expo-haptics',
+  () => ({
+    selectionAsync: () => Promise.resolve(),
+    notificationAsync: () => Promise.resolve(),
+    NotificationFeedbackType: { Warning: 'warning' },
+  }),
+  { virtual: true }
+);
 jest.mock('expo-font', () => ({
   useFonts: () => [true, null],
   isLoaded: () => true,
@@ -84,7 +97,8 @@ describe('useActionMenu', () => {
     expect(screen.getByRole('header', { name: 'List options' })).toBeTruthy();
 
     await user.press(screen.getByRole('button', { name: 'Rename' }));
-    expect(onRename).toHaveBeenCalledTimes(1);
+    // The handler is deferred past the sheet's slide-out (~260ms).
+    await waitFor(() => expect(onRename).toHaveBeenCalledTimes(1));
     expect(onDelete).not.toHaveBeenCalled();
     // Choosing an option closes the sheet — the title header is gone.
     await waitFor(() =>
@@ -106,10 +120,12 @@ describe('useActionMenu', () => {
 
     await user.press(screen.getByRole('button', { name: 'trigger' }));
     await user.press(screen.getByRole('button', { name: 'Cancel' }));
-    expect(onPress).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(screen.queryByRole('header', { name: 'List options' })).toBeNull()
     );
+    // Past the defer window — the handler never fires on Cancel.
+    await new Promise((r) => setTimeout(r, 300));
+    expect(onPress).not.toHaveBeenCalled();
   });
 
   it('closes without firing when the scrim (Close menu) is pressed', async () => {
@@ -126,10 +142,11 @@ describe('useActionMenu', () => {
 
     await user.press(screen.getByRole('button', { name: 'trigger' }));
     await user.press(screen.getByRole('button', { name: 'Close menu' }));
-    expect(onPress).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(screen.queryByRole('header', { name: 'List options' })).toBeNull()
     );
+    await new Promise((r) => setTimeout(r, 300));
+    expect(onPress).not.toHaveBeenCalled();
   });
 });
 
@@ -238,9 +255,11 @@ describe('usePrompt', () => {
 function ConfirmHarness({
   onConfirm,
   confirmLabel,
+  destructive,
 }: {
   onConfirm: () => void;
   confirmLabel?: string;
+  destructive?: boolean;
 }) {
   const { open, element } = useConfirm();
   return (
@@ -253,6 +272,7 @@ function ConfirmHarness({
             title: 'Delete this list?',
             message: 'This cannot be undone.',
             confirmLabel,
+            destructive,
             onConfirm,
           })
         }
@@ -275,8 +295,8 @@ describe('useConfirm', () => {
       screen.getByRole('header', { name: 'Delete this list?' })
     ).toBeTruthy();
 
-    // Default destructive label is "Delete".
-    await user.press(screen.getByRole('button', { name: 'Delete' }));
+    // Default confirm label is "Confirm".
+    await user.press(screen.getByRole('button', { name: 'Confirm' }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('header', { name: 'Delete this list?' })).toBeNull();
   });
@@ -293,11 +313,13 @@ describe('useConfirm', () => {
     expect(screen.queryByRole('header', { name: 'Delete this list?' })).toBeNull();
   });
 
-  it('uses a custom confirm label when provided', async () => {
+  it('uses a custom confirm label on a destructive confirm', async () => {
     const user = userEvent.setup({ delay: 0 });
     const onConfirm = jest.fn();
     await render(
-      wrap(<ConfirmHarness onConfirm={onConfirm} confirmLabel="Remove aisle" />)
+      wrap(
+        <ConfirmHarness onConfirm={onConfirm} confirmLabel="Remove aisle" destructive />
+      )
     );
 
     await user.press(screen.getByRole('button', { name: 'trigger' }));

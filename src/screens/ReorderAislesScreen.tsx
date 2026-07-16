@@ -68,6 +68,7 @@ export default function ReorderAislesScreen({ route, navigation }: Props) {
         title: t('reorder.removeConfirmTitle'),
         message: t('reorder.removeConfirmBody', { name: categoryLabel(cat) }),
         confirmLabel: t('reorder.removeConfirmLabel'),
+        destructive: true,
         onConfirm: () => {
           removeCategory(listId, cat);
           setOrder((prev) => prev.filter((c) => c !== cat));

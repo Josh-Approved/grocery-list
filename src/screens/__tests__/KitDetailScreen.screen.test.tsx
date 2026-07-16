@@ -8,7 +8,7 @@
  */
 
 import React from 'react';
-import { render, screen, userEvent } from '@testing-library/react-native';
+import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 const METRICS = {
@@ -121,8 +121,9 @@ describe('KitDetailScreen', () => {
     await user.press(screen.getByRole('button', { name: 'Kit options' }));
     await user.press(await screen.findByRole('button', { name: 'Duplicate' }));
 
-    // A new kit exists and we navigated to it.
-    expect(useKitsStore.getState().kits.length).toBe(2);
+    // A new kit exists and we navigated to it. Menu actions are deferred past
+    // the sheet dismissal (~260ms).
+    await waitFor(() => expect(useKitsStore.getState().kits.length).toBe(2));
     expect(navigation.replace).toHaveBeenCalledWith(
       'KitDetail',
       expect.objectContaining({ kitId: expect.any(String) })
@@ -138,10 +139,13 @@ describe('KitDetailScreen', () => {
     await user.press(await screen.findByRole('button', { name: 'Delete kit' }));
 
     // Kits soft-delete (a tombstone converges across devices); the observable
-    // outcome is the kit tombstoned and the screen leaving.
-    expect(
-      useKitsStore.getState().kits.find((k) => k.id === kit.id)?.deletedAt
-    ).toBeGreaterThan(0);
+    // outcome is the kit tombstoned and the screen leaving. Menu actions are
+    // deferred past the sheet dismissal (~260ms).
+    await waitFor(() =>
+      expect(
+        useKitsStore.getState().kits.find((k) => k.id === kit.id)?.deletedAt
+      ).toBeGreaterThan(0)
+    );
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
@@ -206,12 +210,15 @@ describe('KitDetailScreen', () => {
     // The action menu offers Delete (a button); choosing it removes the item.
     await user.press(await screen.findByRole('button', { name: 'Delete' }));
 
-    const visibleNames = useKitsStore
-      .getState()
-      .kits.find((k) => k.id === kit.id)!
-      .items.filter((i) => i.deletedAt == null)
-      .map((i) => i.name);
-    expect(visibleNames).not.toContain('Passata');
-    expect(visibleNames).toContain('Spaghetti');
+    // Menu actions are deferred past the sheet dismissal (~260ms).
+    await waitFor(() => {
+      const visibleNames = useKitsStore
+        .getState()
+        .kits.find((k) => k.id === kit.id)!
+        .items.filter((i) => i.deletedAt == null)
+        .map((i) => i.name);
+      expect(visibleNames).not.toContain('Passata');
+      expect(visibleNames).toContain('Spaghetti');
+    });
   });
 });
