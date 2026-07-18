@@ -4,7 +4,7 @@ A grocery list a household can share, so two people shop off one list that updat
 
 ## What it is
 
-Make a list, and it sorts itself into aisles as you type. Share it with a link or a QR code — the other person taps it once and you're connected. From then on, whatever either of you adds or checks off shows up on the other phone. No account, no sign-up, ever. When you're done shopping, "Finish shop" clears what you bought and keeps the list for next time.
+Make a list, and it sorts itself into aisles as you type. Share it with a link or a QR code, the other person taps it once, and you're connected. From then on, whatever either of you adds or checks off shows up on the other phone. No account, no sign-up, ever. Clear what you crossed off whenever you like, with undo, and the list keeps its shape for next time.
 
 ## Who it's for
 
@@ -12,9 +12,9 @@ Anyone who runs a household off a shared list and is tired of the texts, the dup
 
 ## How to get it
 
-Free on the [App Store](https://apps.apple.com/us/app/id6779417031) and [Google Play](https://play.google.com/store/apps/details?id=com.joshapproved.grocerylist) — no account, nothing to sign up for. One link picks the right store for your phone: [joshapproved.com/apps/grocery-list](https://joshapproved.com/apps/grocery-list).
+Free on the [App Store](https://apps.apple.com/us/app/id6779417031) and [Google Play](https://play.google.com/store/apps/details?id=com.joshapproved.grocerylist), no account, nothing to sign up for. One link picks the right store for your phone: [joshapproved.com/apps/grocery-list](https://joshapproved.com/apps/grocery-list).
 
-Or run it locally — see below.
+Or run it locally, see below.
 
 ## Run it locally
 
@@ -33,7 +33,7 @@ Your data stays with you. When you share a list, changes pass between your phone
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).
 
 ## Feedback
 
