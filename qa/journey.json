@@ -1,5 +1,5 @@
 {
-  "$comment": "grocery-list screenshot traversal + Tier-2 outcome assertion. Generates qa/flows/mobile.yaml (run scripts/qa/compile-flow.mjs). Screenshot names match qa/screenshots.config.json sources. The 'share' shot is modal-heavy (options menu -> share); left for a follow-up once the seed run is proven. The add-item assertion pins the core action: a typed item that was absent before the add is visible (by its row accessibilityLabel) after it.",
+  "$comment": "grocery-list screenshot traversal + Tier-2 outcome assertion. Generates qa/flows/mobile.yaml (run scripts/qa/compile-flow.mjs). Screenshot names match qa/screenshots.config.json sources. The 'share' shot rides the List-detail header share button -> Share screen, last so the minted share identity can't disturb earlier waypoints; its QR renders from a random per-run secret, so 'share' is visual-reg-excluded in qa/baseline.json. The add-item assertion pins the core action: a typed item that was absent before the add is visible (by its row accessibilityLabel) after it.",
   "appId": "com.joshapproved.grocerylist",
   "clearState": true,
   "diagnosticLaunchShot": true,
@@ -20,7 +20,11 @@
     { "screenshot": "autocomplete" },
     { "pressKey": "Enter" },
     { "tap": "@sheet-done" },
-    { "assert": "@added-item" }
+    { "assert": "@added-item" },
+
+    { "tap": "@share-open" },
+    { "waitFor": "@share-lead", "timeout": 10000 },
+    { "screenshot": "share" }
   ],
   "survival": {
     "$comment": "T4 chaos net — state-survival subflow (compiles to qa/flows/state-survival.yaml, run in the full profile + nightly, NOT per-PR). Core mutating action = add an item; then REAL process death (killApp on Android, stopApp on iOS); then relaunch keeping state and re-open the list. The intent oracle: the item added before the kill is still on the list after it — the 'app killed mid-write' regime Josh reported. Reuses @added-item (Avocado); the leading assertNot proves it wasn't there to begin with, so the post-kill assert can only pass if the write persisted through the kill.",

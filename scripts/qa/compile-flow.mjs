@@ -157,8 +157,17 @@ export function compileJourney(journey, selectors, appDir = '.', opts = {}) {
       const sel = resolveSelector(step.assertNot, anchors, ctx);
       out.push(`- assertNotVisible: ${selInline(sel)}`);
     } else if ('tap' in step) {
+      // retryTapIfNoChange (Maestro default: false) re-taps when the view
+      // hierarchy is unchanged after the tap — i.e. the tap was swallowed.
+      // The slow 2-core CI emulator drops taps under load: home-maintenance
+      // 2026-07-12/13 Android runs completed a tab tap that never navigated
+      // (assert failed on the unchanged screen) while iOS stayed green. A
+      // journey tap always expects a visible effect, so retrying on an
+      // unchanged hierarchy is safe and can't double-fire a landed tap.
       const sel = resolveSelector(step.tap, anchors, ctx);
-      out.push(`- tapOn: ${selInline(sel)}`);
+      out.push('- tapOn:');
+      out.push(`    ${sel.kind}: ${yq(sel.value)}`);
+      out.push('    retryTapIfNoChange: true');
     } else if ('tapPoint' in step) {
       // For elements outside the a11y tree (e.g. RN <Modal> content on iOS) —
       // tap a percentage point. Use sparingly; prefer anchors.

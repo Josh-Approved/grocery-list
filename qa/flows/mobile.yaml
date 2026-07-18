@@ -20,19 +20,34 @@ appId: com.joshapproved.grocerylist
 - extendedWaitUntil:
     visible: { text: "Weekly shop.*" }
     timeout: 15000
-- tapOn: { text: "Weekly shop.*" }
+- tapOn:
+    text: "Weekly shop.*"
+    retryTapIfNoChange: true
 - extendedWaitUntil:
     visible: { text: "Bananas" }
     timeout: 10000
 - takeScreenshot: qa/captures/${STORE}/list
 - assertNotVisible: { text: "Avocado" }
-- tapOn: { text: "Add an item" }
+- tapOn:
+    text: "Add an item"
+    retryTapIfNoChange: true
 - extendedWaitUntil:
     visible: { text: "Search or add an item" }
     timeout: 10000
-- tapOn: { text: "Search or add an item" }
+- tapOn:
+    text: "Search or add an item"
+    retryTapIfNoChange: true
 - inputText: "Avocado"
 - takeScreenshot: qa/captures/${STORE}/autocomplete
 - pressKey: Enter
-- tapOn: { id: "addSheetDone" }
+- tapOn:
+    id: "addSheetDone"
+    retryTapIfNoChange: true
 - assertVisible: { text: "Avocado" }
+- tapOn:
+    text: "Share this list"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: { text: "Anyone with this can see and edit.*" }
+    timeout: 10000
+- takeScreenshot: qa/captures/${STORE}/share

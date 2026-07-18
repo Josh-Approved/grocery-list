@@ -17,19 +17,27 @@ appId: com.joshapproved.grocerylist
 - extendedWaitUntil:
     visible: { text: "Weekly shop.*" }
     timeout: 15000
-- tapOn: { text: "Weekly shop.*" }
+- tapOn:
+    text: "Weekly shop.*"
+    retryTapIfNoChange: true
 - extendedWaitUntil:
     visible: { text: "Bananas" }
     timeout: 10000
 - assertNotVisible: { text: "Avocado" }
-- tapOn: { text: "Add an item" }
+- tapOn:
+    text: "Add an item"
+    retryTapIfNoChange: true
 - extendedWaitUntil:
     visible: { text: "Search or add an item" }
     timeout: 10000
-- tapOn: { text: "Search or add an item" }
+- tapOn:
+    text: "Search or add an item"
+    retryTapIfNoChange: true
 - inputText: "Avocado"
 - pressKey: Enter
-- tapOn: { id: "addSheetDone" }
+- tapOn:
+    id: "addSheetDone"
+    retryTapIfNoChange: true
 - assertVisible: { text: "Avocado" }
 - waitForAnimationToEnd:
     timeout: 1500
@@ -50,7 +58,9 @@ appId: com.joshapproved.grocerylist
 - extendedWaitUntil:
     visible: { text: "Grocery List" }
     timeout: 30000
-- tapOn: { text: "Weekly shop.*" }
+- tapOn:
+    text: "Weekly shop.*"
+    retryTapIfNoChange: true
 - extendedWaitUntil:
     visible: { text: "Bananas" }
     timeout: 10000
