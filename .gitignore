@@ -49,3 +49,7 @@ build-*.log
 submit-*.log
 /build/
 google-play-key.json
+
+# Stryker mutation-testing sandbox/report output
+.stryker-tmp/
+reports/
