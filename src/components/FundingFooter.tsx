@@ -82,7 +82,7 @@ export function FundingFooter({ onSupport, reveal, pullToReveal }: Props = {}) {
           accessibilityLabel={t('about.support')}
         >
           <HandHeart size={16} color={c.fg} strokeWidth={1.5} />
-          <Text style={s.btnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+          <Text style={s.btnText} numberOfLines={1}>
             {t('about.supportShort')}
           </Text>
         </Pressable>
@@ -93,7 +93,7 @@ export function FundingFooter({ onSupport, reveal, pullToReveal }: Props = {}) {
           accessibilityLabel={t('about.feedback')}
         >
           <Mail size={16} color={c.fg} strokeWidth={1.5} />
-          <Text style={s.btnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+          <Text style={s.btnText} numberOfLines={1}>
             {t('about.feedback')}
           </Text>
         </Pressable>
@@ -144,6 +144,14 @@ function makeStyles(c: Colors) {
       ...ty.sm,
       fontFamily: fontFamily.sansMedium,
       color: c.fg,
+      // Shrink the label's box (not its font) so two buttons hold their row down
+      // to iPhone-SE width; under extreme Dynamic Type it ellipsizes on one line
+      // while the full "Support this app" / "Send feedback" stays on the a11y
+      // label. (Was adjustsFontSizeToFit + minimumFontScale — an unbounded-width
+      // Text in a flex row is the RN footgun that shrank this to ~9pt at default
+      // type; fixed 2026-07-15.)
+      flexShrink: 1,
+      textAlign: 'center',
     },
     // Tight, deliberate ~14pt below the buttons (wrap gap space.s4 + this) — the
     // wordmark springs into this gap on pull rather than sitting far beneath.

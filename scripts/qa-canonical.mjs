@@ -1209,6 +1209,71 @@ const ruleLanguageControl = () => {
   return languageWarn('language/control', 'In-app language control incomplete (canon § Translations)', missing);
 };
 
+// ---------- rule: locale-independent input matching (canon § Translations) ----------
+//
+// Canon (studio-20260706-1, applied 2026-07-11): decision logic that classifies,
+// matches, dedupes, or sorts USER INPUT must key on stable ids or normalised
+// values, never on translated display strings / English-only literals. The
+// shipped defect: grocery-list's category matcher compared typed input against
+// hardcoded English keyword arrays, so under a non-English in-app language every
+// item silently fell to "Other" (fixed 2026-06-14 via KEYWORDS_BY_LOCALE).
+// Heuristic: a src module that imports the i18n layer AND matches lowercased
+// input against an inline English word table (≥5 lowercase string literals in
+// one comma list) WITHOUT naming a locale anywhere is presumed locale-blind.
+// Locale-aware matchers pass by construction — a per-locale table or an active-
+// locale lookup necessarily carries a `locale`-ish identifier. Only fires in
+// apps with in-app language switching (src/i18n/localePreference.ts), where a
+// picker flip can actually diverge input language from the table's English.
+// WARN (new-check codify phase, like every rule at introduction — NOT riding
+// the i18n tier, whose fleet-wide `i18n/enforce` would turn a fresh heuristic
+// straight into a CI FAIL); promote once the fleet is proven clean. Canon also
+// asks the trust core be tested in one non-default locale — that half lives in
+// the test tiers, not here.
+
+// ≥5 consecutive lowercase-English string literals in one comma list — the
+// signature of an inline keyword/label table (stable ids are rarely word
+// phrases; capitalized display names don't match the [a-z] anchor).
+const WORDLIST_RE = /(?:(['"])[a-z][a-z &'-]{1,29}\1\s*,\s*){4,}(['"])[a-z][a-z &'-]{1,29}\2/;
+const LOCALE_AWARE_RE = /locale/i; // KEYWORDS_BY_LOCALE, getLocale(), byLocale…
+const INPUT_NORMALIZE_RE = /\.trim\s*\(\s*\)|\.toLowerCase\s*\(\s*\)/;
+const SUBSTRING_MATCH_RE = /\.(?:includes|startsWith)\s*\(/;
+
+// Pure core. null = not applicable (no word table, or no input matching);
+// true = locale-blind matching present; false = matching is locale-aware.
+const localeBlindMatching = (code) => {
+  if (!WORDLIST_RE.test(code)) return null;
+  if (!INPUT_NORMALIZE_RE.test(code) || !SUBSTRING_MATCH_RE.test(code)) return null;
+  return !LOCALE_AWARE_RE.test(code);
+};
+
+const ruleLocaleIndependentMatching = () => {
+  const id = 'i18n/locale-independent-matching';
+  if (surface !== 'rn') return skip(id, 'Not a React Native app');
+  if (!exists(join(appDir, 'src/i18n/localePreference.ts')))
+    return skip(id, 'No in-app language switching — input language cannot diverge from the table');
+  if (ruleSkipsAll(id)) return skip(id, `Disabled via qa/baseline.json "${id}/skip"`);
+  const I18N_IMPORT_RE = /from\s*['"][^'"]*\/i18n(?:\/[^'"]*)?['"]/;
+  const hits = [];
+  for (const f of srcSourceFiles()) {
+    const rel = relative(appDir, f).replace(/\\/g, '/');
+    if (rel.startsWith('src/i18n/')) continue; // the locale layer itself
+    if (ruleSkipsFile(id, rel)) continue;
+    const raw = readText(f);
+    if (!raw) continue;
+    const code = stripComments(raw);
+    if (!I18N_IMPORT_RE.test(code)) continue; // the ticket's scope: modules on the i18n layer
+    if (localeBlindMatching(code) === true) {
+      hits.push(`${rel}: matches normalised input against a hardcoded English word table with no locale awareness`);
+    }
+  }
+  if (hits.length) {
+    return warn(id,
+      'Input classification keyed on hardcoded English literals — misclassifies under a non-English in-app language (canon § Translations: key on stable ids / per-locale tables; see grocery-list KEYWORDS_BY_LOCALE)',
+      hits);
+  }
+  return pass(id, 'No locale-blind input matching in i18n-importing src modules');
+};
+
 // ---------- rule: dark-mode contrast pairing (canon § Theming) ----------
 //
 // The OS-following palettes (src/theme/colors.ts) INVERT in dark mode: every
@@ -1840,6 +1905,7 @@ const CANONICAL_RULES = [
   ruleAppearanceToggle,
   ruleContrastPairing,
   ruleLanguageControl,
+  ruleLocaleIndependentMatching,
   ruleAppNameSpotlightSafe,
   ruleKeyboardDismissEscape,
   ruleModalSafeAreaProvider,
@@ -1984,6 +2050,29 @@ function runSelfTest() {
     'nonliteral-require: a mention inside a block comment does not fire');
   assert(detectNonLiteralRequires(`const m = require('react-native' + suffix);`).length === 1,
     'nonliteral-require: a string-concatenation require fires');
+
+  // i18n/locale-independent-matching (pure core; the grocery-list categoriser defect)
+  const PREFIX_BAD = `import { t } from '../i18n';
+const CATEGORY_KEYWORDS = [
+  { category: 'Produce', keywords: ['apple', 'banana', 'orange', 'lemon', 'grape', 'berry'] },
+];
+export function inferCategory(name) {
+  const n = name.trim().toLowerCase();
+  for (const { category, keywords } of CATEGORY_KEYWORDS) {
+    if (keywords.some((k) => n.includes(k))) return category;
+  }
+  return 'Other';
+}`;
+  assert(localeBlindMatching(PREFIX_BAD) === true,
+    'locale-matching: English keyword table matched against normalised input fires (the grocery-list defect)');
+  assert(localeBlindMatching(PREFIX_BAD.replace('CATEGORY_KEYWORDS = [', 'KEYWORDS_BY_LOCALE = [')) === false,
+    'locale-matching: a locale-aware table (KEYWORDS_BY_LOCALE) passes');
+  assert(localeBlindMatching(`const IDS = ['a1', 'b2']; if (input.toLowerCase().includes(x)) {}`) === null,
+    'locale-matching: no ≥5-entry word table is not applicable');
+  assert(localeBlindMatching(`const WORDS = ['apple', 'banana', 'orange', 'lemon', 'grape'];`) === null,
+    'locale-matching: a word table with no input matching is not applicable');
+  assert(localeBlindMatching(`const ORDER = ['Produce', 'Bakery', 'Frozen', 'Pantry', 'Snacks', 'Beverages']; sort(a.toLowerCase()); x.includes(y);`) === null,
+    'locale-matching: capitalized display-name arrays do not count as a word table');
 
   console.log(failed ? `\nqa-canonical self-test FAILED (${failed})` : '\nqa-canonical self-test PASSED');
   process.exit(failed ? 1 : 0);

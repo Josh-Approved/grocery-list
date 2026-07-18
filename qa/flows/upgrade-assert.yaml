@@ -17,7 +17,9 @@ appId: com.joshapproved.grocerylist
 - extendedWaitUntil:
     visible: { text: "Weekly shop.*" }
     timeout: 15000
-- tapOn: { text: "Weekly shop.*" }
+- tapOn:
+    text: "Weekly shop.*"
+    retryTapIfNoChange: true
 - extendedWaitUntil:
     visible: { text: "Bananas" }
     timeout: 10000

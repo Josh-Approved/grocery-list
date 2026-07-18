@@ -7,7 +7,7 @@
  * back after a gap") CONVERGED just fine: every device agreed on the wrong
  * state. Convergence is necessary, never sufficient. This fuzzer drives the
  * REAL store actions a person actually performs (addItem, setChecked,
- * finishShop, undo, kit add — via the production zustand store and logical
+ * clearChecked, undo, kit add — via the production zustand store and logical
  * clock per device, see ../simHarness) through random households (2–3 devices,
  * honest clock skew, offline stretches, lost and stale-replayed messages) and
  * asserts USER INTENT:
@@ -236,9 +236,9 @@ function runScenario(seed: number): string | null {
       // Finish the shop (tombstones every checked item on this device).
       const lid = listIdOn(dev, sc.secret);
       const bought = visible(dev, sc.secret).filter((it) => it.checked);
-      on(dev, () => dev.store.getState().finishShop(lid));
+      on(dev, () => dev.store.getState().clearChecked(lid));
       sc.log.push(
-        `t+${wall} ${dev.name} finishShop(${bought.map((b) => b.name).join('|') || '-'})`
+        `t+${wall} ${dev.name} clearChecked(${bought.map((b) => b.name).join('|') || '-'})`
       );
       for (const b of bought) {
         record(sc.exist, nm(b.name), { wall, exists: false });
@@ -342,7 +342,7 @@ function runScenario(seed: number): string | null {
     }
   }
 
-  // I6 payload bound (the pruning happens through real finishShop calls).
+  // I6 payload bound (the pruning happens through real clearChecked calls).
   for (const d of devs) {
     const bytes = JSON.stringify(sharedListOf(d, sc.secret)).length;
     if (bytes > 24 * 1024) sc.breaches.push(`I6 payload ${bytes}B on ${d.name}`);

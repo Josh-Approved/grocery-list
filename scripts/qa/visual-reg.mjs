@@ -181,6 +181,18 @@ async function main() {
   const baselineRoot = path.join(appDir, 'qa', 'baselines');
   const diffsRoot = path.join(matrixDir, '.diffs');
 
+  // Screens whose pixels are nondeterministic BY DESIGN (e.g. grocery-list's
+  // share QR, minted from a random per-run secret) are opted out of the
+  // baseline loop via qa/baseline.json `"visual-reg/exclude": ["<screen>"]`.
+  // They still capture and frame for the store; they just never lock or diff
+  // a baseline, so they can't flap the matrix gate run-over-run.
+  const excluded = (() => {
+    try {
+      const b = JSON.parse(fs.readFileSync(path.join(appDir, 'qa', 'baseline.json'), 'utf8'));
+      return new Set(Array.isArray(b['visual-reg/exclude']) ? b['visual-reg/exclude'] : []);
+    } catch { return new Set(); }
+  })();
+
   const cells = listCells(matrixDir);
   if (cells.length === 0) {
     console.log('visual-reg: no captured cells under qa/captures/matrix/ — run matrix.mjs first.');
@@ -203,6 +215,7 @@ async function main() {
     let accepted = 0;
     for (const cell of cells) {
       for (const screen of listScreens(path.join(matrixDir, cell))) {
+        if (excluded.has(screen)) continue;
         if (!matcher(cell, screen)) continue;
         const cur = readPng(lib.PNG, path.join(matrixDir, cell, `${screen}.png`));
         writePng(lib.PNG, path.join(baselineRoot, cell, `${screen}.png`), downscale2x(cur));
@@ -219,6 +232,7 @@ async function main() {
 
   for (const cell of cells) {
     for (const screen of listScreens(path.join(matrixDir, cell))) {
+      if (excluded.has(screen)) continue;
       const curPath = path.join(matrixDir, cell, `${screen}.png`);
       const basePath = path.join(baselineRoot, cell, `${screen}.png`);
       if (dry) { console.log(`  would compare ${cell}/${screen}`); continue; }

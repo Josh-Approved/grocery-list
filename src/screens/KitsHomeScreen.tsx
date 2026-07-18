@@ -91,6 +91,8 @@ export default function KitsHomeScreen({ navigation }: Props) {
               confirm.open({
                 title: t('kits.deleteKit'),
                 message: t('kits.deleteKitConfirm'),
+                confirmLabel: t('common.delete'),
+                destructive: true,
                 onConfirm: () => deleteKit(kit.id),
               }),
           },

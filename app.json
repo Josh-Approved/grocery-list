@@ -2,7 +2,7 @@
   "expo": {
     "name": "Grocery List",
     "slug": "grocery-list",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "scheme": "grocerylist",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -49,6 +49,7 @@
         }
       ],
       "./plugins/withGradleJvmArgs",
+      "./plugins/withSiriIntents",
       "expo-mail-composer"
     ],
     "extra": {
