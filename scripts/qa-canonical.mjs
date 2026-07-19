@@ -419,6 +419,38 @@ const ruleNoAlertPrompt = () => {
   return pass('parity/no-alert-prompt', 'No Alert.prompt() calls in src/');
 };
 
+// A custom full-screen pane that traps screen readers (accessibilityViewIsModal)
+// must also MOVE screen-reader focus into itself on present. A native Modal does
+// that automatically; a custom pane does not, and without it VoiceOver/TalkBack
+// focus lands on an arbitrary mid-pane element (defect home-maintenance-20260719-1
+// — VO opened the Timing pane focused on a "Stop after" chip).
+const rulePaneFocus = () => {
+  if (surface !== 'rn') return skip('a11y/pane-focus', 'Not an RN app');
+  const files = srcSourceFiles();
+  if (!files.length) return skip('a11y/pane-focus', 'No src/ source files');
+  const hits = [];
+  for (const f of files) {
+    const raw = readText(f);
+    if (!raw) continue;
+    const code = stripComments(raw);
+    // A NATIVE <Modal> moves screen-reader focus itself — only CUSTOM panes
+    // (accessibilityViewIsModal on a plain view, no Modal in the file) must
+    // manage focus by hand.
+    if (
+      /\baccessibilityViewIsModal\b/.test(code) &&
+      !/<Modal[\s>]/.test(code) &&
+      !/\bsetAccessibilityFocus\b/.test(code)
+    ) {
+      hits.push(`${relative(appDir, f)}: custom pane (accessibilityViewIsModal, no native Modal) without setAccessibilityFocus`);
+    }
+  }
+  if (hits.length) {
+    return fail('a11y/pane-focus',
+      'Custom modal pane (accessibilityViewIsModal) without screen-reader focus management — move focus to the pane title on present (reference: DrilldownSheet)', hits);
+  }
+  return pass('a11y/pane-focus', 'Every accessibilityViewIsModal surface manages screen-reader focus');
+};
+
 // Early-return guards that gate WHETHER a feature exists, e.g.
 //   if (Platform.OS !== 'ios') return            (or === 'ios' / android, symmetric)
 //   if (Platform.OS === 'android') { return; }
@@ -1900,6 +1932,7 @@ const CANONICAL_RULES = [
   rulePackageJsonNoAnalytics,
   ruleNoIosOnlyImports,
   ruleNoAlertPrompt,
+  rulePaneFocus,
   ruleNoPlatformEarlyReturn,
   ruleEasJsonShape,
   ruleAppearanceToggle,

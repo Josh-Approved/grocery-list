@@ -36,12 +36,25 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const args = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith('--')));
-const positional = args.filter((a) => !a.startsWith('--'));
+// A flag's VALUE (e.g. the `production` of `--profile production`) is not a
+// positional. Without this, `run-qa.mjs --profile production` resolved the
+// profile name as the app dir and reported a green "no unit tests" gate.
+const FLAGS_WITH_VALUES = new Set(['--profile', '--out']);
+const positional = args.filter(
+  (a, i) => !a.startsWith('--') && !(i > 0 && FLAGS_WITH_VALUES.has(args[i - 1]))
+);
 const appDir = path.resolve(positional[0] || process.cwd());
 const profile = (() => {
   const i = args.indexOf('--profile');
   return i >= 0 && args[i + 1] ? args[i + 1] : 'production';
 })();
+
+// Fail loudly rather than emitting a green gate for a directory that is not an app.
+if (!fs.existsSync(path.join(appDir, 'app.json'))) {
+  console.error(`run-qa: ${appDir} is not an app directory (no app.json).`);
+  console.error('Usage: node scripts/qa/run-qa.mjs <appDir> [--profile testflight|production]');
+  process.exit(2);
+}
 const outArg = (() => {
   const i = args.indexOf('--out');
   return i >= 0 && args[i + 1] ? args[i + 1] : 'qa/qa-report.json';

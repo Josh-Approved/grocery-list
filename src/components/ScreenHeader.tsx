@@ -25,9 +25,12 @@ type Props = {
   /** Optional trailing element (an action button). Reserves a 44pt slot when
    *  absent so the title stays centered. */
   right?: React.ReactNode;
+  /** Ref to the title element — a newly-presented surface (e.g. a drill-down
+   *  pane) passes this so it can move screen-reader focus to its top. */
+  titleRef?: React.Ref<Text>;
 };
 
-export function ScreenHeader({ title, onBack, right }: Props) {
+export function ScreenHeader({ title, onBack, right, titleRef }: Props) {
   const { c } = useTheme();
   const s = makeStyles(c);
   return (
@@ -41,7 +44,7 @@ export function ScreenHeader({ title, onBack, right }: Props) {
       >
         <ChevronLeft size={24} color={c.fg} strokeWidth={1.5} />
       </Pressable>
-      <Text style={s.title} numberOfLines={1}>
+      <Text ref={titleRef} style={s.title} numberOfLines={1} accessibilityRole="header">
         {title}
       </Text>
       <View style={s.iconBtn}>{right}</View>
