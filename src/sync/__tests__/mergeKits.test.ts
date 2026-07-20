@@ -120,3 +120,71 @@ describe('mergeKit — one kit, two copies', () => {
     expect(mergeKit(local, remote).name).toBe('New');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Kit clock + name clock details the T2 mutation run showed were unpinned.
+// A kit's effective clock is max(updatedAt, deletedAt) — same as the generic
+// record clock — and ties resolve delete-first, then name lexicographically,
+// identically from both merge directions.
+// ---------------------------------------------------------------------------
+
+describe('mergeKit — effective clock (max of edit and delete stamps)', () => {
+  test('a delete out-clocks an edit that happened between authoring and deleting', () => {
+    // The tombstone was AUTHORED at 3 but the delete happened at 10; an edit
+    // at 5 on the other device must lose to the delete.
+    const edited = kit({ id: 'k', updatedAt: 5 });
+    const deleted = kit({ id: 'k', updatedAt: 3, deletedAt: 10 });
+    expect(mergeKit(edited, deleted).deletedAt).toBe(10);
+    expect(mergeKit(deleted, edited).deletedAt).toBe(10);
+  });
+
+  test("a tombstone with a NEWER updatedAt than its deletedAt still counts as dead at its newest stamp", () => {
+    // clock(tombstone) = max(updatedAt, deletedAt): a dead copy touched at 12
+    // beats a live edit at 5 even though the delete stamp itself is old.
+    const liveEdit = kit({ id: 'k', updatedAt: 5 });
+    const deadNewer = kit({ id: 'k', updatedAt: 12, deletedAt: 3 });
+    expect(mergeKit(liveEdit, deadNewer).deletedAt).toBe(3);
+    expect(mergeKit(deadNewer, liveEdit).deletedAt).toBe(3);
+  });
+
+  test('on an EXACT clock tie the delete wins — whichever side it lives on', () => {
+    const liveCopy = kit({ id: 'k', updatedAt: 3 });
+    const deadCopy = kit({ id: 'k', updatedAt: 3, deletedAt: 3 });
+    // Dead copy arriving from the remote side…
+    expect(mergeKit(liveCopy, deadCopy).deletedAt).toBe(3);
+    // …and from the local side: same outcome (convergence).
+    expect(mergeKit(deadCopy, liveCopy).deletedAt).toBe(3);
+  });
+
+  test('a genuinely newer remote edit resurrects an older LOCAL tombstone', () => {
+    const localDead = kit({ id: 'k', updatedAt: 1, deletedAt: 5 });
+    const remoteEdit = kit({ id: 'k', updatedAt: 9 });
+    expect(mergeKit(localDead, remoteEdit).deletedAt).toBeUndefined();
+  });
+});
+
+describe('mergeKit — name clock details', () => {
+  test('a LOCAL rename with the newer name clock wins and the clock carries forward', () => {
+    const renamed = kit({ id: 'k', name: 'New', nameUpdatedAt: 9, updatedAt: 2 });
+    const stale = kit({ id: 'k', name: 'Old', nameUpdatedAt: 1, updatedAt: 50 });
+    const out = mergeKit(renamed, stale);
+    expect(out.name).toBe('New');
+    expect(out.nameUpdatedAt).toBe(9); // max of the two name clocks — NaN/min would break re-merges
+  });
+
+  test('a name-clock tie converges to the lexicographically greater name on both devices', () => {
+    const apples = kit({ id: 'k', name: 'Apples', nameUpdatedAt: 4 });
+    const zest = kit({ id: 'k', name: 'Zest', nameUpdatedAt: 4 });
+    expect(mergeKit(apples, zest).name).toBe('Zest');
+    expect(mergeKit(zest, apples).name).toBe('Zest');
+  });
+
+  test('createdAt converges to the earliest and updatedAt to the latest stamp', () => {
+    const a = kit({ id: 'k', createdAt: 3, updatedAt: 20 });
+    const b = kit({ id: 'k', createdAt: 7, updatedAt: 11 });
+    for (const out of [mergeKit(a, b), mergeKit(b, a)]) {
+      expect(out.createdAt).toBe(3);
+      expect(out.updatedAt).toBe(20);
+    }
+  });
+});

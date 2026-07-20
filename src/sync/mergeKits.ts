@@ -44,7 +44,12 @@ export function mergeKit(local: Kit, remote: Kit): Kit {
   else if (rc > lc) head = remote;
   else head = remote.deletedAt != null ? remote : local;
 
-  const nameHead = nameClock(local) >= nameClock(remote) ? local : remote;
+  // The name resolves on its OWN clock. Tie → the lexicographically greater
+  // name (mirrors sync/merge.ts mergeList), so two devices renaming the same
+  // kit in the same millisecond still converge instead of each keeping its own.
+  const nc = nameClock(local) - nameClock(remote);
+  const nameHead =
+    nc !== 0 ? (nc > 0 ? local : remote) : local.name >= remote.name ? local : remote;
   return {
     id: local.id,
     name: nameHead.name,
