@@ -1850,6 +1850,134 @@ const ruleDestructiveConfirm = () => {
   return pass(id, 'Destructive actions confirm or offer undo');
 };
 
+// ---------- rule: ux/multiline-notes (ticket ux-multiline-notes-lint) ----------
+//
+// A notes/description/free-text TextInput that is not `multiline` spills text:
+// a long note wraps visually while the gray box stays one line tall and the
+// text hangs outside it (home-maintenance #3; reference fix 43fa2ee = multiline
+// + textAlignVertical:'top' + vertical padding). Recurs across the fleet —
+// every shell app has a notes/description-class field. WARN.
+//
+// Notes-class detection is token-based (camelCase/snake/i18n-key aware) so
+// `taskNotes`, `setNotes`, `placeholder={t('task.notesPlaceholder')}` all match
+// while `title`/`name` bindings and search fields ("Search notes") stay silent.
+// Errs toward silence: only a literal <TextInput> whose opening tag carries a
+// notes-class token is inspected.
+
+const NOTES_TOKENS = ['note', 'notes', 'description', 'memo', 'bio'];
+const NOTES_EXCLUDE_TOKENS = ['search', 'filter', 'query'];
+
+// Lowercased identifier-ish tokens of an opening tag, split on camel humps and
+// non-alphanumerics, so both `notesPlaceholder` and `'task.notesPlaceholder'`
+// yield the token `notes`.
+const tagTokens = (tag) => {
+  const out = new Set();
+  for (const word of tag.match(/[A-Za-z][A-Za-z0-9]*/g) || []) {
+    for (const part of word.split(/(?=[A-Z])/)) out.add(part.toLowerCase());
+  }
+  return out;
+};
+
+// Pure core (self-tested). Returns hits for notes-class TextInputs that either
+// lack `multiline` (the shipping defect) or are multiline without a reachable
+// textAlignVertical (prop on the tag, or resolvable from the file's named
+// styles — Android centers the caret without it). Blind spots (deliberate):
+// custom input wrappers, styles imported from another file.
+const detectSingleLineNotesInputs = (code) => {
+  const hits = [];
+  const re = /<\s*TextInput\b/g;
+  let m;
+  while ((m = re.exec(code)) !== null) {
+    const tag = openingTag(code, m.index);
+    const tokens = tagTokens(tag);
+    if (!NOTES_TOKENS.some((t) => tokens.has(t))) continue;
+    if (NOTES_EXCLUDE_TOKENS.some((t) => tokens.has(t))) continue;
+    const line = code.slice(0, m.index).split(/\r?\n/).length;
+    const hasMultiline = /\bmultiline\b/.test(tag) && !/\bmultiline\s*=\s*\{\s*false\s*\}/.test(tag);
+    if (!hasMultiline) {
+      hits.push({ line, detail: 'notes-class <TextInput> lacks multiline — a long note wraps visually while the box stays one line tall (add multiline + textAlignVertical:"top" + vertical padding)' });
+      continue;
+    }
+    if (/\btextAlignVertical\b/.test(tag)) continue;
+    let styleText = attrBraceValue(tag, 'style') || '';
+    for (const ref of styleText.matchAll(/\b(?:styles?|s|st)\.(\w+)/g)) {
+      styleText += '\n' + resolveNamedStyle(code, ref[1]);
+    }
+    if (/\btextAlignVertical\b/.test(styleText)) continue;
+    hits.push({ line, detail: 'multiline notes <TextInput> has no textAlignVertical:"top" (prop or style) — Android centers the caret in the grown box' });
+  }
+  return hits;
+};
+
+const ruleMultilineNotes = () => {
+  const id = 'ux/multiline-notes';
+  if (surface !== 'rn') return skip(id, 'Not an RN app');
+  if (ruleSkipsAll(id)) return skip(id, 'Disabled via qa/baseline.json "ux/multiline-notes/skip"');
+  const files = srcSourceFiles().filter((f) => {
+    const rel = relative(join(appDir, 'src'), f).replace(/\\/g, '/');
+    return rel.startsWith('screens/') || rel.startsWith('components/');
+  });
+  if (!files.length) return skip(id, 'No screen/component source files');
+  const hits = [];
+  for (const f of files) {
+    const rel = relative(appDir, f);
+    if (ruleSkipsFile(id, rel)) continue;
+    const raw = readText(f);
+    if (!raw) continue;
+    for (const h of detectSingleLineNotesInputs(stripComments(raw))) hits.push(`${rel}:${h.line}: ${h.detail}`);
+  }
+  if (hits.length) {
+    return uxWarn(id,
+      'Notes/description TextInput not shaped for free text — single-line note boxes spill long text outside the box. Make the field multiline with textAlignVertical:"top" and vertical padding (reference: home-maintenance 43fa2ee)', hits);
+  }
+  return pass(id, 'Notes/description TextInputs are multiline with top-aligned text');
+};
+
+// ---------- rule: sync/status-honesty-wired (ticket linter-shared-sync-status-honesty-wiring) ----------
+//
+// A shared-sync consumer whose engine constructs DropBoxTransport but never
+// consumes the delivery-rejection signal (the 5th `onPublishResult` constructor
+// arg / `status.publishRejected`) can render "Connected" while every publish is
+// silently rejected by relays — the sync-status indicator lies. grocery-list is
+// the exemplar (src/sync/index.ts wires onPublishResult → markDelivered).
+// transport.ts / status.ts are the overwrite-synced template and always contain
+// the tokens, so only app-owned sync files count as wiring. WARN.
+
+const SYNC_TEMPLATE_FILES = new Set(['transport.ts', 'status.ts', 'crypto.ts', 'share.ts', 'mergeRecordSet.ts']);
+
+// Pure core (self-tested) over [{ name, rel, code }] of the app's non-test
+// src/sync files (comments stripped). Returns null when no app-owned file
+// constructs DropBoxTransport (not a shared-sync consumer / template-only),
+// false when the rejection signal is wired, or the offending file list.
+const detectStatusHonestyGap = (syncFiles) => {
+  const own = syncFiles.filter((f) => !SYNC_TEMPLATE_FILES.has(f.name));
+  const constructors = own.filter((f) => /new\s+DropBoxTransport\s*\(/.test(f.code));
+  if (!constructors.length) return null;
+  const wired = own.some((f) => /\b(?:onPublishResult|markDelivered|publishRejected)\b/.test(f.code));
+  return wired ? false : constructors.map((f) => f.rel);
+};
+
+const ruleSyncStatusHonestyWired = () => {
+  const id = 'sync/status-honesty-wired';
+  if (surface !== 'rn') return skip(id, 'Not an RN app');
+  if (ruleSkipsAll(id)) return skip(id, 'Disabled via qa/baseline.json "sync/status-honesty-wired/skip"');
+  const syncDir = join(appDir, 'src', 'sync');
+  if (!exists(syncDir)) return skip(id, 'No src/sync (not a shared-sync consumer)');
+  const files = srcSourceFiles()
+    .filter((f) => relative(join(appDir, 'src'), f).replace(/\\/g, '/').startsWith('sync/'))
+    .map((f) => ({
+      name: relative(syncDir, f).replace(/\\/g, '/'),
+      rel: relative(appDir, f),
+      code: stripComments(readText(f) || ''),
+    }));
+  const gap = detectStatusHonestyGap(files);
+  if (gap === null) return skip(id, 'No app-owned DropBoxTransport construction in src/sync');
+  if (gap === false) return pass(id, 'Sync engine wires the delivery-rejection signal (onPublishResult / markDelivered / publishRejected)');
+  return warn(id,
+    'Sync engine constructs DropBoxTransport but never wires the delivery-rejection signal — the sync-status indicator can show "Connected" while every publish is silently rejected by relays. Pass the 5th onPublishResult constructor arg into status (exemplar: grocery-list src/sync/index.ts → markDelivered)',
+    gap.map((rel) => `${rel}: new DropBoxTransport(…) without onPublishResult/markDelivered/publishRejected wiring in any app-owned sync file`));
+};
+
 // ---------- rules: shipped-but-dead modules (ticket qa-canonical-wired-modules) ----------
 //
 // The module-present-but-never-called defect class hit three times on one app
@@ -1948,6 +2076,8 @@ const CANONICAL_RULES = [
   ruleTouchTargetMin,
   ruleEmptyStatePresent,
   ruleDestructiveConfirm,
+  ruleMultilineNotes,
+  ruleSyncStatusHonestyWired,
   ruleReviewPromptWired,
   ruleTipJarWired,
   ruleSplashWordmarkClip,
@@ -2049,6 +2179,38 @@ function runSelfTest() {
     'destructive-confirm: a remove with NO add counterpart still fires');
   assert(detectUnconfirmedDeletes(`import { useConfirm } from './Dialogs'; function S(){ const confirm = useConfirm(); return confirm.open({ onConfirm: () => deleteList(id) }); }`) === false,
     'destructive-confirm: a delete guarded by the useConfirm() primitive passes');
+
+  // ux/multiline-notes
+  assert(detectSingleLineNotesInputs(`<TextInput value={notes} onChangeText={setNotes} placeholder="Notes"/>`).length === 1,
+    'multiline-notes: a single-line notes TextInput fires');
+  assert(detectSingleLineNotesInputs(`<TextInput value={taskNotes} onChangeText={setTaskNotes} multiline textAlignVertical="top"/>`).length === 0,
+    'multiline-notes: multiline + textAlignVertical prop passes (camelCase binding matched)');
+  assert(detectSingleLineNotesInputs(`const s = StyleSheet.create({ notes: { textAlignVertical: 'top', paddingVertical: 10 } });\n<TextInput value={notes} multiline style={s.notes}/>`).length === 0,
+    'multiline-notes: textAlignVertical via a resolved named style passes');
+  assert(detectSingleLineNotesInputs(`<TextInput value={notes} multiline/>`).length === 1,
+    'multiline-notes: multiline without any textAlignVertical fires the softer hit');
+  assert(detectSingleLineNotesInputs(`<TextInput value={title} onChangeText={setTitle} placeholder={t('trip.titlePlaceholder')}/>`).length === 0,
+    'multiline-notes: a title/single-value field is silent');
+  assert(detectSingleLineNotesInputs(`<TextInput value={query} placeholder="Search notes" onChangeText={setQuery}/>`).length === 0,
+    'multiline-notes: a search field mentioning notes is silent');
+  assert(detectSingleLineNotesInputs(`<TextInput placeholder={t('task.notesPlaceholder')} value={v} onChangeText={c}/>`).length === 1,
+    'multiline-notes: an i18n notes key marks the field notes-class');
+
+  // sync/status-honesty-wired
+  assert(Array.isArray(detectStatusHonestyGap([
+    { name: 'engine.ts', rel: 'src/sync/engine.ts', code: 'const t = new DropBoxTransport(a, b, c, d);' },
+    { name: 'transport.ts', rel: 'src/sync/transport.ts', code: 'onPublishResult publishRejected' },
+    { name: 'status.ts', rel: 'src/sync/status.ts', code: 'publishRejected: false' },
+  ])),
+    'status-honesty: a constructor with no app-owned rejection wiring fires (template files do not count)');
+  assert(detectStatusHonestyGap([
+    { name: 'index.ts', rel: 'src/sync/index.ts', code: 'new DropBoxTransport(a, b, c, d, onPublishResult); markDelivered(secret, delivered);' },
+  ]) === false,
+    'status-honesty: wiring onPublishResult in the constructing file passes');
+  assert(detectStatusHonestyGap([
+    { name: 'transport.ts', rel: 'src/sync/transport.ts', code: 'export class DropBoxTransport { constructor() { new DropBoxTransport(x); } }' },
+  ]) === null,
+    'status-honesty: template-only src/sync (no app-owned constructor) is not applicable');
 
   // rn/keyboard-dismiss-escape (promoted to FAIL)
   assert(keyboardTrapped(`<TextInput blurOnSubmit={false} onSubmitEditing={s}/>`) === true,
