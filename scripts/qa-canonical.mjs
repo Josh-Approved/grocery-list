@@ -492,6 +492,28 @@ const ruleNoPlatformEarlyReturn = () => {
 
 // ---------- rules: RN-specific (eas.json shape) ----------
 
+// Pure core (self-tested): on-disk credential keys in eas.json's
+// submit.production block. Credentials live in the EAS vault, never on disk —
+// and a stale on-disk key line doesn't just leak-risk, it SHADOWS the vault
+// key: eas submit prefers the local path, so a deleted/rotated file silently
+// breaks non-interactive submit. Exactly that (a stale
+// submit.production.android.serviceAccountKeyPath) stranded grocery-list /
+// packing-list / workout-timer on the 2026-07-17 release train (L18). The iOS
+// triple has been forbidden since the rule landed; the Android pair is its
+// same-class sibling.
+export const detectOnDiskSubmitCredentials = (submitProduction) => {
+  const issues = [];
+  const ios = submitProduction?.ios || {};
+  for (const forbidden of ['ascApiKeyPath', 'ascApiKeyId', 'ascApiKeyIssuerId']) {
+    if (forbidden in ios) issues.push(`submit.production.ios.${forbidden} present — credentials must live in EAS vault, not on disk`);
+  }
+  const android = submitProduction?.android || {};
+  for (const forbidden of ['serviceAccountKeyPath', 'serviceAccountKeyBase64']) {
+    if (forbidden in android) issues.push(`submit.production.android.${forbidden} present — credentials must live in EAS vault, not on disk`);
+  }
+  return issues;
+};
+
 const ruleEasJsonShape = () => {
   if (surface !== 'rn') return skip('rn/eas-json-shape', 'Not an RN app');
   const e = readJson(join(appDir, 'eas.json'));
@@ -509,10 +531,7 @@ const ruleEasJsonShape = () => {
     issues.push('build.preview.ios.simulator must be true (QA captures need a simulator build, else eas demands device credentials)');
   }
   if (!e.submit?.production?.ios?.ascAppId) issues.push('submit.production.ios.ascAppId missing');
-  const ios = e.submit?.production?.ios || {};
-  for (const forbidden of ['ascApiKeyPath', 'ascApiKeyId', 'ascApiKeyIssuerId']) {
-    if (forbidden in ios) issues.push(`submit.production.ios.${forbidden} present — credentials must live in EAS vault, not on disk`);
-  }
+  issues.push(...detectOnDiskSubmitCredentials(e.submit?.production));
   if (issues.length) return fail('rn/eas-json-shape', 'eas.json deviates from canonical shape', issues);
   return pass('rn/eas-json-shape', 'eas.json matches canonical shape');
 };
@@ -2245,6 +2264,18 @@ function runSelfTest() {
     'nonliteral-require: a mention inside a block comment does not fire');
   assert(detectNonLiteralRequires(`const m = require('react-native' + suffix);`).length === 1,
     'nonliteral-require: a string-concatenation require fires');
+
+  // rn/eas-json-shape — on-disk credential keys (Android vault-only, L18)
+  assert(detectOnDiskSubmitCredentials({ android: { track: 'internal', serviceAccountKeyPath: './play-key.json' } }).length === 1,
+    'eas-credentials: an on-disk android serviceAccountKeyPath fires (the 2026-07-17 release-train stranding)');
+  assert(detectOnDiskSubmitCredentials({ android: { track: 'internal', serviceAccountKeyBase64: 'abc=' } }).length === 1,
+    'eas-credentials: an inline android serviceAccountKeyBase64 fires');
+  assert(detectOnDiskSubmitCredentials({ ios: { ascAppId: '123', ascApiKeyPath: './key.p8' } }).length === 1,
+    'eas-credentials: an on-disk ios ascApiKeyPath still fires');
+  assert(detectOnDiskSubmitCredentials({ ios: { ascAppId: '123' }, android: { track: 'internal' } }).length === 0,
+    'eas-credentials: vault-only submit config (ascAppId + track, no key material) passes');
+  assert(detectOnDiskSubmitCredentials(undefined).length === 0,
+    'eas-credentials: a missing submit.production block yields no credential issues');
 
   // i18n/locale-independent-matching (pure core; the grocery-list categoriser defect)
   const PREFIX_BAD = `import { t } from '../i18n';
