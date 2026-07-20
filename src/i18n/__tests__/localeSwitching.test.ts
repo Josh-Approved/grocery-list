@@ -12,6 +12,15 @@
  * React), and only reads `common.cancel`, which is in the canonical
  * SHELL_LOCALES for every app — so this passes in any app that has the shell
  * i18n module, translated or not.
+ *
+ * Also carries the KEY-PARITY drift net (ticket translations-strings-drift-check,
+ * 2026-07-20): every APP_STRINGS key must exist in every CANONICAL_LOCALES dict.
+ * Found 2026-07-13: grocery-list gained 6 domain strings after its locale pass
+ * and all six locale dicts silently fell back to English — nothing flagged it.
+ * A failure here means the app's src/i18n/<locale>.ts dicts are missing keys:
+ * run `node scripts/translate.mjs --strings <app>` and fill them (machine-draft
+ * policy — no human language review). Vacuously green pre-translation
+ * (APP_STRINGS = {} in the template default).
  */
 
 import {
@@ -19,8 +28,10 @@ import {
   setLocaleStrings,
   resetToBaseStrings,
   applyDeviceLocale,
+  CANONICAL_LOCALES,
 } from '../index';
 import { LOCALES } from '../locales';
+import { APP_STRINGS } from '../appStrings';
 
 describe('i18n language switching', () => {
   afterEach(() => resetToBaseStrings());
@@ -57,5 +68,35 @@ describe('i18n language switching', () => {
     // applyDeviceLocale must reset to the English base — not keep German.
     applyDeviceLocale();
     expect(t('common.cancel')).toBe('Cancel');
+  });
+});
+
+describe('i18n key parity (in-app translation drift net)', () => {
+  type Dict = { [key: string]: unknown };
+
+  const flatten = (obj: Dict, prefix = ''): string[] =>
+    Object.entries(obj ?? {}).flatMap(([k, v]) => {
+      const key = prefix ? `${prefix}.${k}` : k;
+      return v && typeof v === 'object' ? flatten(v as Dict, key) : [key];
+    });
+
+  it('every APP_STRINGS key is translated in every canonical locale', () => {
+    const appKeys = flatten(APP_STRINGS as unknown as Dict);
+    const failures: string[] = [];
+    for (const loc of CANONICAL_LOCALES) {
+      const dict = (LOCALES as Dict)[loc];
+      if (!dict) {
+        // A canonical locale with no dict at all: every domain key falls back.
+        if (appKeys.length) failures.push(`${loc}: no locale dict in LOCALES`);
+        continue;
+      }
+      const locKeys = new Set(flatten(dict as Dict));
+      for (const k of appKeys) {
+        if (!locKeys.has(k)) failures.push(`${loc}: missing "${k}"`);
+      }
+    }
+    // A failure lists exactly which locale dicts silently fall back to English.
+    // Fix: node scripts/translate.mjs --strings <app>, fill src/i18n/<locale>.ts.
+    expect(failures).toEqual([]);
   });
 });
