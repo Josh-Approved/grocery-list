@@ -449,3 +449,137 @@ describe('qa fixtures — the seed is internally consistent', () => {
     sameSet(mergeRecordSet(list.items, list.items), list.items);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tie-break determinism — two copies stamping the same millisecond must
+// converge to ONE copy on every device, whatever shape the copies are in.
+// These pin the winner()/stableStringify()/shallowEqual() semantics the T2
+// mutation run showed the suite was blind to.
+// ---------------------------------------------------------------------------
+
+describe('mergeRecordSet — tie-break determinism', () => {
+  /** Merge one-record sets both ways; every assertion must hold on each. */
+  const winners = (a: Rec, b: Rec): Rec[] => [
+    get(mergeRecordSet([a], [b]), a.id)!,
+    get(mergeRecordSet([b], [a]), a.id)!,
+  ];
+
+  it('a live tie resolves to the greater serialized content, from both sides', () => {
+    const smaller = rec('x', T0, { name: 'A' });
+    const greater = rec('x', T0, { name: 'B' });
+    for (const w of winners(smaller, greater)) expect(w.name).toBe('B');
+  });
+
+  it('object key INSERTION order never influences which copy wins a tie', () => {
+    // The same logical record can reach the merge with different key orders
+    // (built in memory vs hydrated from JSON). The tie-break must compare
+    // content, not key order: z:9 beats z:2 regardless of construction.
+    const idFirst = { id: 'x', updatedAt: T0, z: 9 } as Rec & { z: number };
+    const zFirst = { z: 2, id: 'x', updatedAt: T0 } as Rec & { z: number };
+    for (const w of winners(idFirst, zFirst)) expect((w as unknown as { z: number }).z).toBe(9);
+  });
+
+  it('an explicitly-undefined key serializes like an absent key (what the JSON wire drops)', () => {
+    const withUndef = { id: 'x', updatedAt: T0, aaa: undefined, z: 9 } as Rec & { z: number };
+    const plain = { id: 'x', updatedAt: T0, z: 2 } as Rec & { z: number };
+    for (const w of winners(withUndef, plain)) expect((w as unknown as { z: number }).z).toBe(9);
+  });
+
+  it('null-valued fields serialize safely and the tie still converges', () => {
+    const a = rec('x', T0, { name: 'A', note: null } as unknown as Partial<Rec>);
+    const b = rec('x', T0, { name: 'B', note: null } as unknown as Partial<Rec>);
+    for (const w of winners(a, b)) expect(w.name).toBe('B');
+  });
+
+  it('array-valued fields compare by content and the tie converges to the same copy', () => {
+    const a = { id: 'x', updatedAt: T0, tags: ['b'] } as Rec & { tags: string[] };
+    const b = { id: 'x', updatedAt: T0, tags: ['a'] } as Rec & { tags: string[] };
+    for (const w of winners(a, b)) expect((w as unknown as { tags: string[] }).tags).toEqual(['b']);
+  });
+
+  it('a tie against a copy MISSING a field still converges (both directions, either side lean)', () => {
+    // shallow-equality must not mistake {id,updatedAt} for {id,updatedAt,name}
+    // in either direction — a false "equal" would let each device keep its own
+    // copy on a tie and diverge forever.
+    const full = rec('x', T0, { name: 'M' });
+    const lean = rec('x', T0);
+    const [ab1, ba1] = winners(full, lean);
+    expect(ab1).toEqual(ba1);
+    const [ab2, ba2] = winners(lean, full);
+    expect(ab2).toEqual(ba2);
+  });
+
+  it('a value-equal remote copy never replaces the local object (memo stability)', () => {
+    // Value-equal but not reference-equal (nested array forces the deep path).
+    const local = { id: 'x', updatedAt: T0, tags: ['a'] } as Rec & { tags: string[] };
+    const remote = { id: 'x', updatedAt: T0, tags: ['a'] } as Rec & { tags: string[] };
+    expect(get(mergeRecordSet([local], [remote]), 'x')).toBe(local);
+    // Same contract between two value-equal tombstones.
+    const localDead = { id: 'y', updatedAt: T0, deletedAt: T0 + 1, tags: ['a'] } as Rec & { tags: string[] };
+    const remoteDead = { id: 'y', updatedAt: T0, deletedAt: T0 + 1, tags: ['a'] } as Rec & { tags: string[] };
+    expect(get(mergeRecordSet([localDead], [remoteDead]), 'y')).toBe(localDead);
+  });
+
+  it('between two tied tombstones the LEANER payload wins (the size bound must propagate)', () => {
+    // A payload-stripped tombstone must beat a fatter copy even when the fat
+    // copy would win a plain content comparison.
+    const fat = tomb('x', T0, T0 + 5, { name: 'Milk!' });
+    const leanDead = tomb('x', T0, T0 + 5, { name: 'Mi' });
+    for (const w of winners(fat, leanDead)) expect(w.name).toBe('Mi');
+  });
+
+  it('live ties do NOT use the leaner rule — content decides even when longer', () => {
+    const longLive = rec('x', T0, { name: 'Milk!' });
+    const shortLive = rec('x', T0, { name: 'Mi' });
+    for (const w of winners(longLive, shortLive)) expect(w.name).toBe('Milk!');
+  });
+
+  it('two tied tombstones of EQUAL size converge to the greater content', () => {
+    const aa = tomb('x', T0, T0 + 5, { name: 'AA' });
+    const zz = tomb('x', T0, T0 + 5, { name: 'ZZ' });
+    for (const w of winners(aa, zz)) expect(w.name).toBe('ZZ');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mergeList head fields — gaps the mutation run exposed
+// ---------------------------------------------------------------------------
+
+describe('mergeList — head resolution details', () => {
+  function listWith(over: Partial<GroceryList>): GroceryList {
+    return { ...makeList('Base'), ...over };
+  }
+
+  it('a strictly NEWER local updatedAt wins the aisle order (not only the remote side)', () => {
+    const local = listWith({ updatedAt: T0 + 9000, categoryOrder: ['Produce', 'Pantry'] });
+    const remote = listWith({ id: 'r', updatedAt: T0, categoryOrder: ['Pantry', 'Produce'] });
+    expect(mergeList(local, remote).categoryOrder).toEqual(['Produce', 'Pantry']);
+  });
+
+  it('an exact updatedAt tie converges to ONE aisle order on both devices', () => {
+    const a = listWith({ updatedAt: T0, categoryOrder: ['Pantry', 'Produce'] });
+    const b = listWith({ id: 'r', updatedAt: T0, categoryOrder: ['Produce', 'Pantry'] });
+    // The greater serialized order is the documented deterministic pick.
+    expect(mergeList(a, b).categoryOrder).toEqual(['Produce', 'Pantry']);
+    expect(mergeList(b, a).categoryOrder).toEqual(['Produce', 'Pantry']);
+  });
+
+  it('a name-clock tie converges to the lexicographically greater name on both devices', () => {
+    const apples = listWith({ name: 'Apples', nameUpdatedAt: T0 });
+    const zucchini = listWith({ id: 'r', name: 'Zucchini', nameUpdatedAt: T0 });
+    expect(mergeList(apples, zucchini).name).toBe('Zucchini');
+    expect(mergeList(zucchini, apples).name).toBe('Zucchini');
+  });
+
+  it("when BOTH sides carry a share identity, the newer head's identity wins", () => {
+    const older = { secret: 'older-secret-aaaaaaaa', createdAt: T0 };
+    const newer = { secret: 'newer-secret-bbbbbbbb', createdAt: T0 + 1 };
+    const local = listWith({ updatedAt: T0, shareIdentity: older });
+    const remote = listWith({ id: 'r', updatedAt: T0 + 1000, shareIdentity: newer });
+    expect(mergeList(local, remote).shareIdentity).toEqual(newer);
+    // And when the LOCAL side is the newer head.
+    const local2 = listWith({ updatedAt: T0 + 1000, shareIdentity: newer });
+    const remote2 = listWith({ id: 'r', updatedAt: T0, shareIdentity: older });
+    expect(mergeList(local2, remote2).shareIdentity).toEqual(newer);
+  });
+});
