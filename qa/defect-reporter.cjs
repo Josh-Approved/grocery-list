@@ -25,8 +25,23 @@
  * (ancestor titles + title joined by ' > ') — is the same key `flaky.mjs` and
  * the quarantine setup (`qa/quarantine.setup.cjs`) match on.
  *
+ * PROOF-RUN / MUTATION SUPPRESSION (2026-07-21, ticket
+ * defect-reporter-proof-run-pollution): deliberate failing-first proof runs
+ * (T0's "prove the regression test fails on pre-fix code") and Stryker
+ * mutation workers exercise failures ON PURPOSE — recording them as intake
+ * pollutes the ledger with non-defects (~20 waived closes in the 2026-07-21
+ * sweep). The reporter therefore writes NOTHING (no intake lines, no
+ * test-run.json — proof/mutation outcomes must not advance or reset flake
+ * counters either) when any of these hold:
+ *   - env `JA_PROOF_RUN` is set to a truthy value ('1', 'true', …) — set it
+ *     when running a deliberate failing-first proof (`regression-gate.mjs`
+ *     sets it automatically; manual proof runs: `JA_PROOF_RUN=1 npx jest …`);
+ *   - any `__STRYKER*` / `STRYKER*` env var is present (mutation workers);
+ *   - the Jest rootDir or cwd is inside a `.stryker-tmp` sandbox.
+ *
  * Zero deps, zero network, zero agent tokens. Synced into apps via `sync.mjs qa`.
  * Register it in an app's jest config:  "reporters": ["default", "<path>"].
+ * Self-test: `node qa/defect-reporter.cjs --self-test`.
  */
 
 const fs = require('node:fs');
@@ -75,6 +90,23 @@ function testIdOf(file, a) {
   return `${baseNoExt(file)}::${fullNameOf(a)}`;
 }
 
+/**
+ * True when this run's failures are deliberate (failing-first proof run) or
+ * synthetic (Stryker mutation worker) — intake + run-summary writes are
+ * suppressed entirely. See the header block for the contract.
+ */
+function isSuppressedRun(rootDir, env = process.env, cwd = process.cwd()) {
+  const flag = String(env.JA_PROOF_RUN || '').trim().toLowerCase();
+  if (flag && flag !== '0' && flag !== 'false') return 'proof-run (JA_PROOF_RUN)';
+  for (const k of Object.keys(env)) {
+    if (/^_{0,2}STRYKER/i.test(k)) return `mutation worker (${k})`;
+  }
+  if (String(rootDir || '').includes('.stryker-tmp') || String(cwd || '').includes('.stryker-tmp')) {
+    return 'mutation sandbox (.stryker-tmp)';
+  }
+  return '';
+}
+
 class DefectReporter {
   constructor(globalConfig = {}, options = {}) {
     this._rootDir = (globalConfig && globalConfig.rootDir) || process.cwd();
@@ -82,6 +114,7 @@ class DefectReporter {
     this._runOut = (options && options.runFile) || path.join(this._rootDir, 'qa', 'test-run.json');
     this._lines = [];
     this._tests = {}; // testId -> { status, invocations, flaky }
+    this._suppressed = isSuppressedRun(this._rootDir);
   }
 
   onTestResult(_test, testResult) {
@@ -127,6 +160,15 @@ class DefectReporter {
   }
 
   onRunComplete() {
+    if (this._suppressed) {
+      // Deliberate-failure run: record nothing (intake would be false defects;
+      // the run summary would corrupt flake green-counters).
+      if (this._lines.length) {
+        // eslint-disable-next-line no-console
+        console.log(`\n[defect-reporter] ${this._suppressed} — ${this._lines.length} failure(s) NOT recorded as intake`);
+      }
+      return;
+    }
     // Always write the run summary (even a clean, all-green run) so a sweep after
     // a green nightly can advance green-counters. Latest-run-wins (overwrite).
     try {
@@ -153,3 +195,56 @@ class DefectReporter {
 }
 
 module.exports = DefectReporter;
+module.exports.isSuppressedRun = isSuppressedRun;
+
+// --self-test: node qa/defect-reporter.cjs --self-test  (zero deps, tmp-dir only)
+if (require.main === module && process.argv.includes('--self-test')) {
+  const os = require('node:os');
+  const assert = require('node:assert');
+  const failedResult = (root) => ({
+    testFilePath: path.join(root, 'src', 'thing.test.ts'),
+    testResults: [{
+      title: 'fails', ancestorTitles: ['thing'], fullName: 'thing > fails',
+      status: 'failed', invocations: 1, failureMessages: ['expected 1 to be 2'],
+    }],
+  });
+  const run = (root, env) => {
+    const saved = {};
+    for (const [k, v] of Object.entries(env)) { saved[k] = process.env[k]; process.env[k] = v; }
+    try {
+      const r = new DefectReporter({ rootDir: root }, {});
+      r.onTestResult(null, failedResult(root));
+      r.onRunComplete();
+    } finally {
+      for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
+    return {
+      intake: fs.existsSync(path.join(root, 'qa', 'defect-intake.jsonl')),
+      summary: fs.existsSync(path.join(root, 'qa', 'test-run.json')),
+    };
+  };
+  const fresh = () => fs.mkdtempSync(path.join(os.tmpdir(), 'defect-reporter-selftest-'));
+
+  // 1. normal failing run → intake + summary written
+  let out = run(fresh(), {});
+  assert.ok(out.intake && out.summary, 'normal run must write intake + summary');
+  // 2. JA_PROOF_RUN=1 → nothing written
+  out = run(fresh(), { JA_PROOF_RUN: '1' });
+  assert.ok(!out.intake && !out.summary, 'JA_PROOF_RUN=1 must suppress all writes');
+  // 3. JA_PROOF_RUN=0 → NOT suppressed
+  out = run(fresh(), { JA_PROOF_RUN: '0' });
+  assert.ok(out.intake && out.summary, 'JA_PROOF_RUN=0 must not suppress');
+  // 4. stryker env marker → suppressed
+  out = run(fresh(), { __STRYKER_SELFTEST_MARKER__: 'x' });
+  assert.ok(!out.intake && !out.summary, 'STRYKER env must suppress all writes');
+  // 5. .stryker-tmp sandbox rootDir → suppressed
+  const sandbox = path.join(fresh(), '.stryker-tmp', 'sandbox-1');
+  fs.mkdirSync(sandbox, { recursive: true });
+  out = run(sandbox, {});
+  assert.ok(!out.intake && !out.summary, '.stryker-tmp rootDir must suppress all writes');
+  // 6. pure helper direct checks
+  assert.equal(isSuppressedRun('/x', {}, '/x'), '');
+  assert.ok(isSuppressedRun('/x', { JA_PROOF_RUN: 'true' }, '/x'));
+  assert.ok(isSuppressedRun('/x', {}, '/y/.stryker-tmp/sandbox-2'));
+  console.log('defect-reporter self-test: 6/6 OK');
+}
