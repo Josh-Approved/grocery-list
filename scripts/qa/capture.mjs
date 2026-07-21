@@ -186,7 +186,14 @@ function iosPrepare(artifact) {
   // screenshot is the springboard. So we shut down all OTHER booted sims before
   // the run (hard-won; this exact failure ate a capture on 2026-06-08).
   run('device — boot simulator (isolated)', 'bash', ['-lc',
-    `UDID=$(xcrun simctl list devices | grep -m1 ${JSON.stringify(device)} | grep -oE '[0-9A-F-]{36}' | head -1); ` +
+    // Reuse a PREVIOUSLY-CREATED "qa-<storeKey>" device first (the exact name
+    // `simctl create` gives it below). Searching only for the device-type string
+    // (e.g. "iPhone 17 Pro Max") never matches it back — simctl lists devices by
+    // their given NAME, not their type — so every run minted a fresh qa-ios sim
+    // instead of reusing the last one (ticket qa-ios-sim-leak). Fall back to a
+    // stock same-named simulator, then create only as a last resort.
+    `UDID=$(xcrun simctl list devices | grep -m1 "^ *qa-${storeKey} (" | grep -oE '[0-9A-F-]{36}' | head -1); ` +
+    `[ -z "$UDID" ] && UDID=$(xcrun simctl list devices | grep -m1 ${JSON.stringify(device)} | grep -oE '[0-9A-F-]{36}' | head -1); ` +
     `[ -z "$UDID" ] && UDID=$(xcrun simctl create qa-${storeKey} ${JSON.stringify(device)}); ` +
     `for u in $(xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}'); do [ "$u" != "$UDID" ] && xcrun simctl shutdown "$u" 2>/dev/null; done; ` +
     `xcrun simctl boot "$UDID" 2>/dev/null; xcrun simctl bootstatus "$UDID" -b; ` +
