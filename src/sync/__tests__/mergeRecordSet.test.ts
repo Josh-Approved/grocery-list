@@ -497,6 +497,19 @@ describe('mergeRecordSet — tie-break determinism', () => {
     for (const w of winners(a, b)) expect((w as unknown as { tags: string[] }).tags).toEqual(['b']);
   });
 
+  it('sparse array slots serialize as the wire\'s null, so both devices compare the same content', () => {
+    // JSON.stringify([undefined, 2]) is '[null,2]' — a record that crossed the
+    // wire and one still in memory must serialize identically, or the tie-break
+    // would order them differently on the two devices.
+    const inMemory = { id: 'x', updatedAt: T0, tags: [undefined, 2] } as Rec & { tags: unknown[] };
+    const other = { id: 'x', updatedAt: T0, tags: [9] } as Rec & { tags: unknown[] };
+    const ab = get(mergeRecordSet([inMemory], [other]), 'x');
+    const ba = get(mergeRecordSet([other], [inMemory]), 'x');
+    expect(ab).toEqual(ba);
+    // '[null,2]' > '[9]' ('n' > '9') — the wire-form comparison decides.
+    expect((ab as unknown as { tags: unknown[] }).tags).toEqual([undefined, 2]);
+  });
+
   it('a tie against a copy MISSING a field still converges (both directions, either side lean)', () => {
     // shallow-equality must not mistake {id,updatedAt} for {id,updatedAt,name}
     // in either direction — a false "equal" would let each device keep its own
@@ -583,3 +596,37 @@ describe('mergeList — head resolution details', () => {
     expect(mergeList(local2, remote2).shareIdentity).toEqual(newer);
   });
 });
+
+// ---------------------------------------------------------------------------
+// KNOWN-EQUIVALENT MUTANTS (mutation sweep record — do not chase these).
+//
+// The remaining mergeRecordSet.ts survivors cannot change any observable
+// merge outcome; killing them would need tautological (mutation-shaped)
+// tests. The arguments, so future sweeps don't re-litigate:
+//
+// • winner L82 `ca > cb` → `ca >= cb`: inside the `if (ca !== cb)` guard, so
+//   the two comparisons are identical. Guard-shadowed.
+// • winner L86 `shallowEqual(a,b)` → false, shallowEqual L65 body → {} (returns
+//   undefined), L70 `true` → false, and every L68/L69 variant that only makes
+//   shallowEqual return false MORE often: shallowEqual only gates the fast
+//   path. When the copies are genuinely equal, the slow path computes equal
+//   stable serializations and `sa >= sb` returns the same first argument, so a
+//   spurious false is invisible (perf-only).
+// • L68/L69 single-loop weakenings (`!==` → `===` on the value compare, the
+//   `undefined` compares): a record always carries an equal, defined `id`, so
+//   the value-inversion variants reject immediately (→ slow path, see above);
+//   the one-sided under-detections are caught by the symmetric other loop.
+//   The only variants that could wrongly report "equal" — the whole-condition
+//   → false ones — ARE killed (the missing-field tie test above).
+// • winner L89 `sa.length < sb.length` → `<=`: inside the
+//   `sa.length !== sb.length` guard. Guard-shadowed.
+// • stableStringify L49/L55 `','` → '' (join separators): a separator can only
+//   become the diverging character against `]`/`}` (both sort above `,` and
+//   `"` alike) or against another separator mutated the same way in the other
+//   serialization, so the `sa >= sb` outcome never flips.
+// • stableStringify L49 `Array.isArray(v)` → false: arrays then serialize as
+//   index-keyed objects. The rewrite decorates both compared serializations
+//   identically ('["…' → '{"0":"…'), so every diverging character pair is
+//   unchanged (or `]` vs `,` becomes `}` vs `,` — same order). Deterministic
+//   and order-preserving, hence unobservable through the winner.
+// ---------------------------------------------------------------------------

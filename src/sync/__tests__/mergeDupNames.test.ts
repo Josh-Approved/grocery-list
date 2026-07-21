@@ -279,9 +279,12 @@ describe('duplicate-name collapse — check state folds by its clock, ties stay 
 
   it('a payload-stripped tombstone (name cleared) never donates state to a name group', () => {
     // Stripping empties the name; normalization maps whitespace names to the
-    // same '' key. The stripped tombstone must not group with (and check off)
-    // an unrelated row.
+    // same '' key. Even while a real duplicate collapse is in flight (the Milk
+    // pair below forces the grouping pass to run), the stripped tombstone must
+    // not group with (and check off) an unrelated row.
     const oddLive = item({ id: 'w1', name: ' ', addedAt: T0, updatedAt: T0 + 100 });
+    const milkA = item({ id: 'm1', name: 'Milk', updatedAt: T0 + 100 });
+    const milkB = item({ id: 'm2', name: 'Milk', updatedAt: T0 + 200 });
     const stripped = item({
       id: 'g1',
       name: '',
@@ -291,9 +294,48 @@ describe('duplicate-name collapse — check state folds by its clock, ties stay 
       checkedAt: T0 + 90,
       checkedUpdatedAt: T0 + 90,
     });
-    for (const out of bothWays([oddLive], [stripped])) {
+    for (const out of bothWays([oddLive, milkA], [stripped, milkB])) {
       expect(get(out, 'w1')?.checked).toBe(false);
       expect(get(out, 'w1')?.deletedAt).toBeUndefined();
+      expect(get(out, 'm2')?.deletedAt).toBeUndefined(); // the real dup still collapsed
+      expect(get(out, 'm1')?.deletedAt).toBe(T0 + 100);
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// KNOWN-EQUIVALENT MUTANTS (mutation sweep record — do not chase these).
+//
+// merge.ts survivors that cannot change any observable outcome:
+//
+// • L107/L109/L111/L117 (the hasDup fast-bail block): whenever the bail
+//   decision differs from the real one, the grouping pass runs and computes
+//   `replace.size === 0`, returning the same `items` array. Perf-only.
+//   (L109's `''` → 'Stryker was here!' is only observable for items literally
+//   named the mutation string — tautology territory.)
+// • L130 `group.length < 2` → false: processing a singleton group is a no-op
+//   (no losers to tombstone, checkSource === keeper, guard fails).
+// • L137 `a.id < b.id` → `a.id <= b.id`: ids inside one name group are unique
+//   (mergeRecordSet keys by id upstream), so the equality branch of the
+//   comparator is unreachable.
+// • L143 `it === keeper` → false and L159 checkedAt-differs → false: only
+//   distinguishable via an item that is unchecked but carries a checkedAt
+//   different from another equal-clock unchecked copy. The store clears
+//   checkedAt on every uncheck (see store/lists.ts), so that state is
+//   unreachable from app code and the wire fold preserves the pairing.
+// • L157 `checkSource !== keeper` → true: when checkSource IS the keeper, the
+//   or-chain compares the keeper to itself and every clause is false, so the
+//   rewrite still never fires.
+// • L170 `replace.size === 0` → false: returns items.map over an empty
+//   replace map — value-identical items in a fresh array whose identity is
+//   not observable through mergeList (which always returns a fresh list).
+// • mergeList L185 `>` → `>=` and L196 `nc > 0` → `nc >= 0` (same shape in
+//   mergeKits.ts L52): both sit inside a `!== 0` / inequality guard.
+//   Guard-shadowed.
+// • mergeList L188 `>=` → `>`: differs only when the two serialized aisle
+//   orders are byte-equal, i.e. the same value — either pick yields the same
+//   categoryOrder.
+// • mergeList L196 / mergeKits L52 `local.name >= remote.name` → `>`: differs
+//   only when the tied names are identical, where both picks yield the same
+//   name.
+// ---------------------------------------------------------------------------
