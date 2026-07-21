@@ -132,7 +132,7 @@ export function FeedbackSheet({ visible, initialType, onClose }: Props) {
               ) : (
                 <View style={s.headerBtn} />
               )}
-              <Text style={s.headerTitle} numberOfLines={1}>
+              <Text style={s.headerTitle} numberOfLines={2}>
                 {type ? t(`feedback.${type}.title`) : t('feedback.title')}
               </Text>
               <Pressable

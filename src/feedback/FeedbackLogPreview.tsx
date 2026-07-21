@@ -39,7 +39,7 @@ export function FeedbackLogPreview({ visible, onClose, reduceMotion, report, c, 
           <SafeAreaView style={s.sheet} edges={['top', 'bottom']}>
             <View style={s.header}>
               <View style={s.headerBtn} />
-              <Text style={s.headerTitle} numberOfLines={1}>
+              <Text style={s.headerTitle} numberOfLines={2}>
                 {t('feedback.logs.previewTitle')}
               </Text>
               <Pressable

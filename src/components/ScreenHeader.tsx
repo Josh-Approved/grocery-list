@@ -44,7 +44,7 @@ export function ScreenHeader({ title, onBack, right, titleRef }: Props) {
       >
         <ChevronLeft size={24} color={c.fg} strokeWidth={1.5} />
       </Pressable>
-      <Text ref={titleRef} style={s.title} numberOfLines={1} accessibilityRole="header">
+      <Text ref={titleRef} style={s.title} numberOfLines={2} accessibilityRole="header">
         {title}
       </Text>
       <View style={s.iconBtn}>{right}</View>
@@ -66,6 +66,11 @@ function makeStyles(c: Colors) {
       ...ty.md,
       fontFamily: fontFamily.sansSemibold,
       color: c.fg,
+      // Bounded to the space between the fixed-width icon slots (not
+      // intrinsic content width) so a 2-line wrap at large Dynamic Type
+      // sizes can't overlap the trailing icon.
+      flex: 1,
+      textAlign: 'center',
     },
     iconBtn: {
       width: target.min,

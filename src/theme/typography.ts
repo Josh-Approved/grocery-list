@@ -5,6 +5,8 @@
  * later, only this file changes.
  */
 
+import { PixelRatio } from 'react-native';
+
 export const fontFamilies = {
   'IBMPlexSans-Regular': 'IBMPlexSans-Regular',
   'IBMPlexSans-Medium': 'IBMPlexSans-Medium',
@@ -42,15 +44,47 @@ export const fontFamily = {
  * Type scale — { fontSize, lineHeight } pairs spread into a Text style.
  * Covers the steps shared components need (xs..md). App screens may still
  * inline sizes; this is the shared-component contract.
+ *
+ * `fontSize` is left as the literal point value — RN's Text already scales
+ * *rendered* fontSize by the OS accessibility font scale on its own
+ * (`allowFontScaling` defaults true). A numeric `lineHeight` does NOT get
+ * that treatment; left literal it stays pinned to the scale-1.0 pixel value
+ * while the glyphs beneath it grow, clipping or overlapping lines at large
+ * Dynamic Type sizes. So each step's lineHeight is scaled here, at the one
+ * point every consumer reads it from, by the current
+ * `PixelRatio.getFontScale()` — a plain getter (not a function call at the
+ * use site) so `...type.md` keeps working unchanged everywhere it's spread
+ * into a style object, and each read picks up the live OS font scale. At
+ * scale 1.0 the values are byte-identical to the original literals.
  */
-export const type = {
+const typeBase = {
   xs: { fontSize: 12, lineHeight: 16 },
   sm: { fontSize: 14, lineHeight: 20 },
   base: { fontSize: 16, lineHeight: 22 },
   md: { fontSize: 20, lineHeight: 28 },
 } as const;
 
-export type TypeStep = keyof typeof type;
+function scaledStep(step: keyof typeof typeBase) {
+  const { fontSize, lineHeight } = typeBase[step];
+  return { fontSize, lineHeight: Math.round(lineHeight * PixelRatio.getFontScale()) };
+}
+
+export const type = {
+  get xs() {
+    return scaledStep('xs');
+  },
+  get sm() {
+    return scaledStep('sm');
+  },
+  get base() {
+    return scaledStep('base');
+  },
+  get md() {
+    return scaledStep('md');
+  },
+};
+
+export type TypeStep = keyof typeof typeBase;
 
 /**
  * Letter-spacing scale, in React Native points (RN has no `em`). Approximates
