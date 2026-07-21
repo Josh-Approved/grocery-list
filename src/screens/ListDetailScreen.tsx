@@ -643,7 +643,7 @@ function makeStyles(c: Colors) {
     addTriggerText: {
       ...ty.base,
       fontFamily: fontFamily.sans,
-      color: c.fgSubtle,
+      color: c.fgMuted,
     },
 
     listContent: {
@@ -752,7 +752,7 @@ function makeStyles(c: Colors) {
       color: c.fg,
     },
     itemNameChecked: {
-      color: c.fgSubtle,
+      color: c.fgMuted,
       textDecorationLine: 'line-through',
     },
     itemNote: {
@@ -762,7 +762,7 @@ function makeStyles(c: Colors) {
       marginTop: space.s1,
     },
     itemNoteChecked: {
-      color: c.fgSubtle,
+      color: c.fgMuted,
       textDecorationLine: 'line-through',
     },
     qtyBadge: {

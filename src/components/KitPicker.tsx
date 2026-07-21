@@ -179,7 +179,7 @@ function makeStyles(c: Colors) {
     hint: {
       ...ty.sm,
       fontFamily: fontFamily.sans,
-      color: c.fgSubtle,
+      color: c.fgMuted,
       marginBottom: space.s4,
       lineHeight: 20,
     },

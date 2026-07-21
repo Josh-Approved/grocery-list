@@ -350,7 +350,7 @@ function makeStyles(c: Colors) {
     addTriggerText: {
       ...ty.base,
       fontFamily: fontFamily.sans,
-      color: c.fgSubtle,
+      color: c.fgMuted,
     },
 
     listContent: {

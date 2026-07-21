@@ -544,7 +544,7 @@ function makeStyles(c: Colors) {
       textTransform: 'uppercase',
       letterSpacing: 0.5,
     },
-    sectionHeaderDim: { color: c.fgSubtle },
+    sectionHeaderDim: { color: c.fgMuted },
     headerToggle: {
       marginLeft: 'auto',
       paddingVertical: space.s1,
@@ -559,7 +559,7 @@ function makeStyles(c: Colors) {
     hint: {
       ...ty.sm,
       fontFamily: fontFamily.sans,
-      color: c.fgSubtle,
+      color: c.fgMuted,
       marginTop: space.s4,
       marginBottom: space.s2,
       lineHeight: 20,

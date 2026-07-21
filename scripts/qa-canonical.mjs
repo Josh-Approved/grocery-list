@@ -1457,6 +1457,52 @@ const ruleContrastPairing = () => {
   return pass('theme/contrast-pairing', 'No dark-mode contrast-inversion pairs (matched inkButton/inkButtonText + fg/bg)');
 };
 
+// ---------- rule: fgSubtle is never a text color (canon § Theming) ----------
+//
+// `fgSubtle` is deliberately the faintest foreground token (ink-300 light /
+// ink-500-ish dark) — legible for decorative uses (a disabled icon, a
+// separator dot rendered as a background swatch) but it fails WCAG AA 4.5:1
+// as TEXT in both palettes (measured ~2.7:1 light / ~4.0:1 dark against
+// paper/ink — see `defects/workout-timer.jsonl` workout-timer-20260721-1 and
+// `defects/packing-list.jsonl` packing-list-20260720-3). The token itself
+// stays (real decorative uses exist: icon `color={c.fgSubtle}` props,
+// `backgroundColor: c.fgSubtle` swatches/dots) — what's banned is `fgSubtle`
+// reaching a rendered *text* color, which in this codebase's convention means
+// either a StyleSheet object's `color:` property, or the shared `<Text
+// color="fgSubtle">` variant prop (tally's themed Text component). Any
+// caption/label/footnote that was using fgSubtle for de-emphasis should use
+// `fgMuted` instead (passes AA — see src/theme/__tests__/contrast.test.ts).
+// Hard FAIL, no rollout window — this is closing a real shipped defect, not
+// codifying a new pattern.
+const ruleNoFgSubtleAsText = () => {
+  const id = 'theme/no-fgSubtle-as-text';
+  if (surface !== 'rn') return skip(id, 'Not a React Native app');
+  if (ruleSkipsAll(id)) return skip(id, `Disabled via qa/baseline.json "${id}/skip"`);
+  const STYLE_PROP_RE = /(?<![A-Za-z])color\s*:\s*c\.fgSubtle\b/g;
+  const VARIANT_PROP_RE = /\bcolor\s*=\s*(?:\{\s*)?['"]fgSubtle['"]/g;
+  const hits = [];
+  for (const f of srcSourceFiles()) {
+    const rel = relative(appDir, f).replace(/\\/g, '/');
+    if (rel === 'src/theme/colors.ts') continue; // the token DEFINITION, not a usage
+    if (ruleSkipsFile(id, rel)) continue;
+    const raw = readText(f);
+    if (!raw) continue;
+    const code = stripComments(raw);
+    for (const re of [STYLE_PROP_RE, VARIANT_PROP_RE]) {
+      for (const m of code.matchAll(re)) {
+        const line = code.slice(0, m.index).split('\n').length;
+        hits.push(`${rel}:${line}`);
+      }
+    }
+  }
+  if (hits.length) {
+    return fail(id,
+      'fgSubtle used as a TEXT color — fails AA 4.5:1 in both palettes (canon § Theming: fgSubtle is decorative-only — icon color= props / backgroundColor swatches are fine; a StyleSheet `color:` or a themed <Text color="fgSubtle"> is not). Use fgMuted for de-emphasized text.',
+      hits);
+  }
+  return pass(id, 'No fgSubtle used as a text color (StyleSheet `color:` or <Text color="fgSubtle">)');
+};
+
 // ---------- rule: no price/promo text baked into store screenshots ----------
 
 // Both Apple AND Google Play reject price/promo words baked into a screenshot.
@@ -2084,6 +2130,7 @@ const CANONICAL_RULES = [
   ruleEasJsonShape,
   ruleAppearanceToggle,
   ruleContrastPairing,
+  ruleNoFgSubtleAsText,
   ruleLanguageControl,
   ruleLocaleIndependentMatching,
   ruleAppNameSpotlightSafe,

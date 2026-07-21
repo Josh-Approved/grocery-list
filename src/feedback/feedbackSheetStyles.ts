@@ -149,7 +149,7 @@ export function makeStyles(c: Colors) {
     },
     sendBtnDim: { opacity: 0.5 },
     sendBtnText: { ...ty.base, fontFamily: fontFamily.sansSemibold, color: c.inkButtonText },
-    footnote: { ...ty.xs, fontFamily: fontFamily.sans, color: c.fgSubtle, textAlign: 'center' },
+    footnote: { ...ty.xs, fontFamily: fontFamily.sans, color: c.fgMuted, textAlign: 'center' },
 
     // Preview
     previewLead: {

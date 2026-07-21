@@ -165,7 +165,7 @@ function makeStyles(c: Colors) {
     },
     version: {
       ...ty.xs,
-      color: c.fgSubtle,
+      color: c.fgMuted,
       fontFamily: fontFamily.mono,
     },
     license: {
@@ -178,7 +178,7 @@ function makeStyles(c: Colors) {
 
     footnote: {
       ...ty.xs,
-      color: c.fgSubtle,
+      color: c.fgMuted,
       fontFamily: fontFamily.sans,
       textAlign: 'center',
       marginTop: space.s5,
