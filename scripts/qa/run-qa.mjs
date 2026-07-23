@@ -49,6 +49,11 @@ const profile = (() => {
   return i >= 0 && args[i + 1] ? args[i + 1] : 'production';
 })();
 
+if (args.includes('--self-test')) {
+  selfTest();
+  process.exit(0);
+}
+
 // Fail loudly rather than emitting a green gate for a directory that is not an app.
 if (!fs.existsSync(path.join(appDir, 'app.json'))) {
   console.error(`run-qa: ${appDir} is not an app directory (no app.json).`);
@@ -139,16 +144,52 @@ async function runFlowStatic() {
 // Graceful rollout: absent artifacts => 'skip' (a WARN-equivalent), unless the
 // app opts in via qa/baseline.json "device-net/enforce": true, which makes a
 // missing full matrix block production (same doctrine as "testing/enforce").
+// Freshness guard (ticket matrix-report-freshness-gate, 2026-07-21): a matrix /
+// visual-reg report older than the commit being shipped describes a DIFFERENT
+// binary — it must neither PASS nor BLOCK the gate. Stale artifacts are treated
+// exactly like absent ones (the enforce flag then decides whether absence
+// blocks production), which forces a fresh matrix run per ship stage.
+function isStaleArtifact(artifactMtimeMs, headMs) {
+  return Number.isFinite(artifactMtimeMs) && Number.isFinite(headMs) && artifactMtimeMs < headMs;
+}
+function dropStaleArtifacts({ visual, matrixReport, visualMtimeMs, matrixMtimeMs, headMs }) {
+  const stale = [];
+  if (visual && isStaleArtifact(visualMtimeMs, headMs)) { stale.push('visual-reg.json'); visual = null; }
+  if (matrixReport && isStaleArtifact(matrixMtimeMs, headMs)) { stale.push('matrix-report.json'); matrixReport = null; }
+  return { visual, matrixReport, stale };
+}
+function headCommitMs(dir) {
+  try {
+    const s = execFileSync('git', ['log', '-1', '--format=%ct'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const ms = Number(s) * 1000;
+    return Number.isFinite(ms) && ms > 0 ? ms : null;
+  } catch { return null; }
+}
+function fileMtimeMs(p) {
+  try { return fs.statSync(p).mtimeMs; } catch { return null; }
+}
+
 function runMatrix(profile) {
-  const visual = readJson(path.join(appDir, 'qa', 'visual-reg.json'));
-  const matrixReport = readJson(path.join(appDir, 'qa', 'matrix-report.json'));
+  const visualPath = path.join(appDir, 'qa', 'visual-reg.json');
+  const matrixPath = path.join(appDir, 'qa', 'matrix-report.json');
+  const { visual, matrixReport, stale } = dropStaleArtifacts({
+    visual: readJson(visualPath),
+    matrixReport: readJson(matrixPath),
+    visualMtimeMs: fileMtimeMs(visualPath),
+    matrixMtimeMs: fileMtimeMs(matrixPath),
+    headMs: headCommitMs(appDir),
+  });
   const triage = readJson(path.join(appDir, 'qa', 'qa-triage.json'));
   const baseline = readJson(path.join(appDir, 'qa', 'baseline.json')) || {};
   const enforce = baseline['device-net/enforce'] === true;
 
   if (!visual && !matrixReport) {
+    const staleNote = stale.length
+      ? `stale device-net report(s) predate HEAD (${stale.join(', ')}) — run a fresh scripts/qa/matrix.mjs for this commit`
+      : null;
     return { status: enforce && profile === 'production' ? 'fail' : 'skip',
-      reason: enforce ? 'device-net enforced but no matrix has run (run scripts/qa/matrix.mjs --profile full)' : 'no matrix run yet (device-net rolling out)' };
+      ...(stale.length ? { stale } : {}),
+      reason: staleNote || (enforce ? 'device-net enforced but no matrix has run (run scripts/qa/matrix.mjs --profile full)' : 'no matrix run yet (device-net rolling out)') };
   }
 
   const regressions = visual && visual.status === 'ok' ? (visual.regressions || 0) : 0;
@@ -165,7 +206,8 @@ function runMatrix(profile) {
   } else { // testflight / smoke
     if (reviewerBlockers > 0 || cellFails > 0) status = 'fail';
   }
-  return { status, profile: matrixProfile, regressions, cellFails, reviewerBlockers, reviewerMajors };
+  return { status, profile: matrixProfile, regressions, cellFails, reviewerBlockers, reviewerMajors,
+    ...(stale.length ? { stale, staleNote: `ignored stale report(s) predating HEAD: ${stale.join(', ')}` } : {}) };
 }
 
 // ---------- Tier "twoDevice": network chaos on the two-device rig (T4 stage 2) ----------
@@ -438,3 +480,28 @@ if (toStdout) {
 }
 
 process.exit(report.ok ? 0 : 1);
+
+// ---------- --self-test: pure matrix-freshness logic (no app dir needed) ----------
+function selfTest() {
+  const assert = (cond, msg) => { if (!cond) { console.error(`✗ ${msg}`); process.exit(1); } };
+  // isStaleArtifact
+  assert(isStaleArtifact(1000, 2000) === true, 'report older than HEAD is stale');
+  assert(isStaleArtifact(3000, 2000) === false, 'report newer than HEAD is fresh');
+  assert(isStaleArtifact(2000, 2000) === false, 'report at exactly HEAD time is fresh');
+  assert(isStaleArtifact(null, 2000) === false, 'missing artifact is absent, not stale');
+  assert(isStaleArtifact(1000, null) === false, 'no HEAD time -> cannot judge, keep');
+  // dropStaleArtifacts
+  const v = { status: 'ok', regressions: 1 };
+  const m = { profile: 'full', cells: [] };
+  let r = dropStaleArtifacts({ visual: v, matrixReport: m, visualMtimeMs: 3000, matrixMtimeMs: 3000, headMs: 2000 });
+  assert(r.visual === v && r.matrixReport === m && r.stale.length === 0, 'fresh reports pass through');
+  r = dropStaleArtifacts({ visual: v, matrixReport: m, visualMtimeMs: 1000, matrixMtimeMs: 3000, headMs: 2000 });
+  assert(r.visual === null && r.matrixReport === m && r.stale.join() === 'visual-reg.json', 'stale visual-reg dropped alone');
+  r = dropStaleArtifacts({ visual: v, matrixReport: m, visualMtimeMs: 1000, matrixMtimeMs: 1000, headMs: 2000 });
+  assert(r.visual === null && r.matrixReport === null && r.stale.length === 2, 'both stale -> both dropped (gate falls back to absent-artifact doctrine)');
+  r = dropStaleArtifacts({ visual: null, matrixReport: m, visualMtimeMs: null, matrixMtimeMs: 1000, headMs: 2000 });
+  assert(r.stale.join() === 'matrix-report.json', 'absent visual not reported stale; stale matrix dropped');
+  r = dropStaleArtifacts({ visual: v, matrixReport: m, visualMtimeMs: 1000, matrixMtimeMs: 1000, headMs: null });
+  assert(r.visual === v && r.matrixReport === m && r.stale.length === 0, 'no HEAD time -> nothing dropped');
+  console.log('run-qa self-test (matrix freshness): 10/10 OK');
+}
