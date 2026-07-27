@@ -11,6 +11,10 @@
  * (removed 2026-07-15): clearing crossed-off items is ambient — a "Clear" on
  * the Checked header, plus a gentle prompt to clear last shop's leftovers when
  * you reopen the list. Nothing important hinges on remembering a tap.
+ *
+ * The finished shop is therefore an OBSERVED moment, not a declared one: the
+ * check that leaves nothing unchecked. That's where the canonical review prompt
+ * is triggered (see toggleChecked).
  */
 
 import React, {
@@ -223,9 +227,27 @@ export default function ListDetailScreen({ route, navigation }: Props) {
           message: t('detail.crossedOff', { name: item.name }),
           undo: () => setChecked(listId, item.id, false),
         });
+        // THE finished shop: this check was the last unchecked item on the
+        // list. That — not tidying up afterwards — is the satisfying moment,
+        // so it's the canonical review prompt's trigger here (re-anchored
+        // 2026-07-27 from doClearChecked, which was cleanup: a shopper who
+        // never clears their list never triggered the prompt at all).
+        // `stats` is the pre-toggle snapshot, so "last one" is checked + 1
+        // reaching total. A 3-item floor keeps a one-item errand from
+        // counting as a shop. Re-checking a single item on an already-complete
+        // list re-fires; that's fine — the canonical counter's thresholds and
+        // 3-prompt cap absorb it, and a hard once-per-list latch would need
+        // state that survives a synced delete.
+        if (stats.total >= 3 && stats.checked + 1 === stats.total) {
+          recordSuccessfulCompletion()
+            .then((show) => {
+              if (show) setReviewVisible(true);
+            })
+            .catch(() => {});
+        }
       }
     },
-    [setChecked, listId]
+    [setChecked, listId, stats.total, stats.checked]
   );
 
   const doClearChecked = useCallback(() => {
@@ -240,14 +262,6 @@ export default function ListDetailScreen({ route, navigation }: Props) {
       ),
       undo: () => restoreItems(listId, snaps),
     });
-    // Clearing what you bought is this app's genuine "successful shop" — the
-    // canonical review prompt's only trigger here (never on launch/error).
-    // Re-anchored from the removed "Finish shop" gate (2026-07-15).
-    recordSuccessfulCompletion()
-      .then((show) => {
-        if (show) setReviewVisible(true);
-      })
-      .catch(() => {});
   }, [clearChecked, restoreItems, listId]);
 
   const openListMenu = useCallback(() => {

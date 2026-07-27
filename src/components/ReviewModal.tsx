@@ -89,14 +89,32 @@ export default function ReviewModal({
   }, [visible, storageKey]);
 
   const handleReview = async () => {
-    await markReviewOpened(storageKey);
     // Canonical write-review host is apps.apple.com (modern; itunes.apple.com
     // is legacy). ReviewModal is the authoritative source for this link.
+    const id = Platform.OS === 'ios' ? iosAppStoreId : androidPackageName;
     const url =
       Platform.OS === 'ios'
         ? `itms-apps://apps.apple.com/app/id${iosAppStoreId}?action=write-review`
         : `https://play.google.com/store/apps/details?id=${androidPackageName}&showAllReviews=true`;
-    await Linking.openURL(url).catch(() => {});
+
+    // OPEN FIRST, mark second — and only mark on success.
+    //
+    // `markReviewOpened` stops every future prompt for this install, forever.
+    // Marking before the link opened meant any failure (a blank store id on an
+    // app that shipped before its listing existed, a device that can't handle
+    // the scheme) silently opted the user out permanently: the modal closed,
+    // nothing happened, and they were never asked again. `.catch(() => {})`
+    // made it invisible. A missing id short-circuits for the same reason —
+    // a broken URL must cost the user nothing.
+    if (!id) {
+      onDismiss();
+      return;
+    }
+    const opened = await Linking.openURL(url).then(
+      () => true,
+      () => false
+    );
+    if (opened) await markReviewOpened(storageKey);
     onDismiss();
   };
 

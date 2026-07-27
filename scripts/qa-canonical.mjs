@@ -18,6 +18,9 @@
  *   - <app>/qa/baseline.json   — per-rule grandfathering, e.g.
  *       { "commits/fingerprint": "<sha>" }  — only commits AFTER this SHA are checked
  *       { "testing/enforce": true }         — promote a WARN tier to FAIL
+ *       { "engagement/enforce": false }     — demote review-prompt/tip-jar wiring
+ *                                             back to WARN (fresh scaffolds only;
+ *                                             run-qa refuses to ship with it off)
  *       { "<rule-id>/skip": true }          — disable a rule for a deliberate design, or
  *       { "<rule-id>/skip": ["Foo.tsx"] }   — exempt specific files (path fragments)
  */
@@ -655,6 +658,93 @@ const ruleModalSafeAreaProvider = () => {
       'Safe area ignored inside a full-screen Modal: a presentationStyle="fullScreen" Modal reads safe-area insets but nests no SafeAreaProvider — wrap the modal content in <SafeAreaProvider initialMetrics={initialWindowMetrics}> so the title/actions clear the notch and home indicator', hits);
   }
   return pass('rn/modal-safe-area-provider', 'No full-screen Modals consuming safe-area without their own provider');
+};
+
+// The sibling defect of the rule above, from the other direction. A
+// <SafeAreaView> (react-native-safe-area-context) applies its insets as
+// PADDING, and padding does not reach an ABSOLUTELY-POSITIONED child — an
+// absolute full-cover overlay is laid out against the SafeAreaView's frame, not
+// its padding box. So a slide-in pane rendered as a sibling of the screen's
+// scroll content draws its own header (back chevron + title) under the status
+// bar / Dynamic Island: the user can neither read the title nor tap back. A
+// real, device-only defect — tend's "Important dates" + cadence drill-downs,
+// caught by hand 2026-07-27; it affected every DrilldownSheet consumer. The
+// remedy is for the overlay to apply its OWN insets (useSafeAreaInsets →
+// paddingTop/Left/Right), which is what the canonical DrilldownSheet now does.
+//
+// Low-false-positive by construction: we flag a file only when BOTH hold — it
+// declares a FULL-COVER absolute overlay (position:'absolute' with all four
+// edges 0 in the same style object, or StyleSheet.absoluteFill/absoluteFillObject)
+// AND it renders header-like chrome (ScreenHeader, a *Header component, or
+// accessibilityRole="header") — and NONE of the inset signals appear anywhere in
+// the file (useSafeAreaInsets / <SafeAreaView> / <SafeAreaProvider>). A scrim,
+// badge or backdrop carries no chrome; a screen that already consumes insets has
+// nothing misplaced.
+const ABSOLUTE_FILL_HELPER_RE = /StyleSheet\s*\.\s*absoluteFill(?:Object)?\b/;
+const POSITION_ABSOLUTE_RE = /position\s*:\s*['"]absolute['"]/g;
+const HEADER_CHROME_RE = /<\s*[A-Z][A-Za-z]*Header\b|\bScreenHeader\b|accessibilityRole\s*=\s*\{?\s*['"]header['"]/;
+const INSET_SIGNAL_RE = /useSafeAreaInsets\s*\(|<\s*SafeAreaView\b|<\s*SafeAreaProvider\b/;
+const EDGES_ZERO = ['top', 'right', 'bottom', 'left'];
+
+// Does `code` declare an absolute overlay that COVERS the screen? Either the
+// StyleSheet.absoluteFill helpers, or a style object that pins position:'absolute'
+// together with all four edges at 0. Comments are expected to be stripped already.
+const declaresAbsoluteFullCover = (code) => {
+  if (ABSOLUTE_FILL_HELPER_RE.test(code)) return true;
+  POSITION_ABSOLUTE_RE.lastIndex = 0;
+  let m;
+  while ((m = POSITION_ABSOLUTE_RE.exec(code))) {
+    // Walk back to the `{` that opens the enclosing object literal, then take
+    // that balanced block so sibling styles never bleed in.
+    let depth = 0;
+    let open = -1;
+    for (let i = m.index; i >= 0; i--) {
+      const ch = code[i];
+      if (ch === '}') depth++;
+      else if (ch === '{') { if (depth === 0) { open = i; break; } depth--; }
+    }
+    if (open < 0) continue;
+    const block = matchBalanced(code, open, '{', '}');
+    if (!block) continue;
+    if (EDGES_ZERO.every((e) => new RegExp(`\\b${e}\\s*:\\s*0\\b`).test(block.inner))) return true;
+  }
+  return false;
+};
+
+// Pure core (self-tested): a file is an unpadded full-cover pane when it declares
+// a full-cover absolute overlay AND renders header chrome AND never consumes
+// safe-area insets.
+const absolutePaneMissesInsets = (code) =>
+  declaresAbsoluteFullCover(code) && HEADER_CHROME_RE.test(code) && !INSET_SIGNAL_RE.test(code);
+
+// Rollout tier (codify→backfill→shipgate, like testing/i18n/theme): WARN by
+// default, promoted to FAIL per app with `"absolute-pane/enforce": true` in
+// qa/baseline.json once the app is backfilled green. The known-bad fixture sets
+// that flag unconditionally so prove-gates gets an unambiguous live-or-dead read.
+const enforceAbsolutePane = baseline['absolute-pane/enforce'] === true;
+const absolutePaneSev = (id, message, detail) => (enforceAbsolutePane ? fail : warn)(id, message, detail);
+
+const ruleAbsolutePaneSafeArea = () => {
+  const id = 'rn/absolute-pane-safe-area';
+  if (surface !== 'rn') return skip(id, 'Not an RN app');
+  if (ruleSkipsAll(id)) return skip(id, 'Disabled via qa/baseline.json "rn/absolute-pane-safe-area/skip"');
+  const files = srcSourceFiles();
+  if (!files.length) return skip(id, 'No src/ source files');
+  const hits = [];
+  for (const f of files) {
+    const rel = relative(appDir, f);
+    if (ruleSkipsFile(id, rel)) continue;
+    const raw = readText(f);
+    if (!raw) continue;
+    if (absolutePaneMissesInsets(stripComments(raw))) {
+      hits.push(`${rel}: an absolute full-cover overlay renders header chrome but never reads safe-area insets — a parent SafeAreaView pads, and padding never reaches an absolutely-positioned child`);
+    }
+  }
+  if (hits.length) {
+    return absolutePaneSev(id,
+      'Safe area ignored by an absolute full-screen pane: the overlay covers the whole screen (including the status bar / Dynamic Island) but applies no insets of its own — call useSafeAreaInsets() and pad the pane (paddingTop/Left/Right) so its header clears the notch', hits);
+  }
+  return pass(id, 'No absolute full-cover panes rendering chrome without their own safe-area insets');
 };
 
 // ---------- rules: UX interaction baseline (canon proposal studio-20260702-1) ----------
@@ -2077,6 +2167,26 @@ const libWiringCallerTexts = (appDir, screenAppTexts) => {
   return out;
 };
 
+// Pure core (self-tested): is <ReviewModal … /> actually RENDERED somewhere
+// outside its own file? A call to recordSuccessfulCompletion with no mount is
+// still a dead prompt — the trigger resolves true and nothing appears. Mirrors
+// ruleTipJarWired's render-site check. (tend shipped exactly this half-wired
+// shape: module synced, nothing calling it and nothing mounting it — defect
+// tend-20260708-1.)
+const reviewModalMounted = (otherTexts) =>
+  otherTexts.some((t) => typeof t === 'string' && /<\s*ReviewModal\b/.test(t));
+
+// PROMOTED WARN→FAIL fleet-wide (2026-07-27). A synced-but-dead engagement
+// module (review prompt / tip jar) is a shipped module the user can never see —
+// the same defect class as a feature that only works on one platform, and it
+// stayed a WARN on tend for weeks precisely because nothing gated it. Per-app
+// escape hatch: qa/baseline.json `"engagement/enforce": false` keeps these a
+// WARN — reserved for a fresh scaffold that hasn't wired its success moment
+// yet. `run-qa.mjs` REFUSES a testflight/production gate while that flag is
+// false, so an app can never ship with the gate switched off.
+const enforceEngagement = baseline['engagement/enforce'] !== false;
+const engagementSev = (id, message, detail) => (enforceEngagement ? fail : warn)(id, message, detail);
+
 const ruleReviewPromptWired = () => {
   const id = 'review-prompt/wired';
   if (surface !== 'rn') return skip(id, 'Not an RN app');
@@ -2087,12 +2197,21 @@ const ruleReviewPromptWired = () => {
     join(appDir, 'App.tsx'),
   ].map((f) => readText(f) || '');
   const callers = [...screenApp, ...libWiringCallerTexts(appDir, screenApp)];
+  const modal = join(appDir, 'src', 'components', 'ReviewModal.tsx');
+  const others = srcSourceFiles().filter((f) => f !== modal).map((f) => readText(f) || '');
+  const missing = [];
   if (!completionReferenced(callers)) {
-    return warn(id,
-      'Review prompt is dead: src/storage/reviewPrompt.ts exists but recordSuccessfulCompletion is never called from a screen, App.tsx, or a screen-imported src/lib wiring file, so the prompt can never fire. Call it at the app\'s genuine success moment, or delete the module',
-      ['recordSuccessfulCompletion not referenced from src/screens/**, App.tsx, or a screen-imported src/lib/*']);
+    missing.push('recordSuccessfulCompletion not referenced from src/screens/**, App.tsx, or a screen-imported src/lib/* — the trigger never fires');
   }
-  return pass(id, 'Review prompt is wired (recordSuccessfulCompletion reachable from a screen/App)');
+  if (!reviewModalMounted(others)) {
+    missing.push('<ReviewModal …/> is never rendered outside its own file — even a firing trigger shows the user nothing');
+  }
+  if (missing.length) {
+    return engagementSev(id,
+      'Review prompt is dead: src/storage/reviewPrompt.ts exists but the module is not wired end to end (a real success moment must call recordSuccessfulCompletion AND a screen must mount <ReviewModal>). Wire it at the app\'s genuine success moment, or delete the module',
+      missing);
+  }
+  return pass(id, 'Review prompt is wired end to end (recordSuccessfulCompletion reachable from a screen/App + <ReviewModal> mounted)');
 };
 
 const ruleTipJarWired = () => {
@@ -2107,7 +2226,7 @@ const ruleTipJarWired = () => {
   if (!renderedElsewhere) missing.push('TipJarSheet.tsx exists but is never rendered (<TipJarSheet …/>) outside its own file — the tip jar is unreachable');
   if (!onSupportPassed) missing.push('no onSupport={…} handler is passed to any footer/row — nothing opens the tip jar');
   if (missing.length) {
-    return warn(id, 'Tip jar present but not wired to a trigger — the module ships but the user can never open it (canon § Donation prompt)', missing);
+    return engagementSev(id, 'Tip jar present but not wired to a trigger — the module ships but the user can never open it (canon § Donation prompt)', missing);
   }
   return pass(id, 'Tip jar is rendered and reachable (onSupport wired)');
 };
@@ -2136,6 +2255,7 @@ const CANONICAL_RULES = [
   ruleAppNameSpotlightSafe,
   ruleKeyboardDismissEscape,
   ruleModalSafeAreaProvider,
+  ruleAbsolutePaneSafeArea,
   ruleEntryScreenAutofocus,
   ruleCreateOnMount,
   ruleScrollformKeyboardAvoidance,
@@ -2289,6 +2409,16 @@ function runSelfTest() {
     'review-prompt/wired: recordSuccessfulCompletion referenced → wired');
   assert(completionReferenced([`const x = 1;`, `<View/>`]) === false,
     'review-prompt/wired: no reference → dead');
+  // The mount half — a firing trigger with no <ReviewModal> shows the user
+  // nothing, which is how tend shipped a synced-but-invisible prompt.
+  assert(reviewModalMounted([`const x = 1;`, `<ReviewModal visible={v} onDismiss={d} appName="Tend"/>`]) === true,
+    'review-prompt/wired: a <ReviewModal> render site is detected → mounted');
+  assert(reviewModalMounted([`import ReviewModal from '../components/ReviewModal';`, `const x = 1;`]) === false,
+    'review-prompt/wired: an import with no render site → NOT mounted (dead)');
+  assert(reviewModalMounted([`recordSuccessfulCompletion().then((s) => setShow(s));`]) === false,
+    'review-prompt/wired: a call with no mount is still dead (the known-bad tend shape)');
+  assert(reviewModalMounted([`<ReviewModalRow/>`]) === false,
+    'review-prompt/wired: a same-prefix component (<ReviewModalRow>) is not a mount');
 
   // funding/tip-jar-wired regexes (cross-file predicates)
   assert(/<\s*TipJarSheet\b/.test(`<TipJarSheet visible={open}/>`) === true,
@@ -2346,6 +2476,28 @@ export function inferCategory(name) {
     'locale-matching: a word table with no input matching is not applicable');
   assert(localeBlindMatching(`const ORDER = ['Produce', 'Bakery', 'Frozen', 'Pantry', 'Snacks', 'Beverages']; sort(a.toLowerCase()); x.includes(y);`) === null,
     'locale-matching: capitalized display-name arrays do not count as a word table');
+
+  // rn/absolute-pane-safe-area
+  const PANE_BAD = `
+    import { ScreenHeader } from './ScreenHeader';
+    export function Pane({ title }) {
+      return <Animated.View style={s.pane}><ScreenHeader title={title} /></Animated.View>;
+    }
+    const s = StyleSheet.create({ pane: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: c.bg } });`;
+  assert(absolutePaneMissesInsets(PANE_BAD) === true,
+    'absolute-pane: a full-cover absolute pane rendering ScreenHeader with no insets fires (the tend drill-down defect)');
+  assert(absolutePaneMissesInsets(PANE_BAD.replace('const s =', 'const insets = useSafeAreaInsets();\nconst s =')) === false,
+    'absolute-pane: the same pane passes once it reads useSafeAreaInsets()');
+  assert(absolutePaneMissesInsets(PANE_BAD.replace('style={s.pane}', 'style={StyleSheet.absoluteFill}')) === true,
+    'absolute-pane: StyleSheet.absoluteFill counts as a full cover');
+  assert(absolutePaneMissesInsets(`<View style={s.scrim}/>;\nconst s = StyleSheet.create({ scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } });`) === false,
+    'absolute-pane: a full-cover scrim with no header chrome is not flagged');
+  assert(absolutePaneMissesInsets(`import { ScreenHeader } from './ScreenHeader';\nconst s = StyleSheet.create({ badge: { position: 'absolute', top: 0, right: 0 } });`) === false,
+    'absolute-pane: a corner-pinned badge (not full cover) is not flagged');
+  assert(absolutePaneMissesInsets(`import { SafeAreaView } from 'react-native-safe-area-context';\nimport { ScreenHeader } from './ScreenHeader';\n<SafeAreaView><ScreenHeader/></SafeAreaView>;\nconst s = StyleSheet.create({ pane: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } });`) === false,
+    'absolute-pane: a screen that already consumes safe area is not flagged');
+  assert(absolutePaneMissesInsets(`import { ScreenHeader } from './ScreenHeader';\nconst s = StyleSheet.create({ row: { position: 'absolute', top: 0 }, other: { left: 0, right: 0, bottom: 0 } });`) === false,
+    'absolute-pane: edges spread across sibling style objects do not count as a full cover');
 
   console.log(failed ? `\nqa-canonical self-test FAILED (${failed})` : '\nqa-canonical self-test PASSED');
   process.exit(failed ? 1 : 0);
