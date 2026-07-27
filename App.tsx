@@ -41,7 +41,7 @@ import { startSyncEngine, stopSyncEngine, flushSyncEngine } from './src/sync';
 import { drainPendingSiriItems, startSiriListSync } from './src/siri';
 import { parseShareLink } from './src/sync/share';
 import { t } from './src/i18n';
-import { APP_NAME, IOS_APP_STORE_ID, ANDROID_PACKAGE } from './src/lib/links';
+import { IOS_APP_STORE_ID, ANDROID_PACKAGE } from './src/lib/links';
 import { QA_MODE } from './src/qa/qaMode';
 
 // Hold the native launch screen until the JS splash takes over (no icon blink).
@@ -75,7 +75,7 @@ const navigationRef = createNavigationContainerRef<RootStackParamList>();
  *  (session count, 3/15/30 schedule, 3-per-install cap) — this app carries no
  *  trigger code. Module scope so the object identity is stable across renders. */
 const REVIEW = {
-  appName: APP_NAME,
+  appName: 'Grocery List',
   iosAppStoreId: IOS_APP_STORE_ID,
   androidPackageName: ANDROID_PACKAGE,
 };
