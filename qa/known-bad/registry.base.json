@@ -17,6 +17,7 @@
     { "gate": "flows/has-outcome-assertions", "kind": "canonical-rule", "fixture": "canonical", "rule": "flows/has-outcome-assertions", "why": "journey.json has steps but zero assert/assertNot + testing/enforce — must FAIL (a flow must prove an outcome)." },
     { "gate": "i18n/no-hardcoded-strings", "kind": "canonical-rule", "fixture": "canonical", "rule": "i18n/no-hardcoded-strings", "why": "no src/i18n module + i18n/enforce — must FAIL (every app ships translation-ready)." },
     { "gate": "theme/appearance-toggle", "kind": "canonical-rule", "fixture": "canonical", "rule": "theme/appearance-toggle", "why": "no <AppearanceToggle/> in source + theme/enforce — must FAIL (Settings must offer System/Light/Dark)." },
+    { "gate": "review-prompt/wired", "kind": "canonical-rule", "fixture": "canonical", "rule": "review-prompt/wired", "why": "src/storage/reviewPrompt.ts is synced and the shell is current (calls recordSessionStart, mounts <ReviewModal>), but App.tsx mounts <AppShell> with no review={…} prop — must FAIL (the shell never counts a session, so the prompt ships dead and no user can ever see it; the tend/tally defect, isolated to the one prop that is now the whole per-app wiring)." },
     { "gate": "flows/lint-drift", "kind": "command", "fixture": "flow-drift", "cmd": ["node", "{appDir}/scripts/qa/lint-flows.mjs", "{fixtureDir}"], "why": "journey.json references @missingAnchor absent from selectors.json — lint-flows must exit non-zero (selector drift)." }
   ]
 }

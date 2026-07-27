@@ -8,7 +8,15 @@
  *
  * Usage in App.tsx (the app owns only the readiness gate + the screen list):
  *
- *   <AppShell ready={fontsLoaded && hydrated} navigationRef={navigationRef}>
+ *   <AppShell
+ *     ready={fontsLoaded && hydrated}
+ *     navigationRef={navigationRef}
+ *     review={{
+ *       appName: 'Grocery list',
+ *       iosAppStoreId: '6779417031',
+ *       androidPackageName: 'com.joshapproved.grocerylist',
+ *     }}
+ *   >
  *     <Stack.Navigator screenOptions={{ headerShown: false }}>
  *       <Stack.Screen name="Home" component={HomeScreen} />
  *       ...
@@ -19,7 +27,7 @@
  * must run before first paint); AppShell owns hiding it via AnimatedSplash.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useColorScheme } from 'react-native';
 import {
   NavigationContainer,
@@ -30,11 +38,17 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import AnimatedSplash from '../components/AnimatedSplash';
+import ReviewModal from '../components/ReviewModal';
 import { FeedbackProvider } from '../feedback/FeedbackProvider';
 import { buildNavTheme } from './navTheme';
 import { useApplyThemePreference } from '../theme';
 import { useApplyLocalePreference, useLocaleVersion } from '../i18n/localePreference';
+import { recordSessionStart } from '../storage/reviewPrompt';
 import { QA_MODE } from '../qa/qaMode';
+
+/** Beat between the splash finishing and the review prompt appearing, so the
+ *  card fades in on a settled screen instead of racing the splash out. */
+const REVIEW_PROMPT_DELAY_MS = 800;
 
 type Props = {
   /** Content is ready (fonts loaded + stores hydrated). Until true, the splash
@@ -44,9 +58,23 @@ type Props = {
   children: React.ReactNode;
   /** Optional navigation ref for deep-linking / share-link pairing. */
   navigationRef?: React.Ref<NavigationContainerRef<any>>;
+  /**
+   * Store identity for the canonical review prompt. Pass it and the shell owns
+   * the whole thing — session counting, the 3/15/30 schedule, the 3-per-install
+   * cap, and mounting <ReviewModal>. Apps carry NO trigger code (canon §
+   * Review prompt). Omit it and no prompt is ever counted or shown.
+   */
+  review?: {
+    /** App name as shown in the title — sentence case, no trademark. */
+    appName: string;
+    /** Numeric App Store ID (e.g. "6766071864"). */
+    iosAppStoreId: string;
+    /** Android applicationId (e.g. "com.joshapproved.grocerylist"). */
+    androidPackageName: string;
+  };
 };
 
-export function AppShell({ ready, children, navigationRef }: Props) {
+export function AppShell({ ready, children, navigationRef, review }: Props) {
   // Restore + apply the saved appearance preference (System/Light/Dark) once,
   // before first paint. Drives useColorScheme() below and in every screen.
   useApplyThemePreference();
@@ -59,6 +87,53 @@ export function AppShell({ ready, children, navigationRef }: Props) {
   const isDark = useColorScheme() === 'dark';
   const [splashDone, setSplashDone] = useState(false);
 
+  // ---- Review prompt (canon § Review prompt) -------------------------------
+  // The trigger is a SESSION — one app cold start, i.e. one JS boot — so this
+  // effect must count exactly once per boot no matter how many times the shell
+  // re-renders. The ref is that guard; state can't be (a re-render reads the
+  // stale value before the async resolve lands).
+  //
+  // Two hard rules, both encoded below:
+  //   1. Never under QA_MODE. The deterministic capture pipeline must never
+  //      meet a surprise modal, and a capture run must not burn a session
+  //      either — so QA_MODE doesn't even count the boot.
+  //   2. Never over the splash. The prompt waits for `splashDone && ready`,
+  //      then a short beat, so it lands on a settled first screen.
+  //
+  // PRECEDENCE — one shell modal per session. If the launch-notice card
+  // (templates/launch-notice) is showing this session, the review prompt does
+  // NOT show: two cards stacked on a cold start is exactly the "vies for the
+  // user's attention" pattern tenet 5 forbids, and the launch notice is the
+  // more time-sensitive of the two (it has a 60-day window; the review ask does
+  // not). Nothing is lost by yielding — eligibility is a `>=` check on the
+  // session count, so the review prompt simply re-fires the next session. The
+  // shell does not mount the launch notice today (zero consumers); when it
+  // does, gate this effect on that card not being shown, in this order.
+  const [showReview, setShowReview] = useState(false);
+  const sessionCounted = useRef(false);
+  // Depend on the BOOLEAN, never the `review` object: apps pass it as an inline
+  // literal, so its identity changes on every render — depending on it would
+  // re-run the effect, and the cleanup would cancel the pending prompt forever.
+  const hasReview = !!review;
+  useEffect(() => {
+    if (!hasReview || QA_MODE) return;
+    if (!ready || !splashDone) return;
+    if (sessionCounted.current) return;
+    sessionCounted.current = true;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    recordSessionStart().then((shouldPrompt) => {
+      if (cancelled || !shouldPrompt) return;
+      timer = setTimeout(() => {
+        if (!cancelled) setShowReview(true);
+      }, REVIEW_PROMPT_DELAY_MS);
+    });
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [hasReview, ready, splashDone]);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
@@ -68,6 +143,15 @@ export function AppShell({ ready, children, navigationRef }: Props) {
               <StatusBar style={isDark ? 'light' : 'dark'} />
               <FeedbackProvider>{children}</FeedbackProvider>
             </NavigationContainer>
+          )}
+          {review && (
+            <ReviewModal
+              visible={showReview}
+              onDismiss={() => setShowReview(false)}
+              appName={review.appName}
+              iosAppStoreId={review.iosAppStoreId}
+              androidPackageName={review.androidPackageName}
+            />
           )}
           {!QA_MODE && !splashDone && (
             <AnimatedSplash ready={ready} onFinish={() => setSplashDone(true)} />

@@ -2140,39 +2140,51 @@ const ruleSyncStatusHonestyWired = () => {
 // nothing triggers). These two guard it: a module file exists in the tree but no
 // screen/App renders or calls it, so it's dead weight the user never sees. WARN.
 
-// Pure core (self-tested): is recordSuccessfulCompletion referenced by any of the
-// candidate caller texts (screens + App.tsx)?
-const completionReferenced = (callerTexts) =>
-  callerTexts.some((t) => typeof t === 'string' && t.includes('recordSuccessfulCompletion'));
+// The review prompt's trigger became SESSION-based on 2026-07-27 and moved into
+// the app shell, so what this rule checks changed shape with it. There is no
+// per-app trigger code left to look for: the app's whole contribution is one
+// `review={…}` prop on <AppShell>, and the shell does the rest. Accordingly the
+// three predicates below are (a) the app opts in, (b) the shell is current, and
+// (c) something actually mounts the modal.
 
-// A `src/lib/*` file is a legitimate wiring-indirection layer: an app may
-// centralize its success moment in e.g. lib/reviewTrigger.ts (which calls
-// recordSuccessfulCompletion) and have a screen import THAT. Count such a lib
-// file as a caller only when a screen/App actually imports it (by basename), so
-// the indirection is real, not a dead re-export (packing-list, found 2026-07-08).
-const libWiringCallerTexts = (appDir, screenAppTexts) => {
-  const out = [];
-  const libDir = join(appDir, 'src', 'lib');
-  if (!exists(libDir)) return out;
-  const importedBases = new Set();
-  for (const text of screenAppTexts) {
-    for (const m of text.matchAll(/from\s+['"][^'"]*\/lib\/([A-Za-z0-9_]+)['"]/g)) importedBases.add(m[1]);
+// Pure core (self-tested): does an opening <AppShell …> tag carry a `review=`
+// prop? Brace-aware because the prop value is an object literal and arrow-
+// function props can contain `>` — a naive /<AppShell[^>]*>/ would stop early
+// and miss the prop that IS the wiring.
+const appShellOpeningTags = (text) => {
+  if (typeof text !== 'string') return [];
+  const tags = [];
+  const re = /<\s*AppShell\b/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    let depth = 0;
+    let i = m.index + m[0].length;
+    for (; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '{') depth++;
+      else if (ch === '}') depth--;
+      else if (ch === '>' && depth === 0) break;
+    }
+    tags.push(text.slice(m.index, i));
   }
-  for (const f of srcSourceFiles()) {
-    const rel = relative(join(appDir, 'src'), f).replace(/\\/g, '/');
-    if (!rel.startsWith('lib/')) continue;
-    const base = rel.replace(/^lib\//, '').replace(/\.(t|j)sx?$/, '');
-    if (importedBases.has(base)) out.push(readText(f) || '');
-  }
-  return out;
+  return tags;
 };
 
+const reviewPropPassed = (appTexts) =>
+  appTexts.some((t) => appShellOpeningTags(t).some((tag) => /\breview\s*=/.test(tag)));
+
+// Pure core (self-tested): does the app's shell actually run the session
+// trigger? An app can pass a perfect `review={…}` prop into a STALE AppShell
+// that predates the session trigger and silently ignores it — the prop is
+// optional, so nothing else would complain.
+const sessionStartWired = (shellTexts) =>
+  shellTexts.some((t) => typeof t === 'string' && t.includes('recordSessionStart'));
+
 // Pure core (self-tested): is <ReviewModal … /> actually RENDERED somewhere
-// outside its own file? A call to recordSuccessfulCompletion with no mount is
-// still a dead prompt — the trigger resolves true and nothing appears. Mirrors
-// ruleTipJarWired's render-site check. (tend shipped exactly this half-wired
-// shape: module synced, nothing calling it and nothing mounting it — defect
-// tend-20260708-1.)
+// outside its own file? A firing trigger with no mount is still a dead prompt —
+// it resolves true and nothing appears. Mirrors ruleTipJarWired's render-site
+// check. (tend shipped exactly this half-wired shape: module synced, nothing
+// calling it and nothing mounting it — defect tend-20260708-1.)
 const reviewModalMounted = (otherTexts) =>
   otherTexts.some((t) => typeof t === 'string' && /<\s*ReviewModal\b/.test(t));
 
@@ -2192,26 +2204,29 @@ const ruleReviewPromptWired = () => {
   if (surface !== 'rn') return skip(id, 'Not an RN app');
   const mod = join(appDir, 'src', 'storage', 'reviewPrompt.ts');
   if (!exists(mod)) return skip(id, 'No src/storage/reviewPrompt.ts (no review prompt module)');
-  const screenApp = [
-    ...srcSourceFiles().filter((f) => relative(join(appDir, 'src'), f).replace(/\\/g, '/').startsWith('screens/')),
-    join(appDir, 'App.tsx'),
-  ].map((f) => readText(f) || '');
-  const callers = [...screenApp, ...libWiringCallerTexts(appDir, screenApp)];
+  // The app half: App.tsx is the only place a review= prop belongs (the shell
+  // wraps the whole tree). The shell half: the synced AppShell — or App.tsx
+  // itself for a pre-shell app that hand-rolls the same wiring.
+  const appEntry = [join(appDir, 'App.tsx'), join(appDir, 'App.js')].map((f) => readText(f) || '');
+  const shellTexts = [readText(join(appDir, 'src', 'shell', 'AppShell.tsx')) || '', ...appEntry];
   const modal = join(appDir, 'src', 'components', 'ReviewModal.tsx');
   const others = srcSourceFiles().filter((f) => f !== modal).map((f) => readText(f) || '');
   const missing = [];
-  if (!completionReferenced(callers)) {
-    missing.push('recordSuccessfulCompletion not referenced from src/screens/**, App.tsx, or a screen-imported src/lib/* — the trigger never fires');
+  if (!reviewPropPassed(appEntry)) {
+    missing.push('no review={…} prop is passed to <AppShell> in App.tsx — the shell never counts a session, so the prompt can never fire');
+  }
+  if (!sessionStartWired(shellTexts)) {
+    missing.push('recordSessionStart is not called from src/shell/AppShell.tsx or App.tsx — the shell is stale (re-sync app-shell), so a review= prop is ignored');
   }
   if (!reviewModalMounted(others)) {
     missing.push('<ReviewModal …/> is never rendered outside its own file — even a firing trigger shows the user nothing');
   }
   if (missing.length) {
     return engagementSev(id,
-      'Review prompt is dead: src/storage/reviewPrompt.ts exists but the module is not wired end to end (a real success moment must call recordSuccessfulCompletion AND a screen must mount <ReviewModal>). Wire it at the app\'s genuine success moment, or delete the module',
+      'Review prompt is dead: src/storage/reviewPrompt.ts exists but the module is not wired end to end. Wiring is one prop — pass review={{ appName, iosAppStoreId, androidPackageName }} to <AppShell> (and re-sync app-shell so the shell runs the session trigger and mounts <ReviewModal>), or delete the module',
       missing);
   }
-  return pass(id, 'Review prompt is wired end to end (recordSuccessfulCompletion reachable from a screen/App + <ReviewModal> mounted)');
+  return pass(id, 'Review prompt is wired end to end (review= prop on <AppShell> + shell calls recordSessionStart + <ReviewModal> mounted)');
 };
 
 const ruleTipJarWired = () => {
@@ -2404,19 +2419,34 @@ function runSelfTest() {
   assert(keyboardTrapped(`<TextInput blurOnSubmit={false} onSubmitEditing={()=>{ if(!v){Keyboard.dismiss();return;} add(v); }}/>`) === false,
     'keyboard-trap: a Keyboard.dismiss() escape passes');
 
-  // review-prompt/wired
-  assert(completionReferenced([`const x = 1;`, `import {recordSuccessfulCompletion} from '../storage/reviewPrompt';`]) === true,
-    'review-prompt/wired: recordSuccessfulCompletion referenced → wired');
-  assert(completionReferenced([`const x = 1;`, `<View/>`]) === false,
-    'review-prompt/wired: no reference → dead');
+  // review-prompt/wired (session-based trigger, shell-owned — 2026-07-27)
+  //
+  // The opt-in half: one `review=` prop on <AppShell> is the app's ENTIRE
+  // contribution, so the tag parse has to be right or the gate reads a wired
+  // app as dead (and vice versa).
+  assert(reviewPropPassed([`<AppShell ready={r} review={{ appName: 'Tend', iosAppStoreId: '1', androidPackageName: 'x' }}>`]) === true,
+    'review-prompt/wired: a review={{…}} prop on <AppShell> is detected → opted in');
+  assert(reviewPropPassed([`<AppShell\n  ready={r}\n  navigationRef={ref}\n  review={{\n    appName: 'Tend',\n  }}\n>`]) === true,
+    'review-prompt/wired: a multi-line <AppShell> tag still yields the review prop');
+  assert(reviewPropPassed([`<AppShell ready={r} onReady={() => a > b} review={{ appName: 'T' }}>`]) === true,
+    'review-prompt/wired: a `>` inside a brace-wrapped prop does not end the tag early');
+  assert(reviewPropPassed([`<AppShell ready={fontsLoaded && hydrated}>`]) === false,
+    'review-prompt/wired: an <AppShell> with no review prop → dead (the shape the per-app rollout must fix)');
+  assert(reviewPropPassed([`// review= is documented here but never passed\nconst x = 1;`]) === false,
+    'review-prompt/wired: a bare review= outside an <AppShell> tag is not wiring');
+  // The shell half — a stale AppShell silently ignores the optional prop.
+  assert(sessionStartWired([`recordSessionStart().then((s) => setShow(s));`]) === true,
+    'review-prompt/wired: a shell calling recordSessionStart → current');
+  assert(sessionStartWired([`const [splashDone, setSplashDone] = useState(false);`]) === false,
+    'review-prompt/wired: a shell that never calls recordSessionStart → stale (prop ignored)');
   // The mount half — a firing trigger with no <ReviewModal> shows the user
   // nothing, which is how tend shipped a synced-but-invisible prompt.
   assert(reviewModalMounted([`const x = 1;`, `<ReviewModal visible={v} onDismiss={d} appName="Tend"/>`]) === true,
     'review-prompt/wired: a <ReviewModal> render site is detected → mounted');
   assert(reviewModalMounted([`import ReviewModal from '../components/ReviewModal';`, `const x = 1;`]) === false,
     'review-prompt/wired: an import with no render site → NOT mounted (dead)');
-  assert(reviewModalMounted([`recordSuccessfulCompletion().then((s) => setShow(s));`]) === false,
-    'review-prompt/wired: a call with no mount is still dead (the known-bad tend shape)');
+  assert(reviewModalMounted([`recordSessionStart().then((s) => setShow(s));`]) === false,
+    'review-prompt/wired: a trigger call with no mount is still dead (the known-bad tend shape)');
   assert(reviewModalMounted([`<ReviewModalRow/>`]) === false,
     'review-prompt/wired: a same-prefix component (<ReviewModalRow>) is not a mount');
 

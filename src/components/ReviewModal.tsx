@@ -17,11 +17,7 @@ import {
   Platform,
   AccessibilityInfo,
 } from 'react-native';
-import {
-  markReviewOpened,
-  markReviewPromptShown,
-  dismissReviewPrompt,
-} from '../storage/reviewPrompt';
+import { markReviewOpened, markReviewPromptShown } from '../storage/reviewPrompt';
 import {
   useTheme,
   fontFamily,
@@ -118,8 +114,12 @@ export default function ReviewModal({
     onDismiss();
   };
 
-  const handleDismiss = async () => {
-    await dismissReviewPrompt(storageKey);
+  // "Not now" silently dismisses and stores nothing. The next eligible session
+  // is positional — `REVIEW_CONFIG.promptAtSessions[promptsShown]` — and
+  // `markReviewPromptShown` (on display, above) already advanced that pointer,
+  // so there is no schedule to write here. A dismiss that wrote state would
+  // double-count the one prompt the user just saw.
+  const handleDismiss = () => {
     onDismiss();
   };
 

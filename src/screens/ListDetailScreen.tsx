@@ -61,9 +61,6 @@ import { SyncStatusBar } from '../components/SyncStatusBar';
 import { useActionMenu, usePrompt } from '../components/Dialogs';
 import { useItemEditor } from '../components/ItemEditor';
 import AddItemsSheet from '../components/AddItemsSheet';
-import ReviewModal from '../components/ReviewModal';
-import { recordSuccessfulCompletion } from '../storage/reviewPrompt';
-import { APP_NAME, IOS_APP_STORE_ID, ANDROID_PACKAGE } from '../lib/links';
 import { t, pickLocale, getLocale, CANONICAL_LOCALES } from '../i18n';
 import { useLocalePreference } from '../i18n/localePreference';
 import {
@@ -126,7 +123,6 @@ export default function ListDetailScreen({ route, navigation }: Props) {
   // The reopen "clear last shop's leftovers?" prompt is dismissible for the
   // session; clearing also resolves it. Resets on next open (a fresh mount).
   const [stalePromptDismissed, setStalePromptDismissed] = useState(false);
-  const [reviewVisible, setReviewVisible] = useState(false);
   const [snack, setSnack] = useState<{
     message: string;
     undo: () => void;
@@ -227,27 +223,9 @@ export default function ListDetailScreen({ route, navigation }: Props) {
           message: t('detail.crossedOff', { name: item.name }),
           undo: () => setChecked(listId, item.id, false),
         });
-        // THE finished shop: this check was the last unchecked item on the
-        // list. That — not tidying up afterwards — is the satisfying moment,
-        // so it's the canonical review prompt's trigger here (re-anchored
-        // 2026-07-27 from doClearChecked, which was cleanup: a shopper who
-        // never clears their list never triggered the prompt at all).
-        // `stats` is the pre-toggle snapshot, so "last one" is checked + 1
-        // reaching total. A 3-item floor keeps a one-item errand from
-        // counting as a shop. Re-checking a single item on an already-complete
-        // list re-fires; that's fine — the canonical counter's thresholds and
-        // 3-prompt cap absorb it, and a hard once-per-list latch would need
-        // state that survives a synced delete.
-        if (stats.total >= 3 && stats.checked + 1 === stats.total) {
-          recordSuccessfulCompletion()
-            .then((show) => {
-              if (show) setReviewVisible(true);
-            })
-            .catch(() => {});
-        }
       }
     },
-    [setChecked, listId, stats.total, stats.checked]
+    [setChecked, listId]
   );
 
   const doClearChecked = useCallback(() => {
@@ -580,14 +558,6 @@ export default function ListDetailScreen({ route, navigation }: Props) {
         actionLabel={t('common.undo')}
         onAction={() => snack?.undo()}
         onDismiss={() => setSnack(null)}
-      />
-
-      <ReviewModal
-        visible={reviewVisible}
-        onDismiss={() => setReviewVisible(false)}
-        appName={APP_NAME}
-        iosAppStoreId={IOS_APP_STORE_ID}
-        androidPackageName={ANDROID_PACKAGE}
       />
 
       {menu.element}
