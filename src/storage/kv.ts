@@ -23,26 +23,39 @@
 import * as SQLite from 'expo-sqlite';
 import { DB_NAME } from './dbConfig';
 
-let _db: SQLite.SQLiteDatabase | null = null;
+// Memoize the open PROMISE, not the resolved handle. If two callers race
+// getDb() before the first open settles, caching the handle lets both run
+// openDatabaseAsync + the schema exec concurrently — a class of bug that has
+// cost real upgrade-path hydration failures in app-owned db.ts (racing PRAGMA
+// / ADD COLUMN, racing first opens pointing the path at a half-written file).
+// Caching the in-flight promise makes every caller await the one open.
+let _dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
-export async function getDb(): Promise<SQLite.SQLiteDatabase> {
-  if (_db) return _db;
-  _db = await SQLite.openDatabaseAsync(DB_NAME);
-  await _db.execAsync(`
-    CREATE TABLE IF NOT EXISTS app_settings (
-      k TEXT PRIMARY KEY NOT NULL,
-      v TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS sync_meta (
-      k TEXT PRIMARY KEY NOT NULL,
-      v TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS tombstones (
-      id        TEXT PRIMARY KEY NOT NULL,
-      deletedAt INTEGER NOT NULL
-    );
-  `);
-  return _db;
+export function getDb(): Promise<SQLite.SQLiteDatabase> {
+  if (_dbPromise) return _dbPromise;
+  _dbPromise = (async () => {
+    const db = await SQLite.openDatabaseAsync(DB_NAME);
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        k TEXT PRIMARY KEY NOT NULL,
+        v TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS sync_meta (
+        k TEXT PRIMARY KEY NOT NULL,
+        v TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS tombstones (
+        id        TEXT PRIMARY KEY NOT NULL,
+        deletedAt INTEGER NOT NULL
+      );
+    `);
+    return db;
+  })().catch((err) => {
+    // Don't cache a rejected open — let the next caller retry a fresh open.
+    _dbPromise = null;
+    throw err;
+  });
+  return _dbPromise;
 }
 
 // ---------- App settings (account-level prefs) ----------
