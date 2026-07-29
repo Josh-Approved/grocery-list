@@ -11,6 +11,10 @@
  * (removed 2026-07-15): clearing crossed-off items is ambient — a "Clear" on
  * the Checked header, plus a gentle prompt to clear last shop's leftovers when
  * you reopen the list. Nothing important hinges on remembering a tap.
+ *
+ * The finished shop is therefore an OBSERVED moment, not a declared one: the
+ * check that leaves nothing unchecked. That's where the canonical review prompt
+ * is triggered (see toggleChecked).
  */
 
 import React, {
@@ -57,9 +61,6 @@ import { SyncStatusBar } from '../components/SyncStatusBar';
 import { useActionMenu, usePrompt } from '../components/Dialogs';
 import { useItemEditor } from '../components/ItemEditor';
 import AddItemsSheet from '../components/AddItemsSheet';
-import ReviewModal from '../components/ReviewModal';
-import { recordSuccessfulCompletion } from '../storage/reviewPrompt';
-import { APP_NAME, IOS_APP_STORE_ID, ANDROID_PACKAGE } from '../lib/links';
 import { t, pickLocale, getLocale, CANONICAL_LOCALES } from '../i18n';
 import { useLocalePreference } from '../i18n/localePreference';
 import {
@@ -122,7 +123,6 @@ export default function ListDetailScreen({ route, navigation }: Props) {
   // The reopen "clear last shop's leftovers?" prompt is dismissible for the
   // session; clearing also resolves it. Resets on next open (a fresh mount).
   const [stalePromptDismissed, setStalePromptDismissed] = useState(false);
-  const [reviewVisible, setReviewVisible] = useState(false);
   const [snack, setSnack] = useState<{
     message: string;
     undo: () => void;
@@ -240,14 +240,6 @@ export default function ListDetailScreen({ route, navigation }: Props) {
       ),
       undo: () => restoreItems(listId, snaps),
     });
-    // Clearing what you bought is this app's genuine "successful shop" — the
-    // canonical review prompt's only trigger here (never on launch/error).
-    // Re-anchored from the removed "Finish shop" gate (2026-07-15).
-    recordSuccessfulCompletion()
-      .then((show) => {
-        if (show) setReviewVisible(true);
-      })
-      .catch(() => {});
   }, [clearChecked, restoreItems, listId]);
 
   const openListMenu = useCallback(() => {
@@ -566,14 +558,6 @@ export default function ListDetailScreen({ route, navigation }: Props) {
         actionLabel={t('common.undo')}
         onAction={() => snack?.undo()}
         onDismiss={() => setSnack(null)}
-      />
-
-      <ReviewModal
-        visible={reviewVisible}
-        onDismiss={() => setReviewVisible(false)}
-        appName={APP_NAME}
-        iosAppStoreId={IOS_APP_STORE_ID}
-        androidPackageName={ANDROID_PACKAGE}
       />
 
       {menu.element}

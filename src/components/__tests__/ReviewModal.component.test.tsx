@@ -3,10 +3,11 @@
  *
  * Two actions on the visible modal: the primary "Leave a review" button (opens
  * the platform write-review deep link via Linking.openURL, then dismisses) and
- * the "Not now" secondary (records the dismissal, then dismisses). The prompt's
- * storage side-effects (reviewPrompt) are mocked — we never mock the component
- * under test, only its native/storage side-effects. Queries by role/label only;
- * no testID, no snapshots.
+ * the "Not now" secondary, which silently dismisses and writes nothing (the
+ * displayed prompt was already counted on mount by markReviewPromptShown). The
+ * prompt's storage side-effects (reviewPrompt) are mocked — we never mock the
+ * component under test, only its native/storage side-effects. Queries by
+ * role/label only; no testID, no snapshots.
  */
 
 import React from 'react';
@@ -25,11 +26,9 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 // Prefixed `mock` so jest's hoisted factory may reference them.
 const mockMarkReviewOpened = jest.fn().mockResolvedValue(undefined);
 const mockMarkReviewPromptShown = jest.fn().mockResolvedValue(undefined);
-const mockDismissReviewPrompt = jest.fn().mockResolvedValue(undefined);
 jest.mock('../../storage/reviewPrompt', () => ({
   markReviewOpened: (...a: unknown[]) => mockMarkReviewOpened(...a),
   markReviewPromptShown: (...a: unknown[]) => mockMarkReviewPromptShown(...a),
-  dismissReviewPrompt: (...a: unknown[]) => mockDismissReviewPrompt(...a),
 }));
 
 import ReviewModal from '../ReviewModal';
@@ -69,7 +68,7 @@ describe('ReviewModal', () => {
     openURL.mockRestore();
   });
 
-  it('records the dismissal and closes when Not now is pressed', async () => {
+  it('closes silently, opening nothing, when Not now is pressed', async () => {
     const openURL = jest
       .spyOn(Linking, 'openURL')
       .mockResolvedValue(undefined as never);
@@ -81,8 +80,8 @@ describe('ReviewModal', () => {
     await user.press(screen.getByRole('button', { name: 'Not now' }));
 
     await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
-    expect(mockDismissReviewPrompt).toHaveBeenCalled();
     expect(openURL).not.toHaveBeenCalled();
+    expect(mockMarkReviewOpened).not.toHaveBeenCalled();
     openURL.mockRestore();
   });
 });

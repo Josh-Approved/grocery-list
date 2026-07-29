@@ -41,6 +41,7 @@ import { startSyncEngine, stopSyncEngine, flushSyncEngine } from './src/sync';
 import { drainPendingSiriItems, startSiriListSync } from './src/siri';
 import { parseShareLink } from './src/sync/share';
 import { t } from './src/i18n';
+import { IOS_APP_STORE_ID, ANDROID_PACKAGE } from './src/lib/links';
 import { QA_MODE } from './src/qa/qaMode';
 
 // Hold the native launch screen until the JS splash takes over (no icon blink).
@@ -69,6 +70,15 @@ export type TabParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
+
+/** Store identity for the canonical review prompt. The shell owns the trigger
+ *  (session count, 3/15/30 schedule, 3-per-install cap) — this app carries no
+ *  trigger code. Module scope so the object identity is stable across renders. */
+const REVIEW = {
+  appName: 'Grocery List',
+  iosAppStoreId: IOS_APP_STORE_ID,
+  androidPackageName: ANDROID_PACKAGE,
+};
 
 /** Bottom tab bar — Lists | Kits. Design-system styling: ink for the active
  *  tab, muted ink for inactive (same icon, never two), a hairline top edge,
@@ -194,7 +204,7 @@ export default function App() {
   const ready = fontsLoaded && hydrated && accountHydrated && kitsHydrated;
 
   return (
-    <AppShell ready={ready} navigationRef={navigationRef}>
+    <AppShell ready={ready} navigationRef={navigationRef} review={REVIEW}>
       <Stack.Navigator
         initialRouteName="Tabs"
         screenOptions={{ headerShown: false, animation: QA_MODE ? 'none' : undefined }}

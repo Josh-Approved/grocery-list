@@ -22,6 +22,7 @@ export const SHELL_STRINGS = {
     add: 'Add',
     maybeLater: 'Maybe later',
     notNow: 'Not now',
+    gotIt: 'Got it',
   },
   settings: {
     title: 'Settings',
@@ -86,6 +87,26 @@ export const SHELL_STRINGS = {
   error: {
     title: 'Something went wrong',
     body: 'The app hit an unexpected error. Reopen it to keep going — your data is safe on this device.',
+  },
+  // Launch notice (LaunchNoticeModal) — the first-run card shown for the first
+  // 3 sessions of a newly launched app, inside its 60-day launch window. Sets
+  // expectations before a rough edge becomes a one-star review, and routes the
+  // report to Send feedback instead.
+  //
+  // Copy is LOCKED (Josh, 2026-07-27). Two things it deliberately does not do:
+  // it never says "beta" (App Store guideline 2.2 treats betas as ineligible),
+  // and it never tells the user to report instead of reviewing (both stores
+  // treat steering unhappy users away from reviews as manipulation). The
+  // no-tracking clause is what earns the ask — it is the honest reason a report
+  // is the only signal we get. Voice canon: calm, second person, no urgency.
+  launchNotice: {
+    title: 'This app just launched',
+    body:
+      'So expect a rough edge or two. Support the cause by reporting any issues via the "Send feedback" button. Nothing here tracks you, so that\'s the only way we identify issues.',
+    // Persistent Settings row shown for the rest of the launch window, so the
+    // signal stays available after the modal stops interrupting.
+    settingsRow: 'Recently launched',
+    settingsHint: 'Found a rough edge? Send feedback below.',
   },
   // Acknowledgements screen (Credits). The header title reuses about.acknowledgements.
   credits: {
