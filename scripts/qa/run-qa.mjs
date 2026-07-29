@@ -25,6 +25,10 @@
  *   • testflight  = Tier 1 must pass (Tier 2 is smoke/optional)
  *   • production  = Tier 1 must pass AND Tier 2 static must pass (or be cleanly
  *                   not-adopted); a Tier 2 FAILURE always blocks.
+ *
+ * Both ship profiles additionally REFUSE outright if the app's qa/baseline.json
+ * carries `"engagement/enforce": false` — that flag switches the review-prompt /
+ * tip-jar wiring check off, which is a fresh-scaffold state, never a ship state.
  */
 
 import fs from 'node:fs';
@@ -401,6 +405,35 @@ function runSurvival(profile) {
   return { status: enforce ? 'fail' : 'skip', reason: report.verdict || 'state did not survive process death' };
 }
 
+// ---------- Ship gate: the engagement-wiring escape hatch must be OFF ----------
+//
+// qa/baseline.json `"engagement/enforce": false` demotes review-prompt/wired +
+// funding/tip-jar-wired back to WARN. That is a legitimate SCAFFOLD state (a new
+// app has no success moment yet) but never a SHIP state — a shipped app with a
+// dead review prompt is a module the user can never see, which is exactly how
+// tend went live (defect tend-20260708-1). So any ship-flavoured profile refuses
+// outright rather than emitting a green gate over a switched-off check.
+//
+// Pure core (self-tested): does the flag block this profile?
+function engagementGateBlocked(profile, baseline) {
+  const shipProfile = profile === 'testflight' || profile === 'production';
+  return shipProfile && (baseline || {})['engagement/enforce'] === false;
+}
+
+function runEngagement(profile) {
+  if (profile !== 'testflight' && profile !== 'production') {
+    return { status: 'skip', reason: 'engagement-flag gate is a ship-profile concern' };
+  }
+  const baseline = readJson(path.join(appDir, 'qa', 'baseline.json')) || {};
+  if (engagementGateBlocked(profile, baseline)) {
+    return {
+      status: 'fail',
+      reason: 'qa/baseline.json has "engagement/enforce": false — the review-prompt / tip-jar wiring check is switched OFF. That flag is a fresh-scaffold state, not a ship state. Wire the review prompt (call recordSuccessfulCompletion at the real success moment + mount <ReviewModal>), then DELETE the flag',
+    };
+  }
+  return { status: 'pass' };
+}
+
 // ---------- Lint: qa-canonical testing tiers ----------
 function runLintTiers() {
   const canon = path.join(appDir, 'scripts', 'qa-canonical.mjs');
@@ -428,6 +461,7 @@ const defects = runDefectGate(path.basename(appDir), profile);
 const proveGates = runProveGates(profile);
 const nightly = runNightly(path.basename(appDir), profile);
 const survival = runSurvival(profile);
+const engagement = runEngagement(profile);
 
 // Gate: a tier that ERRORs or FAILs blocks; SKIP/PASS are fine.
 const unitOk = unit.status === 'pass' || unit.status === 'skip';
@@ -440,9 +474,10 @@ const defectsFailed = defects.status === 'fail';
 const proveGatesFailed = proveGates.status === 'fail' || proveGates.status === 'error';
 const nightlyFailed = nightly.status === 'fail';
 const survivalFailed = survival.status === 'fail';
+const engagementFailed = engagement.status === 'fail';
 const ok = profile === 'testflight'
-  ? unitOk && !lintFailed && !matrixFailed       // Tier 1 + lint + device smoke; Tier 2 is smoke/optional
-  : unitOk && !flowFailed && !lintFailed && !matrixFailed && !twoDeviceFailed && !upgradeFailed && !defectsFailed && !proveGatesFailed && !nightlyFailed && !survivalFailed;  // production: Tier 2 + full matrix + two-device sync + upgrade migration + no unproven fix + no dead sensor + last nightly green/triaged + chaos subflows survived
+  ? unitOk && !lintFailed && !matrixFailed && !engagementFailed       // Tier 1 + lint + device smoke + engagement gate on; Tier 2 is smoke/optional
+  : unitOk && !flowFailed && !lintFailed && !matrixFailed && !twoDeviceFailed && !upgradeFailed && !defectsFailed && !proveGatesFailed && !nightlyFailed && !survivalFailed && !engagementFailed;  // production: Tier 2 + full matrix + two-device sync + upgrade migration + no unproven fix + no dead sensor + last nightly green/triaged + chaos subflows survived + engagement gate on
 
 const report = {
   app: path.basename(appDir),
@@ -451,7 +486,7 @@ const report = {
   // NOTE: timestamp intentionally omitted — Date.now() is unavailable in some
   // factory contexts and would make the artifact non-deterministic. CI/commit
   // metadata carries the time.
-  tiers: { unit, flow, lint, matrix, twoDevice, upgrade, defects, proveGates, nightly, survival },
+  tiers: { unit, flow, lint, matrix, twoDevice, upgrade, defects, proveGates, nightly, survival, engagement },
   // The agent's reading guide — what to do, in one line, without opening logs.
   verdict: ok
     ? `OK for ${profile}: ${unit.status === 'skip' ? 'no unit tests' : unit.passed + ' tests pass'}${flow.status === 'pass' ? ', flow static green' : ''}${matrix.status === 'pass' ? ', device matrix green' : ''}.`
@@ -466,6 +501,7 @@ const report = {
         proveGatesFailed && (proveGates.reason || `dead sensor(s): ${(proveGates.dead || []).join(', ')} — a gate reports green over its known-bad; fix the gate (run scripts/qa/prove-gates.mjs)`),
         nightly.status === 'fail' && (nightly.reason || 'last nightly not green and its defects are not triaged (run scripts/qa/nightly-digest.mjs, then triage the ledger)'),
         survival.status === 'fail' && (survival.reason || 'chaos state-survival subflow did not survive process death (run scripts/qa/run-survival.mjs)'),
+        engagement.status === 'fail' && engagement.reason,
       ].filter(Boolean).join('; ')}`,
 };
 
@@ -503,5 +539,18 @@ function selfTest() {
   assert(r.stale.join() === 'matrix-report.json', 'absent visual not reported stale; stale matrix dropped');
   r = dropStaleArtifacts({ visual: v, matrixReport: m, visualMtimeMs: 1000, matrixMtimeMs: 1000, headMs: null });
   assert(r.visual === v && r.matrixReport === m && r.stale.length === 0, 'no HEAD time -> nothing dropped');
-  console.log('run-qa self-test (matrix freshness): 10/10 OK');
+  // engagementGateBlocked — a ship can never happen with the engagement gate off
+  assert(engagementGateBlocked('production', { 'engagement/enforce': false }) === true,
+    'engagement: production + flag false -> BLOCKED');
+  assert(engagementGateBlocked('testflight', { 'engagement/enforce': false }) === true,
+    'engagement: testflight + flag false -> BLOCKED');
+  assert(engagementGateBlocked('production', {}) === false,
+    'engagement: no flag (enforce-by-default) -> allowed');
+  assert(engagementGateBlocked('production', { 'engagement/enforce': true }) === false,
+    'engagement: flag explicitly true -> allowed');
+  assert(engagementGateBlocked('dev', { 'engagement/enforce': false }) === false,
+    'engagement: a non-ship profile is not gated');
+  assert(engagementGateBlocked('production', null) === false,
+    'engagement: a missing baseline is not a blocked ship');
+  console.log('run-qa self-test (matrix freshness + engagement ship gate): 16/16 OK');
 }

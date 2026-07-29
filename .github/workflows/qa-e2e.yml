@@ -238,7 +238,14 @@ jobs:
           if [ -f qa/journey.json ]; then node scripts/qa/heal.mjs --from-device || true; fi
       - name: Frame screenshots
         if: success()
-        run: node scripts/render-screenshots.mjs --store ios
+        run: |
+          # This Maestro CLI nests takeScreenshot output under --debug-output
+          # (maestro-debug-ios/.maestro/tests/<ts>/<flow>/takeScreenshot/<path>)
+          # instead of the flat path the flow requests, so render-screenshots
+          # can't find the captures. Flatten them back to qa/captures/ios/ first.
+          # Harmless if a Maestro version writes the flat path directly.
+          find maestro-debug-ios -path '*/qa/captures/ios/*.png' -exec cp -f {} qa/captures/ios/ \; 2>/dev/null || true
+          node scripts/render-screenshots.mjs --store ios
       - name: Upload iOS artifacts
         if: always()
         uses: actions/upload-artifact@v7
@@ -403,7 +410,10 @@ jobs:
         if: success()
         env:
           CHROME_PATH: /usr/bin/google-chrome-stable
-        run: node scripts/render-screenshots.mjs --store android
+        run: |
+          # Flatten Maestro's nested takeScreenshot output (see iOS note above).
+          find maestro-debug-android -path '*/qa/captures/android/*.png' -exec cp -f {} qa/captures/android/ \; 2>/dev/null || true
+          node scripts/render-screenshots.mjs --store android
       - name: Upload Android artifacts
         if: always()
         uses: actions/upload-artifact@v7
