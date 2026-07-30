@@ -31,7 +31,6 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 // Mock the links module: keep the real URL constants stable and observe the
 // link-opening functions without touching the native bridge.
 jest.mock('../../lib/links', () => ({
-  BMAC_URL: 'https://buymeacoffee.com/jtysonwilliams',
   PRIVACY_URL: 'https://example.test/privacy',
   REPO_URL: 'https://github.com/josh-approved/grocery-list',
   STUDIO_URL: 'https://joshapproved.com',

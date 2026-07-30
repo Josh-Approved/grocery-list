@@ -2,7 +2,7 @@
  * The main-screen funding + feedback footer (canon § Funding & feedback).
  *
  * Two equal-width secondary / ghost buttons side by side — Support (the in-app
- * tip jar, or the BMAC fallback) on the left, Send feedback on the right — with
+ * tip jar) on the left, Send feedback on the right — with
  * the "josh approved" wordmark lockup signing off beneath. Ghost buttons
  * (hairline border, no fill) read clearly below the screen's ink primary CTA
  * without competing with it; feedback is the studio's lifeline, so it sits in
@@ -26,7 +26,6 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { HandHeart, Mail } from 'lucide-react-native';
-import { BMAC_URL, openUrl } from '../lib/links';
 import { useFeedback } from '../feedback/FeedbackProvider';
 import { Wordmark } from './Wordmark';
 import { t } from '../i18n';
@@ -42,8 +41,10 @@ import {
 } from '../theme';
 
 type Props = {
-  /** When set, the support button opens the in-app tip jar instead of the BMAC
-   *  link-out (canon § Tip jar — the 3.1.1-compliant IAP replacement). */
+  /** Opens the in-app tip jar (canon § Tip jar — the only funding surface;
+   *  Apple 3.1.1 forbids an external donation link-out). Until the app wires
+   *  its tip jar (TipJarSheet + product ids), omit it and the Support button
+   *  is not rendered — there is no external fallback. */
   onSupport?: () => void;
   /** 0→1 progress of the bottom-overscroll pull (from usePullRevealFooter). At
    *  0 the wordmark is hidden; at 1 it has fully popped in. */
@@ -75,17 +76,19 @@ export function FundingFooter({ onSupport, reveal, pullToReveal }: Props = {}) {
   return (
     <View style={s.wrap}>
       <View style={s.row}>
-        <Pressable
-          style={({ pressed }) => [s.btn, pressed && s.pressed]}
-          onPress={onSupport ?? (() => openUrl(BMAC_URL))}
-          accessibilityRole="button"
-          accessibilityLabel={t('about.support')}
-        >
-          <HandHeart size={16} color={c.fg} strokeWidth={1.5} />
-          <Text style={s.btnText} numberOfLines={1}>
-            {t('about.supportShort')}
-          </Text>
-        </Pressable>
+        {onSupport ? (
+          <Pressable
+            style={({ pressed }) => [s.btn, pressed && s.pressed]}
+            onPress={onSupport}
+            accessibilityRole="button"
+            accessibilityLabel={t('about.support')}
+          >
+            <HandHeart size={16} color={c.fg} strokeWidth={1.5} />
+            <Text style={s.btnText} numberOfLines={1}>
+              {t('about.supportShort')}
+            </Text>
+          </Pressable>
+        ) : null}
         <Pressable
           style={({ pressed }) => [s.btn, pressed && s.pressed]}
           onPress={() => openFeedback()}

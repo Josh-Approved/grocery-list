@@ -18,7 +18,6 @@ import { MoreFromJA } from './MoreFromJA';
 import { useFeedback } from '../feedback/FeedbackProvider';
 import { t } from '../i18n';
 import {
-  BMAC_URL,
   PRIVACY_URL,
   REPO_URL,
   STUDIO_URL,
@@ -37,8 +36,10 @@ import {
 type Props = {
   /** Navigate to the Acknowledgements screen. */
   onAcknowledgements: () => void;
-  /** When set, the support row opens the in-app tip jar instead of the BMAC
-   *  link-out (canon § Tip jar — the 3.1.1-compliant IAP replacement). */
+  /** Opens the in-app tip jar (canon § Tip jar — the only funding surface;
+   *  Apple 3.1.1 forbids an external donation link-out). Until the app wires
+   *  its tip jar (TipJarSheet + product ids), omit it and the Support row is
+   *  not rendered — there is no external fallback. */
   onSupport?: () => void;
 };
 
@@ -52,7 +53,7 @@ export function SettingsAbout({ onAcknowledgements, onSupport }: Props) {
   return (
     <>
       <Text style={s.sectionLabel}>{t('settings.about')}</Text>
-      <AboutRow label={t('about.support')} icon={HandHeart} onPress={onSupport ?? (() => openUrl(BMAC_URL))} />
+      {onSupport ? <AboutRow label={t('about.support')} icon={HandHeart} onPress={onSupport} /> : null}
       <AboutRow label={t('about.feedback')} icon={Mail} onPress={() => openFeedback()} />
       <AboutRow label={t('about.review')} icon={Star} onPress={openReview} />
       <AboutRow label={t('about.privacy')} icon={Shield} onPress={() => openUrl(PRIVACY_URL)} />

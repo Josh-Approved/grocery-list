@@ -52,7 +52,7 @@ import {
   type Colors,
 } from '../theme';
 
-/** Live reduced-motion flag (WCAG 2.2 AA — matches the review/donation modals). */
+/** Live reduced-motion flag (WCAG 2.2 AA — matches the review modal). */
 function useReducedMotion(): boolean {
   const [reduce, setReduce] = useState(false);
   useEffect(() => {

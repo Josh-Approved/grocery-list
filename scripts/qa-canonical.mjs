@@ -130,7 +130,7 @@ const README_REQUIRED_HINTS = [
   { key: 'install', re: /install|clone|npm|pnpm|yarn|expo start|load unpacked/i, label: 'How to run / install' },
   { key: 'privacy', re: /privacy|on[- ]device|stays on/i, label: 'Privacy posture' },
   { key: 'license', re: /license|MIT|Apache/i, label: 'License' },
-  { key: 'feedback', re: /feedback|email|@|buymeacoffee/i, label: 'Feedback / funding' },
+  { key: 'feedback', re: /feedback|email|@/i, label: 'Feedback / funding' },
 ];
 const ruleReadme = () => {
   const p = join(appDir, 'README.md');
@@ -235,15 +235,6 @@ const ruleNoFingerprintInCommits = () => {
 };
 
 // ---------- rules: funding & feedback ----------
-
-const ruleBmacLink = () => {
-  const files = trackedTextFiles().map((f) => join(appDir, f));
-  for (const f of files) {
-    const t = readText(f);
-    if (t && /buymeacoffee\.com\//i.test(t)) return pass('funding/bmac-present', 'Buy Me a Coffee link found');
-  }
-  return warn('funding/bmac-present', 'No buymeacoffee.com link found in tracked source — required by canonical');
-};
 
 const ruleFeedbackMailto = () => {
   const files = trackedTextFiles().map((f) => join(appDir, f));
@@ -1210,7 +1201,7 @@ const i18nWarn = (id, message, detail) => (enforceI18n ? fail : warn)(id, messag
 
 // Brand-locked components: their only literal is the "josh approved" wordmark,
 // a brand proper noun that never translates (canon § voice) — skip by basename.
-// Every OTHER canonical component (FundingFooter, DonationModal, ReviewModal,
+// Every OTHER canonical component (FundingFooter, ReviewModal,
 // ErrorBoundary, Credits, SettingsAbout, AboutRow, ScreenHeader, EmptyState) is
 // now fully externalized via t() and IS scanned, so a re-introduced hardcoded
 // string in shell chrome is caught — the gap that shipped the untranslated
@@ -2241,7 +2232,7 @@ const ruleTipJarWired = () => {
   if (!renderedElsewhere) missing.push('TipJarSheet.tsx exists but is never rendered (<TipJarSheet …/>) outside its own file — the tip jar is unreachable');
   if (!onSupportPassed) missing.push('no onSupport={…} handler is passed to any footer/row — nothing opens the tip jar');
   if (missing.length) {
-    return engagementSev(id, 'Tip jar present but not wired to a trigger — the module ships but the user can never open it (canon § Donation prompt)', missing);
+    return engagementSev(id, 'Tip jar present but not wired to a trigger — the module ships but the user can never open it (canon § Tip jar)', missing);
   }
   return pass(id, 'Tip jar is rendered and reachable (onSupport wired)');
 };
@@ -2254,7 +2245,6 @@ const CANONICAL_RULES = [
   ruleNoFingerprintInTracked,
   ruleNoAiTellsInUserFacing,
   ruleNoFingerprintInCommits,
-  ruleBmacLink,
   ruleFeedbackMailto,
   rulePackageJsonNoAnalytics,
   ruleNoIosOnlyImports,

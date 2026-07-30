@@ -5,7 +5,7 @@
  *
  * Voice canon applies (canonical-voice.md): sentence case, plain second person,
  * no emoji, no urgency. These are locked copies — the About-stamp one-liner and
- * the donation/funding labels are pinned by canonical-requirements.md.
+ * the funding labels are pinned by canonical-requirements.md.
  */
 
 export const SHELL_STRINGS = {
@@ -58,11 +58,6 @@ export const SHELL_STRINGS = {
     // Cross-promo section label (MoreFromJA). "Josh Approved" stays inline as the
     // brand; the surrounding words translate per locale.
     moreFrom: 'More from Josh Approved',
-  },
-  // Donation prompt (DonationModal). The button label reuses about.support.
-  donate: {
-    body: "{app} has no ads and no subscriptions — it's supported by the people who use it. If it's earned a place in your day, your support keeps it going.",
-    supportA11y: 'Support this app, opens in your browser',
   },
   // Tip jar (TipJarSheet) — the IAP funding surface. Locked copy, canon § Tip
   // jar: reaffirm free + studio-supported-by-tips, never "nothing unlocks", no

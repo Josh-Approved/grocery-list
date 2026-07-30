@@ -137,24 +137,6 @@
       "note": "Pressable · onPress · dynamic/child-text label"
     },
     {
-      "id": "components/DonationModal#donate.supporta11y",
-      "label": "donate.supportA11y",
-      "where": "src/components/DonationModal.tsx:77",
-      "proof": {
-        "kind": "none"
-      },
-      "note": "Pressable · onPress"
-    },
-    {
-      "id": "components/DonationModal#common.maybelater",
-      "label": "common.maybeLater",
-      "where": "src/components/DonationModal.tsx:85",
-      "proof": {
-        "kind": "none"
-      },
-      "note": "Pressable · onPress"
-    },
-    {
       "id": "components/FundingFooter#about.support",
       "label": "about.support",
       "where": "src/components/FundingFooter.tsx:78",

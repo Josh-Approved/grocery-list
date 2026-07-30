@@ -3,9 +3,9 @@
 // Source: josh-approved-factory/templates/tip-jar/TipJarSheet.tsx
 // Pairs with tipJar.ts. See README.md for canonical rules and wiring.
 //
-// One canonical sheet, used unmodified across the catalogue — like DonationModal
-// it is the one piece of custom UI we allow because it is ONE custom UI, not
-// many. Inherits the design system from '../theme'; don't restyle per app.
+// One canonical sheet, used unmodified across the catalogue — it is the one
+// piece of custom UI we allow because it is ONE custom UI, not many. Inherits
+// the design system from '../theme'; don't restyle per app.
 //
 // Copy is locked (canon § Tip jar): reaffirm free + studio-supported-by-tips,
 // never "nothing unlocks", no guilt. Prices are ALWAYS the store's localized

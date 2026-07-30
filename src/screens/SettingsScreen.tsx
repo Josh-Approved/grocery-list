@@ -1,7 +1,7 @@
 /**
  * Settings / About — the one known-shape destination (canon § Settings /
  * About). App-specific settings sit above the About block; the canonical
- * entries (BMAC, feedback, review, privacy, source, version, the stamp) are
+ * entries (support, feedback, review, privacy, source, version, the stamp) are
  * the floor, not the ceiling.
  */
 
