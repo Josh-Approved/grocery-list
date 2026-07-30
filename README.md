@@ -37,4 +37,4 @@ MIT, see [LICENSE](LICENSE).
 
 ## Feedback
 
-Email [feedback@joshapproved.com](mailto:feedback@joshapproved.com). No ads, no subscriptions, no data harvest — if it's worth a few dollars to you, there's an optional tip jar in the app.
+Email [feedback@joshapproved.com](mailto:feedback@joshapproved.com). No ads, no subscriptions, no data harvest. If it's worth a few dollars to you, there's an optional tip jar in the app.

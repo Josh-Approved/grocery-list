@@ -1,6 +1,6 @@
 # Siri "add an item" (iOS)
 
-Say *"Add to Grocery List"* to Siri and it adds an item to your list — no
+Say *"Add to Grocery List"* to Siri and it adds an item to your list. No
 tapping, no opening the app. This is an iOS-only feature; see **Platform scope**
 below for why, and the plan for Android.
 
@@ -12,7 +12,7 @@ You invoke the action, and Siri asks what to add:
   added.
 
 Why the two beats: an **App Shortcut spoken phrase can't contain a free-text
-value** — Apple's App Intents compiler only allows the app name and at most one
+value**. Apple's App Intents compiler only allows the app name and at most one
 *entity* parameter in a phrase, never an arbitrary String. So the item can't be
 in the phrase; Siri prompts for it. (A user who wants a true one-breath *"Add
 milk…"* can still record their own phrase in the Shortcuts app.)
@@ -26,7 +26,7 @@ Which list it lands on:
   - Don't name one: it goes to the **default list** you pick in Settings → Siri.
   - No default set: Siri asks *"Which list?"*.
 
-Everything stays local and private — the item is written to the same on-device
+Everything stays local and private: the item is written to the same on-device
 store as a hand-typed one, and rides the normal shared-list sync.
 
 ## How it works
@@ -99,7 +99,7 @@ assistant layer would be new.
   list"* (item embedded, Reminders' canonical phrasing) routes to Reminders, not
   this app. The invoking phrase is *"Add to Grocery List"* → Siri asks the item.
   If this collision ever proves too costly, the fix is distinct Siri invocation
-  names (`INAlternativeAppNames`) — not yet needed (device-verified 2026-07-15).
+  names (`INAlternativeAppNames`). Not yet needed (device-verified 2026-07-15).
 
 ## Testing
 
@@ -112,6 +112,6 @@ appears after reopening the app.
 List"* → Siri prompts for the item → it lands on the list. **Gotcha found:**
 upgrading over an older build that lacked App Intents can leave the app's Siri
 toggle stale/off (Shortcuts app → the shortcut → Siri), so voice does nothing
-until toggled on — but a **clean install is voice-enabled by default** and needs
+until toggled on. But a **clean install is voice-enabled by default** and needs
 no settings change. So test Siri with a delete-and-reinstall, never an upgrade,
 or you'll chase a phantom "it doesn't work."
