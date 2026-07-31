@@ -11,20 +11,11 @@
  * `react-native-get-random-values` is imported at the app entry so
  * `crypto.getRandomValues` exists for nacl's PRNG on React Native.
  *
- * DEVICE-VERIFIED. The live round-trip through the real transport, crypto and
- * engine is exercised on device (iOS simulator + Android emulator) against a
- * hermetic local relay by `scripts/e2e/run-two-device.sh`, which is a standing
- * gate. The earlier "NOT DEVICE-VERIFIED / gated before public release" note
- * here was written pre-release and went stale once that harness landed and the
- * app shipped to both stores.
- *
- * Known design tradeoffs, stated here because they are deliberate and not
- * defects: the per-list secret travels in a share link or QR code, so anyone
- * holding that link can read the list; there are no per-device keys, no forward
- * secrecy, and no way to revoke a single participant. Relays also see a stable
- * per-channel id plus timing and message sizes, so contents and identities are
- * hidden but traffic patterns are not. Accepted for a low-PII grocery list in
- * exchange for requiring no accounts. Would not be acceptable for a messenger.
+ * NOT DEVICE-VERIFIED: the crypto is standard tweetnacl, but the live
+ * round-trip through real relays has not been exercised on a device. Shipping
+ * code-only is the documented, committed Layer-2 deferral (canon
+ * § Backup & restore "when each layer is required"); device-verify is gated
+ * before public release.
  */
 
 import nacl from 'tweetnacl';
