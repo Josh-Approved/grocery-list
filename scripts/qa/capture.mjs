@@ -288,6 +288,21 @@ function androidPrepare(artifact) {
     run('device — force portrait (tablet)', ...adb(
       `shell settings put system accelerometer_rotation 0 && adb ${dev.join(' ')} shell settings put system user_rotation 1`));
   }
+  // Suppress system dialogs + collapse any open system panel before traversal.
+  // A system window drawn OVER the app defeats Maestro completely: the hierarchy
+  // query returns the system UI, so every anchor misses against a screen that is
+  // in fact fine. CI has carried `hide_error_dialogs` since the 2026-06-10
+  // Pixel-Launcher-ANR diagnosis (templates/qa/qa-e2e.yml.template), but the
+  // LOCAL capture path never got it — and the 2026-07-29 nightly proved the same
+  // class bites here too: packing-list and tend both failed every Android cell
+  // with healer candidates that were all `com.android.systemui:*` (the
+  // airplane-mode/internet panel was open on the emulator). Best-effort; a
+  // device that refuses either call just no-ops.
+  run('device — suppress system dialogs + collapse panels', 'bash', ['-lc',
+    `adb ${dev.join(' ')} shell settings put global hide_error_dialogs 1; ` +
+    `adb ${dev.join(' ')} shell cmd statusbar collapse; ` +
+    `adb ${dev.join(' ')} shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS`],
+    { allowFail: true });
   // Demo-mode status bar (clean 9:41-style bar). Best-effort; ignore failures.
   run('device — status bar demo mode', 'bash', ['-lc',
     `adb ${dev.join(' ')} shell settings put global sysui_demo_allowed 1; ` +
