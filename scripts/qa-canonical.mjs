@@ -207,6 +207,96 @@ const ruleNoAiTellsInUserFacing = () => {
   return pass('copy/ai-tell-phrases', 'No AI-tell phrases detected in README/PRIVACY');
 };
 
+// canonical-voice.md § Retired phrases is the one voice canon, but nothing
+// enforced it per-commit over the public repos' user-facing copy — the voice
+// reviewer only reads it at ship-review, which is advisory, so a retired phrase
+// rides all the way to LIVE (tally's published README advertised "on-device AI
+// receipt reading"). This is the README/PRIVACY sibling of the store-payload
+// lint, over the same two files as `copy/ai-tell-phrases`.
+//
+// WARN by default (codify → backfill → shipgate, like the testing/i18n/theme
+// tiers); promote per-app to FAIL with `"voice/enforce": true` in
+// qa/baseline.json once that repo's copy is backfilled clean.
+//
+// Deliberately NOT flagged, because canon carves them out and a rule that cries
+// wolf gets ignored: `no analytics` / `no telemetry`, retired only as a TOP-LEVEL
+// claim — the granular variants inside a privacy proof-bullet list are canon-
+// approved and that is how every app's PRIVACY.md uses them; and `no server
+// round-trips`, which canon keeps as a technical detail in a Privacy section.
+const enforceVoice = baseline['voice/enforce'] === true;
+const voiceSev = (id, message, detail) => (enforceVoice ? fail : warn)(id, message, detail);
+
+const RETIRED_VOICE_PHRASES = [
+  { re: /\b(?:100%\s+)?on[- ]device\b/i, label: 'on-device', fix: 'Your data stays with you' },
+  // Literally canon's phrase. NOT widened to "on your phone" — that catches dev
+  // setup lines ("the Expo Go app on your phone") and factual Privacy detail,
+  // and widening the retired list is a /reconcile-canon decision, not a lint's.
+  { re: /\bon (?:your|the) device\b/i, label: 'on your device', fix: 'Your data stays with you' },
+  { re: /\bruns? locally\b/i, label: 'runs locally', fix: 'Your data stays with you' },
+  { re: /\bnothing leaves (?:your|the)\b/i, label: 'nothing leaves your device', fix: 'Your data stays with you' },
+  // "no server round-trips" stays legal as a Privacy-section technical detail.
+  { re: /\bno servers?\b(?!\s+round[- ]trip)/i, label: 'no servers', fix: 'No tracking + No accounts + Your data stays with you' },
+  { re: /\b(?:doesn'?t|does not) follow you around\b/i, label: "doesn't follow you around", fix: 'No tracking' },
+  { re: /\bsmall (?:tools|apps)\b/i, label: 'small tools', fix: 'does one job and does it well' },
+];
+
+/**
+ * Pure core (self-tested). Returns the retired-phrase hits in one file's text.
+ *
+ * `free` is the delicate one: canon retires it only as the bare COST claim and
+ * explicitly keeps the compounds ("free, open source", "free to use", "ad-free",
+ * and third-party descriptions like "free, public infrastructure"). So it is
+ * matched narrowly — only the two shapes that really are the cost claim: `free`
+ * in predicate position ("every feature is free") and `Free` opening a line
+ * ("Free on the App Store"). The app's own name is exempt, so Free Workout
+ * Timer's README never flags its own title.
+ */
+function detectRetiredVoicePhrases(text, appName = '') {
+  const hits = [];
+  for (const p of RETIRED_VOICE_PHRASES) {
+    const m = text.match(p.re);
+    if (m) hits.push(`"${p.label}" → ${p.fix}`);
+  }
+
+  const BLESSED_FREE = /^\s*(?:,\s*)?(?:and\s+)?(?:open[- ]source|to use|of charge|public|software|forever)\b/i;
+  const freeHit = (rest) => !BLESSED_FREE.test(rest);
+  const name = appName.trim().toLowerCase();
+
+  let bareFree = false;
+  const predicate = /\b(?:is|are|it'?s|stays|remains)\s+free\b(.*)$/im.exec(text);
+  if (predicate && freeHit(predicate[1])) bareFree = true;
+  for (const line of text.split('\n')) {
+    const lead = /^\s*#*\s*free\b(.*)$/i.exec(line);
+    if (!lead) continue;
+    const stripped = line.replace(/^\s*#*\s*/, '').toLowerCase();
+    if (name && stripped.startsWith(name)) continue; // the app's own title
+    if (freeHit(lead[1])) bareFree = true;
+  }
+  if (bareFree) hits.push('"Free" alone as the cost claim → No paywall');
+  return hits;
+}
+
+const ruleNoRetiredVoicePhrases = () => {
+  const id = 'copy/retired-voice-phrases';
+  const appName =
+    readJson(join(appDir, 'app.json'))?.expo?.name ||
+    readJson(join(appDir, 'manifest.json'))?.name ||
+    '';
+  const hits = [];
+  let looked = false;
+  for (const rel of USER_FACING_FILES) {
+    const p = join(appDir, rel);
+    if (!exists(p)) continue;
+    looked = true;
+    for (const h of detectRetiredVoicePhrases(readText(p) || '', appName)) hits.push(`${rel}: ${h}`);
+  }
+  if (!looked) return skip(id, 'No README/PRIVACY to scan');
+  if (hits.length) {
+    return voiceSev(id, 'Retired voice phrases in user-facing copy (canonical-voice.md § Retired phrases)', hits);
+  }
+  return pass(id, 'No retired voice phrases in README/PRIVACY');
+};
+
 // ---------- rules: commit history ----------
 
 const ruleNoFingerprintInCommits = () => {
@@ -2244,6 +2334,7 @@ const CANONICAL_RULES = [
   ruleLeakFilesNotTracked,
   ruleNoFingerprintInTracked,
   ruleNoAiTellsInUserFacing,
+  ruleNoRetiredVoicePhrases,
   ruleNoFingerprintInCommits,
   ruleFeedbackMailto,
   rulePackageJsonNoAnalytics,
@@ -2324,6 +2415,30 @@ const sym = {
 function runSelfTest() {
   let failed = 0;
   const assert = (cond, msg) => { if (!cond) { failed++; console.error(`  ✗ ${msg}`); } else console.log(`  ✓ ${msg}`); };
+
+  // copy/retired-voice-phrases
+  assert(detectRetiredVoicePhrases('On-device AI reads the receipt.').length === 1,
+    'retired-voice: "on-device" fires (the tally shape that shipped LIVE)');
+  assert(detectRetiredVoicePhrases('Everything stays on your device.').length === 1,
+    'retired-voice: "on your device" fires');
+  assert(detectRetiredVoicePhrases('It runs locally and no servers are involved.').length === 2,
+    'retired-voice: "runs locally" + "no servers" both fire');
+  assert(detectRetiredVoicePhrases('There are no server round-trips.').length === 0,
+    'retired-voice: "no server round-trips" is canon-legal in a Privacy section');
+  assert(detectRetiredVoicePhrases('- **No analytics**, no telemetry, no crash reports.').length === 0,
+    'retired-voice: granular no-analytics proof bullets are canon-approved, not flagged');
+  assert(detectRetiredVoicePhrases('Free on the App Store and Google Play.').length === 1,
+    'retired-voice: line-leading "Free" as the cost claim fires');
+  assert(detectRetiredVoicePhrases('Every feature is free, with no ads.').length === 1,
+    'retired-voice: predicate "is free" as the cost claim fires');
+  assert(detectRetiredVoicePhrases('# Free Workout Timer\n\nA timer.', 'Free Workout Timer').length === 0,
+    'retired-voice: the app\'s own name is exempt');
+  assert(detectRetiredVoicePhrases('It is free and open source, free to use.').length === 0,
+    'retired-voice: the compounds canon keeps ("free and open source", "free to use") pass');
+  assert(detectRetiredVoicePhrases('Changes pass through free, public infrastructure we do not run.').length === 0,
+    'retired-voice: third-party "free, public infrastructure" is not our cost claim');
+  assert(detectRetiredVoicePhrases('No paywall. No ads. No tracking. No accounts. Your data stays with you.').length === 0,
+    'retired-voice: the canonical wedge itself is clean');
 
   // ux/touch-target-min
   assert(detectSmallTouchTargets(`<Pressable style={{ height: 32, width: 32 }} onPress={x}/>`).length === 1,
