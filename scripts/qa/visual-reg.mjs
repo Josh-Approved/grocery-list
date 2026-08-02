@@ -228,9 +228,19 @@ async function main() {
 
   const forceLock = flags.has('--lock');
   const proposals = [];
-  let locked = 0, compared = 0, regressions = 0;
+  let locked = 0, compared = 0, regressions = 0, unverified = 0;
 
   for (const cell of cells) {
+    // matrix.mjs drops this marker when a cell ran on a fallback emulator rather
+    // than its canonical AVD. Those screens belong to a different device, so they
+    // can neither be diffed against this cell's baseline nor become one (L23).
+    if (fs.existsSync(path.join(matrixDir, cell, '.unverified-device'))) {
+      unverified++;
+      proposals.push({ kind: 'visual/unverified-device', cell, screen: null, severity: 'minor',
+        summary: `${cell} skipped by the visual net — captured on a fallback device, not this cell's AVD`,
+        suggestedAction: 'Boot the cell\'s canonical AVD, or map your local AVD names in a gitignored qa/devices.local.json.' });
+      continue;
+    }
     for (const screen of listScreens(path.join(matrixDir, cell))) {
       if (excluded.has(screen)) continue;
       const curPath = path.join(matrixDir, cell, `${screen}.png`);
@@ -246,13 +256,19 @@ async function main() {
       }
 
       const base = readPng(lib.PNG, basePath);
-      // Dimensions must match to diff; if the baseline was captured at a
-      // different device size, re-lock it (a device/sim change, not a regression).
+      // Dimensions must match to diff. A size change means this cell ran on a
+      // DIFFERENT DEVICE than the one that locked the baseline — usually because
+      // capture fell back to whatever sim/emulator happened to be booted rather
+      // than the cell's canonical device. Never adopt it silently: that swaps the
+      // cell's baseline for another device's screens and blinds the net for good
+      // (L23 — the iPhone 6.9" and Pixel-phone baselines were overwritten with
+      // SE- and 16:9-shaped captures on 2026-08-01). Block, and require an
+      // explicit --accept / --lock once the device change is confirmed intended.
       if (base.width !== curSmall.width || base.height !== curSmall.height) {
-        writePng(lib.PNG, basePath, curSmall);
-        proposals.push({ kind: 'visual/dimension-change', cell, screen, severity: 'minor',
-          summary: `${cell}/${screen} baseline re-locked (size ${base.width}x${base.height} -> ${curSmall.width}x${curSmall.height})`,
-          suggestedAction: 'a device/sim resolution change, not a regression — baseline adopted automatically' });
+        regressions++;
+        proposals.push({ kind: 'visual/dimension-change', cell, screen, severity: 'major',
+          summary: `${cell}/${screen} captured at ${curSmall.width}x${curSmall.height} but the baseline is ${base.width}x${base.height} — this cell ran on a different device than the baseline`,
+          suggestedAction: `Check the cell ran on its canonical device (qa/devices.json, or a qa/devices.local.json override) and that device is booted. If the device change is intended, adopt it: node scripts/qa/visual-reg.mjs . --accept ${cell}/${screen}` });
         continue;
       }
 
@@ -287,13 +303,13 @@ async function main() {
   const triagePath = path.join(appDir, 'qa', 'qa-triage.json');
   let triage = {};
   try { triage = JSON.parse(fs.readFileSync(triagePath, 'utf8')); } catch {}
-  triage.visualReg = { profile: valueOf('--profile') || 'full', compared, regressions, locked, proposals, capBytes: bytes };
+  triage.visualReg = { profile: valueOf('--profile') || 'full', compared, regressions, locked, unverified, proposals, capBytes: bytes };
   fs.mkdirSync(path.dirname(triagePath), { recursive: true });
   fs.writeFileSync(triagePath, JSON.stringify(triage, null, 2) + '\n');
   fs.writeFileSync(path.join(appDir, 'qa', 'visual-reg.json'),
-    JSON.stringify({ app: path.basename(appDir), status: 'ok', compared, regressions, locked, proposals, capBytes: bytes }, null, 2) + '\n');
+    JSON.stringify({ app: path.basename(appDir), status: 'ok', compared, regressions, locked, unverified, proposals, capBytes: bytes }, null, 2) + '\n');
 
-  console.log(`visual-reg: ${locked} locked, ${compared} compared, ${regressions} regression(s).`);
+  console.log(`visual-reg: ${locked} locked, ${compared} compared, ${regressions} regression(s)` + (unverified ? `, ${unverified} cell(s) skipped (unverified device).` : '.'));
   if (regressions > 0) {
     console.log(`  regressions (read qa/qa-triage.json → visualReg):`);
     for (const p of proposals.filter((p) => p.kind === 'visual/regression')) console.log(`    · ${p.summary}`);

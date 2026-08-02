@@ -289,8 +289,11 @@ function main() {
       if (!target) {
         if (bootedSerials.length === 1) {
           target = bootedSerials[0];
+          c.deviceClassVerified = false;
           console.warn(`  ⚠ cell ${c.cell}: AVD "${c.avd}" not among booted emulators; ` +
-            `using the only one booted (${target}=${serialToAvd[target] || '?'}). Device class UNVERIFIED.`);
+            `using the only one booted (${target}=${serialToAvd[target] || '?'}). Device class UNVERIFIED — ` +
+            `this cell's traverse still counts, but it is EXCLUDED from the visual net (its screens are not ` +
+            `this cell's device). Map your local AVD names in a gitignored qa/devices.local.json to fix.`);
         } else {
           const reason = bootedSerials.length === 0 ? 'no android emulator booted'
             : `AVD "${c.avd}" not booted (have: ${bootedSerials.map((s) => serialToAvd[s]).join(', ')})`;
@@ -309,6 +312,18 @@ function main() {
     console.log(`\n=== cell ${c.cell} ===`);
     const r = spawnSync('node', argv, { cwd: appDir, encoding: 'utf8', stdio: 'inherit' });
     results.push({ ...c, status: r.status === 0 ? 'pass' : 'fail', exit: r.status });
+
+    // A cell captured on an unverified device class holds screens of SOME OTHER
+    // device. Mark it so visual-reg neither diffs nor locks it — otherwise the
+    // cell's baseline silently becomes another device's screens (L23).
+    if (!dry && c.deviceClassVerified === false) {
+      const cellDir = path.join(appDir, 'qa', 'captures', 'matrix', c.cell);
+      try {
+        fs.mkdirSync(cellDir, { recursive: true });
+        fs.writeFileSync(path.join(cellDir, '.unverified-device'),
+          `captured on a fallback emulator, not this cell's AVD (${c.avd})\n`);
+      } catch {}
+    }
   }
 
   // Visual regression across the captured cells (lock first run, else diff).

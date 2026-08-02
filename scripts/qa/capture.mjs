@@ -185,16 +185,23 @@ function iosPrepare(artifact) {
   // when several sims are booted — launchApp lands on the wrong one and every
   // screenshot is the springboard. So we shut down all OTHER booted sims before
   // the run (hard-won; this exact failure ate a capture on 2026-06-08).
+  // One reusable sim PER DEVICE TYPE (see the note below) — e.g. qa-ios-iphone-17-pro-max.
+  const simName = `qa-${storeKey}-${String(device).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
   run('device — boot simulator (isolated)', 'bash', ['-lc',
-    // Reuse a PREVIOUSLY-CREATED "qa-<storeKey>" device first (the exact name
+    // Reuse a PREVIOUSLY-CREATED reusable device first (the exact name
     // `simctl create` gives it below). Searching only for the device-type string
     // (e.g. "iPhone 17 Pro Max") never matches it back — simctl lists devices by
-    // their given NAME, not their type — so every run minted a fresh qa-ios sim
+    // their given NAME, not their type — so every run minted a fresh qa sim
     // instead of reusing the last one (ticket qa-ios-sim-leak). Fall back to a
     // stock same-named simulator, then create only as a last resort.
-    `UDID=$(xcrun simctl list devices | grep -m1 "^ *qa-${storeKey} (" | grep -oE '[0-9A-F-]{36}' | head -1); ` +
+    //
+    // The reusable name is keyed on the DEVICE, not just the store: keying it on
+    // the store alone made every iOS phone cell reuse one "qa-ios" sim, so the
+    // iPhone 6.9" cell silently ran on whatever model that sim happened to be
+    // (an SE) and its screenshots were another device's. L23.
+    `UDID=$(xcrun simctl list devices | grep -m1 "^ *${simName} (" | grep -oE '[0-9A-F-]{36}' | head -1); ` +
     `[ -z "$UDID" ] && UDID=$(xcrun simctl list devices | grep -m1 ${JSON.stringify(device)} | grep -oE '[0-9A-F-]{36}' | head -1); ` +
-    `[ -z "$UDID" ] && UDID=$(xcrun simctl create qa-${storeKey} ${JSON.stringify(device)}); ` +
+    `[ -z "$UDID" ] && UDID=$(xcrun simctl create ${simName} ${JSON.stringify(device)}); ` +
     `for u in $(xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}'); do [ "$u" != "$UDID" ] && xcrun simctl shutdown "$u" 2>/dev/null; done; ` +
     `xcrun simctl boot "$UDID" 2>/dev/null; xcrun simctl bootstatus "$UDID" -b; ` +
     `xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3; ` +
