@@ -305,6 +305,40 @@
     return '';
   }
 
+  // ---------- caption fit ----------
+  // The caption is ONE line of SVG <text> at a fixed font-size, so an over-long
+  // string used to run off both ends of the canvas and still exit 0 — a broken
+  // marketing asset that passed every gate (ticket demo-capture-caption-clips-
+  // silently, 2026-08-01). Measure it for real once the webfont has loaded and
+  // shrink to fit; if even the floor size overflows, record the overflow so the
+  // Node caller can refuse rather than ship a clipped caption. The budget and
+  // the floor come from the caller (capbudget/capminscale) so demo-capture.mjs
+  // stays the single source of truth for both numbers.
+  function fitCaption(W, capSize, capCy) {
+    const t = document.getElementById('captext');
+    if (!t || !t.getComputedTextLength) return;
+    const budget = Number(params.get('capbudget') || 0) || W * 0.88;
+    const floor = Number(params.get('capminscale') || 0) || 0.62;
+    let len = t.getComputedTextLength();
+    let scale = 1;
+    if (len > budget) {
+      scale = Math.max(floor, budget / len);
+      // Fractional, NOT rounded: rounding to the nearest integer px can round a
+      // just-over caption straight back to its original size, so it stays over
+      // budget and the whole shrink is a no-op.
+      const size = Math.max(1, capSize * scale);
+      t.setAttribute('font-size', size.toFixed(3));
+      // Re-centre the baseline for the new size (y was set from the nominal one).
+      t.setAttribute('y', (capCy + size * 0.34).toFixed(3));
+      len = t.getComputedTextLength();
+    }
+    // Read by demo-capture.mjs via --dump-dom: ok:<scale> | overflow:<ratio>
+    document.body.dataset.capfit = len <= budget + 0.5
+      ? `ok:${scale.toFixed(3)}`
+      : `overflow:${(len / budget).toFixed(3)}`;
+    document.body.dataset.capchars = String((params.get('caption') || '').length);
+  }
+
   // ---------- video-frame plates (shares the ground/motif/shadow look above) ----------
   // Geometry is computed in Node (demo-capture.mjs) and passed as px, so both
   // plates and the ffmpeg overlay agree on the screen rect to the pixel.
@@ -380,13 +414,13 @@
       .map((d) => `${rr(d.dx, d.dy, d.dw, d.dh, d.br)} ${rr(d.sx, d.sy, d.sw, d.sh, d.sr)}`)
       .join(' ');
     const capEl = caption
-      ? `<text x="${W / 2}" y="${capCy + capSize * 0.34}" text-anchor="middle" font-size="${capSize}" font-weight="600" letter-spacing="-0.02em" fill="${fgColor}" font-family="IBM Plex Sans, -apple-system, Segoe UI, Roboto, sans-serif">${caption.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>`
+      ? `<text id="captext" x="${W / 2}" y="${capCy + capSize * 0.34}" text-anchor="middle" font-size="${capSize}" font-weight="600" letter-spacing="-0.02em" fill="${fgColor}" font-family="IBM Plex Sans, -apple-system, Segoe UI, Roboto, sans-serif">${caption.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>`
       : '';
     document.body.insertAdjacentHTML('beforeend',
       `<svg class="vsvg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
       `<path fill-rule="evenodd" fill="${bezelColor}" d="${paths}"/>` +
       capEl + `</svg>`);
-    document.fonts.ready.then(() => { document.body.dataset.ready = '1'; });
+    document.fonts.ready.then(() => { fitCaption(W, capSize, capCy); document.body.dataset.ready = '1'; });
   }
 
   if (vmode) { renderVideoFrame(); }
