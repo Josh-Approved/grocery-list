@@ -15,11 +15,10 @@
  */
 
 import * as SQLite from 'expo-sqlite';
+import { getDb as getSharedDb } from '../storage/kv';
 import type { Category } from '../data/categories';
 import type { GroceryItem, GroceryList, ShareIdentity } from '../data/list';
 import type { Kit, KitItem } from '../data/kit';
-
-const DB_NAME = 'grocery-list.db';
 
 let _dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -35,18 +34,21 @@ function getDb(): Promise<SQLite.SQLiteDatabase> {
   return _dbPromise;
 }
 
+/**
+ * The connection comes from the shell's storage/kv.ts — the app's ONE database
+ * connection — never from a second openDatabaseAsync here. This module used to
+ * open its own handle, with a settle-and-retry to survive a fresh-install race
+ * against expo-sqlite's ensureDatabasePathExists ("path already points to a
+ * non-normal file"). That race was two connections to the same file — this
+ * one and storage/kv.ts's — opening in the same tick (hydrate + a settings
+ * read land together at cold start); the retry was papering over it, not
+ * fixing it. Routing through the shared connection removes the second opener
+ * entirely, so the race — and the retry that worked around it — no longer
+ * applies (packing-list fixed the identical shape 2026-08-01: ~2-in-15 cold
+ * launches raced and the loser's hydration failed open to an empty list).
+ */
 async function openDb(): Promise<SQLite.SQLiteDatabase> {
-  let _db: SQLite.SQLiteDatabase;
-  try {
-    _db = await SQLite.openDatabaseAsync(DB_NAME);
-  } catch (err) {
-    // Android quirk: the very first open on a fresh install (or right after a
-    // data clear) can race the SQLite directory creation ("path already
-    // points to a non-normal file") — one settle-and-retry succeeds, where
-    // giving up would boot the user into a silently empty app.
-    await new Promise((r) => setTimeout(r, 400));
-    _db = await SQLite.openDatabaseAsync(DB_NAME);
-  }
+  const _db = await getSharedDb();
   await _db.execAsync(`
     CREATE TABLE IF NOT EXISTS lists (
       id            TEXT PRIMARY KEY NOT NULL,
