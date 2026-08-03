@@ -19,6 +19,14 @@
     "added-item": {
       "text": "Avocado",
       "id": null
+    },
+    "share-open": {
+      "text": "Share this list",
+      "id": null
+    },
+    "share-lead": {
+      "text": "Anyone with this can see and edit Weekly shop. No account needed. You only do this once.",
+      "id": null
     }
   }
 }
