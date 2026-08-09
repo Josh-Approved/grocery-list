@@ -16,6 +16,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
+import { logEvent, logWarn, logError } from '../feedback/log';
 
 export interface Envelope<T> {
   app: string;
@@ -39,13 +40,24 @@ export async function exportEnvelope<T>(
   };
   const stamp = new Date().toISOString().slice(0, 10);
   const uri = `${FileSystem.cacheDirectory}${app}-${stamp}.json`;
-  await FileSystem.writeAsStringAsync(uri, JSON.stringify(envelope, null, 2));
+  const json = JSON.stringify(envelope, null, 2);
+  // Size + outcome only — never the payload. "My export was empty" and "the
+  // share sheet never appeared" are different bugs and look identical otherwise.
+  try {
+    await FileSystem.writeAsStringAsync(uri, json);
+  } catch (err) {
+    logError('backup', err, { during: 'export write', bytes: json.length });
+    throw err;
+  }
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, {
       mimeType: 'application/json',
       dialogTitle: `Export ${app}`,
       UTI: 'public.json',
     });
+    logEvent('backup', 'export shared', { version, bytes: json.length });
+  } else {
+    logWarn('backup', 'export written but sharing is unavailable', { bytes: json.length });
   }
 }
 
@@ -56,18 +68,33 @@ export async function pickEnvelope(): Promise<Envelope<unknown> | null> {
     type: 'application/json',
     copyToCacheDirectory: true,
   });
-  if (res.canceled || !res.assets?.[0]) return null;
+  if (res.canceled || !res.assets?.[0]) {
+    logEvent('backup', 'import cancelled');
+    return null;
+  }
   let text: string;
   try {
     text = await FileSystem.readAsStringAsync(res.assets[0].uri);
-  } catch {
+  } catch (err) {
+    // "I picked my backup and nothing happened" — three different failures wear
+    // that face (unreadable file, not JSON, wrong shape). Name which one.
+    logError('backup', err, { during: 'import read' });
     return null;
   }
   try {
     const parsed = JSON.parse(text) as Envelope<unknown>;
-    if (!parsed || typeof parsed !== 'object') return null;
+    if (!parsed || typeof parsed !== 'object') {
+      logWarn('backup', 'import file parsed but is not an envelope', { bytes: text.length });
+      return null;
+    }
+    logEvent('backup', 'import file read', {
+      bytes: text.length,
+      app: String((parsed as Envelope<unknown>).app || 'unknown'),
+      version: Number((parsed as Envelope<unknown>).version) || 0,
+    });
     return parsed;
-  } catch {
+  } catch (err) {
+    logError('backup', err, { during: 'import parse', bytes: text.length });
     return null;
   }
 }

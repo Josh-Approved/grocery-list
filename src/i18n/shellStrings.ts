@@ -160,14 +160,14 @@ export const SHELL_STRINGS = {
       view: "View what's shared",
       previewTitle: "What's shared",
       previewLead:
-        'This is the exact text attached to your email. Nothing leaves your device until you send it.',
+        'This is the exact text included with your email. Nothing leaves your device until you send it.',
     },
     body: {
       autoIncluded: 'Included automatically',
       envHeader: 'App & device',
       logHeader: 'Diagnostic log',
       logTruncatedNote:
-        '(Your mail app could not attach the full log file, so a short excerpt is included above.)',
+        '(Only the most recent part of the log fits in the message. The rest stays on your device.)',
     },
     send: {
       action: 'Continue to email',

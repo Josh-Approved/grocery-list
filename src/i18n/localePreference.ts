@@ -39,6 +39,7 @@ import {
 } from './index';
 import { LOCALES } from './locales';
 import { SHELL_LOCALES } from './shellLocales';
+import { logEvent } from '../feedback/log';
 
 /** 'system' follows the phone (the default — today's behavior). Any other value
  *  is an explicit locale tag the user chose ('en' or a CANONICAL_LOCALES tag). */
@@ -112,6 +113,10 @@ function coerce(value: string | null): LocalePref {
  *  Exported for non-React call sites (e.g. QA seeding); UI should prefer the
  *  `useLocalePreference` hook. */
 export function setLocalePreference(p: LocalePref): void {
+  // A breadcrumb, because a language switch remounts the whole tree — so any
+  // report of "it went blank / went back to the start" right after one wants to
+  // show that it happened. The tag only; nothing about the user.
+  logEvent('settings', 'language changed', { from: pref, to: p });
   pref = p;
   applyPref(p);
   version += 1; // explicit switch -> remount the tree in the new language

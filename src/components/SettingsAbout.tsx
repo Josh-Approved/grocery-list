@@ -70,7 +70,11 @@ export function SettingsAbout({ onAcknowledgements, onSupport }: Props) {
           onPress={() => openUrl(STUDIO_URL)}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={t('about.learnMoreA11y')}
+          // Same shape: the label is the visible words, the destination moves to
+          // the hint. (ja: "joshapproved.com で詳しく見る" put the visible
+          // "詳しく見る" at the end, so speaking it matched nothing.)
+          accessibilityLabel={t('about.learnMore')}
+          accessibilityHint={t('about.learnMoreA11y')}
         >
           <Text style={s.learnMore}>{t('about.learnMore')}</Text>
         </Pressable>

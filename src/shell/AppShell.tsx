@@ -32,6 +32,8 @@ import { useColorScheme } from 'react-native';
 import {
   NavigationContainer,
   type NavigationContainerRef,
+  type NavigationState,
+  type PartialState,
 } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -44,11 +46,35 @@ import { buildNavTheme } from './navTheme';
 import { useApplyThemePreference } from '../theme';
 import { useApplyLocalePreference, useLocaleVersion } from '../i18n/localePreference';
 import { recordSessionStart } from '../storage/reviewPrompt';
+import { logEvent, logNav } from '../feedback/log';
 import { QA_MODE } from '../qa/qaMode';
 
 /** Beat between the splash finishing and the review prompt appearing, so the
  *  card fades in on a settled screen instead of racing the splash out. */
 const REVIEW_PROMPT_DELAY_MS = 800;
+
+/**
+ * The name of the screen the user is actually looking at, walking down through
+ * nested navigators. Route NAMES only — params are never read, because params
+ * routinely carry user content (a list name, an item id) and the diagnostic log
+ * is content-free by contract (feedback/log.ts § PRIVACY CONTRACT).
+ */
+function activeRouteName(
+  state: NavigationState | PartialState<NavigationState> | undefined
+): string | null {
+  let node: any = state;
+  let name: string | null = null;
+  // Bounded walk — a malformed/cyclic state must not spin the JS thread.
+  for (let depth = 0; node && depth < 12; depth++) {
+    const routes = node.routes;
+    if (!Array.isArray(routes) || routes.length === 0) break;
+    const route = routes[typeof node.index === 'number' ? node.index : routes.length - 1];
+    if (!route) break;
+    if (route.name) name = String(route.name);
+    node = route.state;
+  }
+  return name;
+}
 
 type Props = {
   /** Content is ready (fonts loaded + stores hydrated). Until true, the splash
@@ -109,6 +135,18 @@ export function AppShell({ ready, children, navigationRef, review }: Props) {
   // session count, so the review prompt simply re-fires the next session. The
   // shell does not mount the launch notice today (zero consumers); when it
   // does, gate this effect on that card not being shown, in this order.
+  // ---- Breadcrumbs (feedback/log.ts) --------------------------------------
+  // A bug report is only triageable if it says what the app was doing. The shell
+  // is the one place that sees every screen change, so it owns the trail; screens
+  // and stores add their own domain events on top. Route NAMES only.
+  const lastRoute = useRef<string | null>(null);
+  const readyLogged = useRef(false);
+  useEffect(() => {
+    if (!ready || readyLogged.current) return;
+    readyLogged.current = true;
+    logEvent('app', 'ready', { theme: isDark ? 'dark' : 'light' });
+  }, [ready, isDark]);
+
   const [showReview, setShowReview] = useState(false);
   const sessionCounted = useRef(false);
   // Depend on the BOOLEAN, never the `review` object: apps pass it as an inline
@@ -125,7 +163,9 @@ export function AppShell({ ready, children, navigationRef, review }: Props) {
     recordSessionStart().then((shouldPrompt) => {
       if (cancelled || !shouldPrompt) return;
       timer = setTimeout(() => {
-        if (!cancelled) setShowReview(true);
+        if (cancelled) return;
+        logEvent('review', 'prompt shown');
+        setShowReview(true);
       }, REVIEW_PROMPT_DELAY_MS);
     });
     return () => {
@@ -139,7 +179,18 @@ export function AppShell({ ready, children, navigationRef, review }: Props) {
       <SafeAreaProvider>
         <ErrorBoundary>
           {ready && (
-            <NavigationContainer key={localeVersion} ref={navigationRef} theme={buildNavTheme(isDark)}>
+            <NavigationContainer
+              key={localeVersion}
+              ref={navigationRef}
+              theme={buildNavTheme(isDark)}
+              onStateChange={(state) => {
+                const name = activeRouteName(state);
+                if (name && name !== lastRoute.current) {
+                  lastRoute.current = name;
+                  logNav(name);
+                }
+              }}
+            >
               <StatusBar style={isDark ? 'light' : 'dark'} />
               <FeedbackProvider>{children}</FeedbackProvider>
             </NavigationContainer>

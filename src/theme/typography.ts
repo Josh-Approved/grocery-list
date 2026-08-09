@@ -62,11 +62,39 @@ const typeBase = {
   sm: { fontSize: 14, lineHeight: 20 },
   base: { fontSize: 16, lineHeight: 22 },
   md: { fontSize: 20, lineHeight: 28 },
+  // Added 2026-08-09. The scale stopped at `md`, so every heading, numeric
+  // readout and oversized display string in the fleet — 18/22/24/26/28/32/44pt
+  // — was hand-rolled with a literal lineHeight that never scaled. A scale that
+  // doesn't reach the sizes apps actually use isn't a scale, it's a suggestion:
+  // 64 call sites went around it. These cover the real inventory.
+  lg: { fontSize: 24, lineHeight: 30 },
+  xl: { fontSize: 28, lineHeight: 34 },
+  display: { fontSize: 32, lineHeight: 38 },
+  hero: { fontSize: 44, lineHeight: 52 },
 } as const;
 
 function scaledStep(step: keyof typeof typeBase) {
   const { fontSize, lineHeight } = typeBase[step];
-  return { fontSize, lineHeight: Math.round(lineHeight * PixelRatio.getFontScale()) };
+  return { fontSize, lineHeight: scaledLineHeight(lineHeight) };
+}
+
+/**
+ * Scale one literal lineHeight by the live OS accessibility font scale.
+ *
+ * The escape hatch for a call site that genuinely needs leading the `type`
+ * scale doesn't offer (a deliberately looser paragraph, a one-off numeric
+ * readout). Use it INSTEAD of a bare number:
+ *
+ *   lineHeight: 24                      // ✗ pinned — clips at large text
+ *   lineHeight: scaledLineHeight(24)    // ✓ grows with the OS setting
+ *
+ * Prefer spreading a `type` step when one fits; this exists so that "no step
+ * fits" never again means "write a literal". Enforced by the qa-canonical rule
+ * `a11y/scalable-line-height`, which bans a numeric lineHeight outside this
+ * file.
+ */
+export function scaledLineHeight(px: number): number {
+  return Math.round(px * PixelRatio.getFontScale());
 }
 
 export const type = {
@@ -81,6 +109,18 @@ export const type = {
   },
   get md() {
     return scaledStep('md');
+  },
+  get lg() {
+    return scaledStep('lg');
+  },
+  get xl() {
+    return scaledStep('xl');
+  },
+  get display() {
+    return scaledStep('display');
+  },
+  get hero() {
+    return scaledStep('hero');
   },
 };
 

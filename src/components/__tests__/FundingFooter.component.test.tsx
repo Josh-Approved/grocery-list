@@ -46,7 +46,7 @@ describe('FundingFooter', () => {
 
     await render(<FundingFooter onSupport={onSupport} />);
 
-    await user.press(screen.getByRole('button', { name: 'Support this app' }));
+    await user.press(screen.getByRole('button', { name: 'Support' }));
 
     expect(onSupport).toHaveBeenCalledTimes(1);
   });
@@ -55,7 +55,7 @@ describe('FundingFooter', () => {
     await render(<FundingFooter />);
 
     expect(
-      screen.queryByRole('button', { name: 'Support this app' })
+      screen.queryByRole('button', { name: 'Support' })
     ).toBeNull();
   });
 

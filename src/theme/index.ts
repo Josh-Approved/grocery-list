@@ -7,6 +7,7 @@ export {
   fontFamilies,
   fontFamily,
   type,
+  scaledLineHeight,
   tracking,
 } from './typography';
 export type { TypographyRole, FontFamily, TypeStep, Tracking } from './typography';

@@ -32,6 +32,7 @@ import { useKitsStore } from '../store/kits';
 import type { GroceryList } from '../data/list';
 import type { Kit } from '../data/kit';
 import { channelId, seal, open } from './crypto';
+import { logEvent, logWarn } from '../feedback/log';
 import { DropBoxTransport } from './transport';
 import {
   markConnected,
@@ -115,6 +116,15 @@ function sharedSecret(l: GroceryList): string | undefined {
   return l.shareIdentity?.secret;
 }
 
+/** A short handle for a shared list in the diagnostic log. NEVER the secret —
+ *  this is a prefix of the channel id, which is already public on the relay, so
+ *  it correlates two paired devices' logs without revealing the key or anything
+ *  on the list. ("Both phones say connected but only one ever received" is the
+ *  single hardest shared-list report to answer without this.) */
+function chTag(secret: string): string {
+  return channelId(secret).slice(0, 8);
+}
+
 function ensureChannel(secret: string): Channel {
   let ch = channels.get(secret);
   if (ch) return ch;
@@ -122,7 +132,13 @@ function ensureChannel(secret: string): Channel {
     channelId(secret),
     (ct) => receive(secret, ct),
     () => onReconnect(secret),
-    (openRelays) => markConnected(secret, openRelays > 0),
+    (openRelays) => {
+      logEvent('sync', openRelays > 0 ? 'connected' : 'offline', {
+        ch: chTag(secret),
+        relays: openRelays,
+      });
+      markConnected(secret, openRelays > 0);
+    },
     (delivered) => markDelivered(secret, delivered)
   );
   ch = { transport, lastSent: '', timer: null, lastHelloAt: 0 };
@@ -135,7 +151,13 @@ function ensureChannel(secret: string): Channel {
  *  state copy (→ merge it). */
 function receive(secret: string, ct: string): void {
   const json = open(secret, ct);
-  if (!json) return;
+  if (!json) {
+    // Undecryptable on a channel we hold the key for: a partner on a different
+    // build, or a genuinely corrupt frame. Silent until now, and indistinguishable
+    // from "nothing ever arrived" — the two need very different answers.
+    logWarn('sync', 'could not decrypt a message', { ch: chTag(secret) });
+    return;
+  }
   let obj: unknown;
   try {
     obj = JSON.parse(json);
@@ -162,6 +184,10 @@ function receive(secret: string, ct: string): void {
   const remote = obj as GroceryList;
   if (remote?.shareIdentity?.secret === secret) {
     // mergeRemoteList folds the remote clock in before merging (see clock.ts).
+    logEvent('sync', 'received list state', {
+      ch: chTag(secret),
+      items: Array.isArray(remote.items) ? remote.items.length : 0,
+    });
     useListsStore.getState().mergeRemoteList(remote);
     markReceived(secret, Date.now());
   }

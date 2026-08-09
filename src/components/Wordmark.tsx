@@ -11,7 +11,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Check } from 'lucide-react-native';
-import { useTheme, fontFamily, space, tracking, type Colors } from '../theme';
+import { useTheme, fontFamily, space, tracking, scaledLineHeight, type Colors } from '../theme';
 
 export function Wordmark() {
   const { c } = useTheme();
@@ -34,9 +34,12 @@ function makeStyles(c: Colors) {
       gap: space.s2,
     },
     text: {
+      // The wordmark keeps its own 16/20 rather than a type step (the lockup's
+      // proportions are brand, not body copy) — but the leading still has to
+      // grow with the OS text size, or the mark clips at large Dynamic Type.
       fontFamily: fontFamily.sansSemibold,
       fontSize: 16,
-      lineHeight: 20,
+      lineHeight: scaledLineHeight(20),
       letterSpacing: tracking.mark,
       color: c.fg,
     },

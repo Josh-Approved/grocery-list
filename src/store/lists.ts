@@ -42,6 +42,7 @@ import {
   getSyncMeta,
   setSyncMeta,
 } from './db';
+import { logEvent, logError } from '../feedback/log';
 import { QA_MODE } from '../qa/qaMode';
 import { qaLists } from '../qa/fixtures';
 
@@ -173,9 +174,13 @@ interface ListsState {
 }
 
 function persist(list: GroceryList): void {
-  saveList(list).catch((err) =>
-    console.warn('grocery-list: failed to persist list', err)
-  );
+  saveList(list).catch((err) => {
+    // "My edit didn't stick" reads as an app bug and is almost always a failed
+    // write. Structured here (id + item count, never the contents) so the
+    // report says which list and how big, not just that something went wrong.
+    logError('lists', err, { during: 'persist', items: list.items.length });
+    console.warn('grocery-list: failed to persist list', err);
+  });
 }
 
 export const useListsStore = create<ListsState>()((set, get) => {
@@ -264,10 +269,21 @@ export const useListsStore = create<ListsState>()((set, get) => {
           return;
         }
         const { lists, changed } = repairIds(healed);
+        // The counts that answer "I opened it and my lists were gone": how many
+        // came off disk, how many were shared, how many needed repair.
+        logEvent('lists', 'hydrated', {
+          lists: lists.length,
+          shared: lists.filter((l) => !!l.shareIdentity).length,
+          healed: hygieneChanged.length,
+          repaired: changed.length,
+        });
         set({ lists, hydrated: true });
         const dirty = new Set([...hygieneChanged, ...changed].map((l) => l.id));
         for (const l of lists) if (dirty.has(l.id)) persist(l);
       } catch (err) {
+        // The worst outcome in the app: the user is now looking at an empty
+        // home screen with all their lists still on disk.
+        logError('lists', err, { during: 'hydrate' });
         console.warn('grocery-list: failed to load lists from disk', err);
         initClock(Date.now(), persistClock);
         set({ hydrated: true });
@@ -334,6 +350,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
 
     importLists: (incoming) => {
       if (incoming.length === 0) return 0;
+      logEvent('lists', 'imported', { lists: incoming.length });
       set((s) => ({ lists: [...incoming, ...s.lists] }));
       for (const l of incoming) persist(l);
       return incoming.length;
@@ -598,6 +615,9 @@ export const useListsStore = create<ListsState>()((set, get) => {
       if (!list) return null;
       if (list.shareIdentity) return list.shareIdentity.secret;
       const identity = makeShareIdentity();
+      // The share/join pair is the app's hardest support surface, so both ends
+      // leave a mark. The SECRET is never logged — only that sharing began.
+      logEvent('share', 'list shared', { items: list.items.length });
       mutate(listId, (l) => ({ ...l, shareIdentity: identity }));
       return identity.secret;
     },
@@ -617,6 +637,7 @@ export const useListsStore = create<ListsState>()((set, get) => {
         nameUpdatedAt: 0,
         shareIdentity: { secret, createdAt: clockNow() },
       };
+      logEvent('share', 'joined a shared list');
       set((s) => ({ lists: [list, ...s.lists] }));
       persist(list);
       return list.id;

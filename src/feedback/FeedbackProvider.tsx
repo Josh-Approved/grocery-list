@@ -11,7 +11,8 @@
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { FeedbackSheet } from './FeedbackSheet';
-import { installDiagnostics } from './log';
+import { installDiagnostics, logEvent } from './log';
+import { collectDiagnostics } from './diagnostics';
 import { sendFeedback, type FeedbackType } from './compose';
 
 type FeedbackApi = {
@@ -36,14 +37,19 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
   const [initialType, setInitialType] = useState<FeedbackType | undefined>(undefined);
 
   // Start capturing diagnostics as early as the tree mounts (covers everything
-  // after app launch; a crash is flushed to disk for the next session).
+  // after app launch; a crash is flushed to disk for the next session). The
+  // version/device facts ride the session-start line as well as the report
+  // header, because the recovered PREVIOUS session may well be a different
+  // build — which is exactly the case worth spotting in a crash report.
   useEffect(() => {
-    installDiagnostics();
+    const d = collectDiagnostics();
+    installDiagnostics({ version: d.version, device: d.device, locale: d.locale });
   }, []);
 
   const api = useMemo<FeedbackApi>(
     () => ({
       open: (type) => {
+        logEvent('feedback', 'sheet opened', { type: type ?? 'picker' });
         setInitialType(type);
         setVisible(true);
       },

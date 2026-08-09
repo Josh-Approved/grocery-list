@@ -115,7 +115,7 @@ describe('SettingsAbout', () => {
     const user = userEvent.setup();
     await renderBlock();
     await user.press(
-      screen.getByRole('button', { name: 'Learn more at joshapproved.com' })
+      screen.getByRole('button', { name: 'Learn more' })
     );
     expect(openUrl).toHaveBeenCalledWith(STUDIO_URL);
   });

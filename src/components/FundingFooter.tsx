@@ -81,7 +81,15 @@ export function FundingFooter({ onSupport, reveal, pullToReveal }: Props = {}) {
             style={({ pressed }) => [s.btn, pressed && s.pressed]}
             onPress={onSupport}
             accessibilityRole="button"
-            accessibilityLabel={t('about.support')}
+            // Voice Control matches the LABEL against what the user can see, so
+            // the label has to BE the visible word and the extra context has to
+            // move to the hint (which VoiceOver still reads). In English
+            // "Support" / "Support this app" looked like a harmless prefix; in
+            // German it is "Unterstützen" vs "Diese App unterstützen" — verb-final,
+            // so the visible word lands at the END and saying it does nothing.
+            // Invisible in English, broken in half the locales we ship.
+            accessibilityLabel={t('about.supportShort')}
+            accessibilityHint={t('about.support')}
           >
             <HandHeart size={16} color={c.fg} strokeWidth={1.5} />
             <Text style={s.btnText} numberOfLines={1}>
