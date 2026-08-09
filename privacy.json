@@ -1,0 +1,8 @@
+{
+  "_comment": "supportsSufficientContrast: NOT CLAIMED. Same cause as packing-list-20260809-2 — this app carries the identical seven factory-synced shared components, byte-for-byte. The fgSubtle token is 2.68:1 light / 3.72:1 dark and is used for placeholder text in Dialogs and FeedbackSheet (WCAG 1.4.3 needs 4.5:1) and for disclosure chevrons in AboutRow, MoreFromJA, LanguageSetting and FeedbackTypePicker plus the feedback-log checkbox (WCAG 1.4.11 needs 3:1). The app's own surfaces meet AA; this is entirely shared-component surface it cannot fix without forking. Disabled-state uses are exempt under both. Fix belongs in josh-approved-factory/templates; when it lands and ships, move this bullet back to Claimed and delete this override.",
+  "apple": {
+    "accessibility": {
+      "supportsSufficientContrast": false
+    }
+  }
+}
