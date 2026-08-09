@@ -76,4 +76,28 @@ describe('theme contrast (both palettes)', () => {
     expect(contrast(darkColors.inkButton, darkColors.inkButtonText)).toBeGreaterThanOrEqual(7);
     expect(contrast(darkColors.inkButton, darkColors.fgOnInk)).toBeLessThan(3);
   });
+
+  // fgSubtle is DECORATIVE-ONLY, and this pins why. It is deliberately the
+  // faintest foreground — 2.68:1 light / 3.72:1 dark — which is legible enough
+  // for a background swatch or a disabled glyph and NOT enough for text (WCAG
+  // 1.4.3, 4.5:1) or for an icon that means something or affords a tap (WCAG
+  // 1.4.11, 3:1). Seven shared components used it for placeholder text and
+  // disclosure chevrons, which cost the entire fleet its Sufficient Contrast
+  // claim while every app's own palette was fine (2026-08-09). The lint rule
+  // `theme/no-fgSubtle-as-text` catches the usage; this pins the token itself,
+  // so if someone ever "fixes" the contrast by darkening fgSubtle instead, this
+  // fails and tells them to delete the token rather than quietly widen its use.
+  for (const [name, palette] of [['light', lightColors], ['dark', darkColors]] as const) {
+    it(`${name}: fgSubtle stays below the text bar, so it can never be used as text`, () => {
+      expect(contrast(palette.bg as string, palette.fgSubtle as string)).toBeLessThan(4.5);
+    });
+  }
+
+  // The token de-emphasized text and interactive icons must actually use.
+  for (const [name, palette] of [['light', lightColors], ['dark', darkColors]] as const) {
+    it(`${name}: fgMuted clears the graphical bar too, so an icon can use it`, () => {
+      expect(contrast(palette.bg as string, palette.fgMuted as string)).toBeGreaterThanOrEqual(3);
+      expect(contrast(palette.bgElevated as string, palette.fgMuted as string)).toBeGreaterThanOrEqual(3);
+    });
+  }
 });

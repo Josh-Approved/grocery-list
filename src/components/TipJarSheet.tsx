@@ -173,7 +173,11 @@ function SheetShell({
                         onPress={() => onTip(p.id)}
                         disabled={purchasing}
                         accessibilityRole="button"
-                        accessibilityLabel={t('tip.tierA11y', {
+                        // The visible text is the price alone, so that is the
+                        // name Voice Control has to match; "Tip {price}" put a
+                        // word in front of it and became unspeakable-by-sight.
+                        accessibilityLabel={p.displayPrice}
+                        accessibilityHint={t('tip.tierA11y', {
                           price: p.displayPrice,
                         })}
                       >

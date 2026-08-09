@@ -1651,6 +1651,15 @@ const ruleNoFgSubtleAsText = () => {
   if (ruleSkipsAll(id)) return skip(id, `Disabled via qa/baseline.json "${id}/skip"`);
   const STYLE_PROP_RE = /(?<![A-Za-z])color\s*:\s*c\.fgSubtle\b/g;
   const VARIANT_PROP_RE = /\bcolor\s*=\s*(?:\{\s*)?['"]fgSubtle['"]/g;
+  // Placeholder text IS text (WCAG 1.4.3, 4.5:1) and an icon that carries meaning
+  // or affords a tap IS a UI component (WCAG 1.4.11, 3:1). fgSubtle is 2.68:1
+  // light / 3.72:1 dark, so it fails both — and the rule used to see NEITHER
+  // shape, which is exactly how seven shared components kept the whole fleet
+  // from claiming Sufficient Contrast while every app's own palette was fine
+  // (found 2026-08-09). `backgroundColor: c.fgSubtle` swatches/dots and
+  // genuinely disabled states stay legitimate and are still not matched.
+  const PLACEHOLDER_RE = /placeholderTextColor\s*=\s*\{?\s*c\.fgSubtle\b/g;
+  const ICON_COLOR_RE = /(?<![A-Za-z])color\s*=\s*\{\s*c\.fgSubtle\s*\}/g;
   const hits = [];
   for (const f of srcSourceFiles()) {
     const rel = relative(appDir, f).replace(/\\/g, '/');
@@ -1659,16 +1668,26 @@ const ruleNoFgSubtleAsText = () => {
     const raw = readText(f);
     if (!raw) continue;
     const code = stripComments(raw);
-    for (const re of [STYLE_PROP_RE, VARIANT_PROP_RE]) {
+    const lines = code.split('\n');
+    for (const re of [STYLE_PROP_RE, VARIANT_PROP_RE, PLACEHOLDER_RE, ICON_COLOR_RE]) {
       for (const m of code.matchAll(re)) {
         const line = code.slice(0, m.index).split('\n').length;
+        // WCAG 1.4.11 applies to icons that MEAN something or afford a tap.
+        // A purely decorative illustration the app has already hidden from
+        // assistive tech (an empty-state glyph) is explicitly out of scope, and
+        // fgSubtle is the right token for it — that is the whole reason the
+        // token exists. Only that exemption, and only when the code says so
+        // itself within the enclosing element.
+        const ctx = lines.slice(Math.max(0, line - 4), line + 1).join('\n');
+        const decorative = /importantForAccessibility\s*=\s*["']no(?:-hide-descendants)?["']|accessibilityElementsHidden|aria-hidden/.test(ctx);
+        if (decorative && re === ICON_COLOR_RE) continue;
         hits.push(`${rel}:${line}`);
       }
     }
   }
   if (hits.length) {
     return fail(id,
-      'fgSubtle used as a TEXT color — fails AA 4.5:1 in both palettes (canon § Theming: fgSubtle is decorative-only — icon color= props / backgroundColor swatches are fine; a StyleSheet `color:` or a themed <Text color="fgSubtle"> is not). Use fgMuted for de-emphasized text.',
+      'fgSubtle reaching TEXT, a placeholder, or an icon — 2.68:1 light / 3.72:1 dark fails AA for text (WCAG 1.4.3) and fails 3:1 for a meaningful icon (WCAG 1.4.11). Use fgMuted. `backgroundColor: c.fgSubtle` swatches/dots and genuinely disabled states remain fine and are not matched.',
       hits);
   }
   return pass(id, 'No fgSubtle used as a text color (StyleSheet `color:` or <Text color="fgSubtle">)');

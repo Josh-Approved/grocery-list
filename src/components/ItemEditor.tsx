@@ -201,7 +201,7 @@ export function useItemEditor(): {
                   value={name}
                   onChangeText={setName}
                   placeholder={t('detail.itemNameLabel')}
-                  placeholderTextColor={c.fgSubtle}
+                  placeholderTextColor={c.fgMuted}
                   returnKeyType="done"
                   accessibilityLabel={t('detail.itemNameLabel')}
                 />
@@ -212,7 +212,7 @@ export function useItemEditor(): {
                   value={note}
                   onChangeText={setNote}
                   placeholder={t('detail.notePlaceholder')}
-                  placeholderTextColor={c.fgSubtle}
+                  placeholderTextColor={c.fgMuted}
                   multiline
                   accessibilityLabel={t('detail.noteTitle')}
                 />
@@ -286,7 +286,7 @@ export function useItemEditor(): {
                       value={aisleDraft}
                       onChangeText={setAisleDraft}
                       placeholder={t('detail.newAislePlaceholder')}
-                      placeholderTextColor={c.fgSubtle}
+                      placeholderTextColor={c.fgMuted}
                       autoFocus
                       returnKeyType="done"
                       maxLength={40}

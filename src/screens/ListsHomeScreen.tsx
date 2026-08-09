@@ -168,7 +168,7 @@ export default function ListsHomeScreen({ navigation }: Props) {
           >
             <MoreHorizontal size={20} color={c.fgMuted} strokeWidth={1.5} />
           </Pressable>
-          <ChevronRight size={20} color={c.fgSubtle} strokeWidth={1.5} />
+          <ChevronRight size={20} color={c.fgMuted} strokeWidth={1.5} />
         </Pressable>
       );
     },

@@ -110,7 +110,7 @@ export function SiriSetting() {
         <Mic size={20} color={c.fgMuted} strokeWidth={1.5} />
         <Text style={s.triggerLabel}>{t('settings.siriDefaultList')}</Text>
         <Text style={s.triggerValue}>{currentLabel}</Text>
-        <ChevronRight size={18} color={c.fgSubtle} strokeWidth={1.5} />
+        <ChevronRight size={18} color={c.fgMuted} strokeWidth={1.5} />
       </Pressable>
 
       <Modal

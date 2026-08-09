@@ -101,7 +101,7 @@ export function LanguageSetting({ icon = true }: { icon?: boolean }) {
         {icon ? <Languages size={20} color={c.fgMuted} strokeWidth={1.5} /> : null}
         <Text style={s.triggerLabel}>{t('settings.language')}</Text>
         <Text style={s.triggerValue}>{currentLabel}</Text>
-        <ChevronRight size={18} color={c.fgSubtle} strokeWidth={1.5} />
+        <ChevronRight size={18} color={c.fgMuted} strokeWidth={1.5} />
       </Pressable>
 
       <Modal

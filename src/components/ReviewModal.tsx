@@ -138,7 +138,11 @@ export default function ReviewModal({
             style={({ pressed }) => [s.primaryBtn, pressed && s.pressed]}
             onPress={handleReview}
             accessibilityRole="button"
-            accessibilityLabel={t('review.leaveA11y')}
+            // Label must equal the visible text or Voice Control can't activate
+            // it by name; the store detail moves to the hint. (ja: visible
+            // "レビューを書く" was the TAIL of "アプリストアでレビューを書く".)
+            accessibilityLabel={t('about.review')}
+            accessibilityHint={t('review.leaveA11y')}
           >
             <Text style={s.primaryBtnText}>{t('about.review')}</Text>
           </Pressable>

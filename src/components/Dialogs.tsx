@@ -225,7 +225,7 @@ export function usePrompt(): {
               value={state.value}
               onChangeText={(value) => setState((p) => ({ ...p, value }))}
               placeholder={state.placeholder}
-              placeholderTextColor={c.fgSubtle}
+              placeholderTextColor={c.fgMuted}
               autoFocus
               keyboardType={state.keyboardType ?? 'default'}
               autoCapitalize={state.autoCapitalize ?? 'sentences'}

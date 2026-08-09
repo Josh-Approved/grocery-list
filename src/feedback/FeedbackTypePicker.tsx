@@ -46,7 +46,7 @@ export function FeedbackTypePicker({ onChoose, c, s }: Props) {
             <Text style={s.typeTitle}>{t(titleKey)}</Text>
             <Text style={s.typeDesc}>{t(descKey)}</Text>
           </View>
-          <ChevronRight size={18} color={c.fgSubtle} strokeWidth={1.5} />
+          <ChevronRight size={18} color={c.fgMuted} strokeWidth={1.5} />
         </Pressable>
       ))}
     </ScrollView>

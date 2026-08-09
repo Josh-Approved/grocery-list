@@ -60,7 +60,10 @@ describe('TipJarSheet', () => {
     );
 
     // Tiers are buttons labelled "Tip <price>".
-    await user.press(screen.getByRole('button', { name: 'Tip $4.99' }));
+    // The tier button shows the price alone, so that is its accessible name —
+    // "Tip $4.99" put a word in front of what the user can see and made the
+    // control unspeakable to Voice Control. "Tip" moved to the hint.
+    await user.press(screen.getByRole('button', { name: '$4.99' }));
     expect(mockTip).toHaveBeenCalledWith('tip.medium');
   });
 

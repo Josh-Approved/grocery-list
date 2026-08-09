@@ -66,7 +66,7 @@ export function MoreFromJA({ excludeSlug }: Props) {
             <Text style={s.name}>{app.name}</Text>
             <Text style={s.blurb}>{app.blurb}</Text>
           </View>
-          <ChevronRight size={18} color={c.fgSubtle} strokeWidth={1.5} />
+          <ChevronRight size={18} color={c.fgMuted} strokeWidth={1.5} />
         </Pressable>
       ))}
     </>

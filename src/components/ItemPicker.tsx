@@ -443,14 +443,14 @@ export default function ItemPicker({
   return (
     <View style={s.flex}>
       <View style={s.searchWrap}>
-        <Search size={18} color={c.fgSubtle} strokeWidth={1.5} />
+        <Search size={18} color={c.fgMuted} strokeWidth={1.5} />
         <TextInput
           ref={inputRef}
           style={s.searchInput}
           value={query}
           onChangeText={setQuery}
           placeholder={t('detail.searchOrAdd')}
-          placeholderTextColor={c.fgSubtle}
+          placeholderTextColor={c.fgMuted}
           returnKeyType="done"
           blurOnSubmit={false}
           autoCapitalize="none"
@@ -469,7 +469,7 @@ export default function ItemPicker({
             accessibilityLabel={t('common.close')}
             style={({ pressed }) => [s.clearBtn, pressed && s.pressed]}
           >
-            <X size={18} color={c.fgSubtle} strokeWidth={1.5} />
+            <X size={18} color={c.fgMuted} strokeWidth={1.5} />
           </Pressable>
         ) : null}
       </View>

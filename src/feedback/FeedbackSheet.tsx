@@ -177,7 +177,7 @@ export function FeedbackSheet({ visible, initialType, onClose }: Props) {
                           value={fields[f.key] || ''}
                           onChangeText={(v) => setFields((prev) => ({ ...prev, [f.key]: v }))}
                           placeholder={t(f.hintKey)}
-                          placeholderTextColor={c.fgSubtle}
+                          placeholderTextColor={c.fgMuted}
                           multiline={multiline}
                           textAlignVertical={multiline ? 'top' : 'center'}
                           accessibilityLabel={t(f.labelKey)}
@@ -203,7 +203,7 @@ export function FeedbackSheet({ visible, initialType, onClose }: Props) {
                     {includeLogs ? (
                       <CheckSquare size={22} color={c.appAccent} strokeWidth={1.5} />
                     ) : (
-                      <Square size={22} color={c.fgSubtle} strokeWidth={1.5} />
+                      <Square size={22} color={c.fgMuted} strokeWidth={1.5} />
                     )}
                     <View style={s.checkText}>
                       <Text style={s.checkLabel}>{t('feedback.logs.label')}</Text>

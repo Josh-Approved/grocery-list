@@ -28,7 +28,11 @@ import ReviewModal from '../ReviewModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORE_KEY = '@josh-approved/review';
-const A11Y_LEAVE = 'Leave a review on the app store';
+// The accessible name IS the visible button text — Voice Control matches what the
+// user can see, so "Leave a review on the app store" moved to the hint. Querying
+// by the visible string is what keeps that from drifting back.
+const A11Y_LEAVE = 'Leave a review';
+const A11Y_LEAVE_HINT = 'Leave a review on the app store';
 
 async function reviewOpenedFlag(): Promise<boolean> {
   const raw = await AsyncStorage.getItem(STORE_KEY);
@@ -94,5 +98,18 @@ describe('ReviewModal — Leave a review', () => {
     expect(openURL).not.toHaveBeenCalled();
     await waitFor(() => expect(onDismiss).toHaveBeenCalled());
     expect(await reviewOpenedFlag()).toBe(false);
+  });
+
+  // Voice Control activates a control by its accessible NAME. If the name is a
+  // longer sentence than the visible text, saying what is on screen matches
+  // nothing — and in verb-final locales (de/ja) the visible word lands at the end
+  // of that sentence, so it is not even a prefix. The name must be the visible
+  // string; the longer phrasing belongs in the hint, which VoiceOver still reads.
+  it('names the store button with its visible text and keeps the context in the hint', async () => {
+    await render(<ReviewModal visible onDismiss={jest.fn()} {...props} />);
+
+    const leave = screen.getByRole('button', { name: A11Y_LEAVE });
+    expect(leave).toHaveTextContent(A11Y_LEAVE);
+    expect(leave.props.accessibilityHint).toBe(A11Y_LEAVE_HINT);
   });
 });

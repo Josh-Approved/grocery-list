@@ -53,9 +53,12 @@ describe('ReviewModal', () => {
 
     await render(<ReviewModal visible onDismiss={onDismiss} {...baseProps} />);
 
-    await user.press(
-      screen.getByRole('button', { name: 'Leave a review on the app store' })
-    );
+    // Queried by the words actually ON the button, not a longer descriptive
+    // label. Voice Control activates a control by its accessible NAME, so the
+    // name has to be the visible text — "Leave a review on the app store" used
+    // to be the name, which meant saying what you could see did nothing. The
+    // store detail now lives in accessibilityHint, which VoiceOver still reads.
+    await user.press(screen.getByRole('button', { name: 'Leave a review' }));
 
     // Default jest test platform is iOS → the itms-apps write-review link.
     await waitFor(() =>

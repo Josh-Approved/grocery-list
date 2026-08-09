@@ -86,7 +86,7 @@ export default function Credits({ onBack }: Props) {
               </View>
               <ExternalLink
                 size={16}
-                color={c.fgSubtle}
+                color={c.fgMuted}
                 strokeWidth={1.5}
               />
             </Pressable>
