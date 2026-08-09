@@ -18,7 +18,8 @@
       "bundleIdentifier": "com.joshapproved.grocerylist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "CFBundleName": "Grocery List"
+        "CFBundleName": "Grocery List",
+        "CFBundleLocalizations": ["en", "es", "de", "fr", "it", "pt-BR", "ja"]
       }
     },
     "android": {
@@ -50,7 +51,8 @@
       ],
       "./plugins/withGradleJvmArgs",
       "./plugins/withSiriIntents",
-      "expo-mail-composer"
+      "expo-mail-composer",
+      "./plugins/withAndroidLocaleConfig"
     ],
     "extra": {
       "eas": {
