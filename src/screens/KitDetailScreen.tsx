@@ -172,7 +172,7 @@ export default function KitDetailScreen({ route, navigation }: Props) {
                 : t('detail.editItemA11y', { name: item.name })
             }
           >
-            <Text style={s.itemName} numberOfLines={1}>
+            <Text style={s.itemName} numberOfLines={2}>
               {item.name}
             </Text>
           </Pressable>
@@ -228,7 +228,7 @@ export default function KitDetailScreen({ route, navigation }: Props) {
           accessibilityRole="button"
           accessibilityLabel={t('kits.renameA11y', { name: kit.name })}
         >
-          <Text style={s.headerTitle} numberOfLines={1}>
+          <Text style={s.headerTitle} numberOfLines={2}>
             {kit.name}
           </Text>
           <Text style={s.headerMeta}>

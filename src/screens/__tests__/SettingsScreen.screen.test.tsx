@@ -198,7 +198,7 @@ describe('SettingsScreen', () => {
     await renderScreen();
 
     await user.press(
-      screen.getByRole('button', { name: 'Learn more at joshapproved.com' })
+      screen.getByRole('button', { name: 'Learn more' })
     );
     expect(openUrl).toHaveBeenCalledWith('https://joshapproved.com');
   });

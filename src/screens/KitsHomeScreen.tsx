@@ -113,7 +113,7 @@ export default function KitsHomeScreen({ navigation }: Props) {
           accessibilityLabel={t('kits.kitSummary', { name: item.name, count })}
         >
           <View style={s.rowMain}>
-            <Text style={s.rowName} numberOfLines={1}>
+            <Text style={s.rowName} numberOfLines={2}>
               {item.name}
             </Text>
             <Text style={s.rowMeta}>
@@ -180,7 +180,7 @@ export default function KitsHomeScreen({ navigation }: Props) {
             <Pressable
               onPress={newKit}
               accessibilityRole="button"
-              accessibilityLabel={t('kits.createFirst')}
+              accessibilityLabel={t('kits.createKit')}
               style={({ pressed }) => [s.emptyBtn, pressed && s.rowPressed]}
             >
               <Text style={s.emptyBtnText}>{t('kits.createKit')}</Text>
@@ -213,9 +213,8 @@ function makeStyles(c: Colors) {
     },
     headerText: { flex: 1, paddingRight: space.s5 },
     title: {
+      ...ty.xl,
       fontFamily: fontFamily.sansSemibold,
-      fontSize: 28,
-      lineHeight: 34,
       color: c.fg,
     },
     subtitle: {

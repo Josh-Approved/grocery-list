@@ -47,7 +47,6 @@ const ja = {
     emptyTitle: 'リストがまだありません',
     emptyBody:
       'リストを作って共有すると、家族の誰でも品物を追加したり、買い物しながらチェックしたりできます。',
-    createFirst: '最初のリストを作成',
     createList: 'リストを作成',
   },
   detail: {
@@ -57,7 +56,7 @@ const ja = {
     listOptions: 'リストのオプション',
     addItem: '品物を追加',
     addItemButton: '追加',
-    addNamed: '{name}を追加',
+    addItemHint: 'リストに追加します。',
     addItemsTitle: '品物を追加',
     tabItems: '品物',
     tabKits: 'キット',
@@ -115,7 +114,7 @@ const ja = {
     forgetSuggestion: '{name}を候補から外す',
     forgotSuggestion: '{name}を候補から外しました',
     swipeToDeleteA11y: '{name}を削除',
-    sync: { connected: '接続済み', offline: 'オフライン', syncing: '同期中…', trouble: '同期できません', a11y: '共有リストの同期：{status}。タップして今すぐ同期。' },
+    sync: { connected: '接続済み', offline: 'オフライン', syncing: '同期中…', trouble: '同期できません', hint: '共有リストの同期。タップして今すぐ同期。' },
   },
   share: {
     shareThis: 'このリストを共有',
@@ -161,7 +160,6 @@ const ja = {
     emptyTitle: 'キットがまだありません',
     emptyBody:
       'キットは一緒に買う品物のセットです。たとえばチキンサラダに必要なものから、いつも家にある定番品を除いたものです。ひとつ作れば、どのリストにもワンタップで追加できます。',
-    createFirst: '最初のキットを作成',
     createKit: 'キットを作成',
     addIngredient: '材料を追加',
     addIngredientsTitle: '材料を追加',
@@ -172,7 +170,9 @@ const ja = {
       'このキットに必要なものだけを追加しましょう。いつも家にある定番品は省けます。',
     pickHint: 'キットをタップすると、その品物がリストに追加されます。',
     previewMore: '{names} 他{count}件',
-    addKitA11y: '{name}を追加、{count}件',
+    addKitA11y: '{name}、{count}件',
+    addKitHint: 'このキットの全品をリストに追加します。',
+    addIngredientHint: 'このキットに追加します。',
     emptyInSheet: '「キット」タブでキットを作成すると、ここに追加できます。',
     kitEmpty: 'このキットにはまだ品物がありません。',
     allPresent: 'このキットの品物はすべてリストにあります。',

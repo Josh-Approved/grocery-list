@@ -45,7 +45,6 @@ const fr = {
     emptyTitle: "Aucune liste pour l'instant",
     emptyBody:
       'Créez une liste, puis partagez-la pour que tout le monde chez vous puisse y ajouter des articles et les cocher pendant les courses.',
-    createFirst: 'Créez votre première liste',
     createList: 'Créer une liste',
   },
   detail: {
@@ -55,7 +54,7 @@ const fr = {
     listOptions: 'Options de la liste',
     addItem: 'Ajouter un article',
     addItemButton: 'Ajouter',
-    addNamed: 'Ajouter {name}',
+    addItemHint: 'L\'ajoute à votre liste.',
     addItemsTitle: 'Ajouter des articles',
     tabItems: 'Articles',
     tabKits: 'Kits',
@@ -114,7 +113,7 @@ const fr = {
     forgetSuggestion: 'Oublier {name}',
     forgotSuggestion: '{name} oublié',
     swipeToDeleteA11y: 'Retirer {name}',
-    sync: { connected: 'Connecté', offline: 'Hors ligne', syncing: 'Synchronisation…', trouble: 'Pas de synchronisation', a11y: 'Synchronisation de la liste partagée : {status}. Touchez pour synchroniser.' },
+    sync: { connected: 'Connecté', offline: 'Hors ligne', syncing: 'Synchronisation…', trouble: 'Pas de synchronisation', hint: 'Synchronisation de la liste partagée. Touchez pour synchroniser.' },
   },
   share: {
     shareThis: 'Partager cette liste',
@@ -160,7 +159,6 @@ const fr = {
     emptyTitle: "Aucun kit pour l'instant",
     emptyBody:
       "Un kit est un ensemble d'articles que vous achetez ensemble, comme tout ce qu'il faut pour une salade de poulet, sans les basiques que vous avez toujours. Créez-en un, puis ajoutez-le à n'importe quelle liste d'un seul geste.",
-    createFirst: 'Créez votre premier kit',
     createKit: 'Créer un kit',
     addIngredient: 'Ajouter un ingrédient',
     addIngredientsTitle: 'Ajouter des ingrédients',
@@ -171,7 +169,9 @@ const fr = {
       "Ajoutez le peu dont ce kit a besoin — laissez de côté les basiques que vous avez toujours.",
     pickHint: 'Touchez un kit pour ajouter ses articles à votre liste.',
     previewMore: '{names} +{count}',
-    addKitA11y: 'Ajouter {name}, {count} articles',
+    addKitA11y: '{name}, {count} articles',
+    addKitHint: 'Ajoute tous les articles de ce kit à votre liste.',
+    addIngredientHint: 'L\'ajoute à ce kit.',
     emptyInSheet: "Créez des kits dans l'onglet Kits, puis ajoutez-les ici.",
     kitEmpty: "Ce kit n'a pas encore d'articles.",
     allPresent: 'Tout ce kit est déjà sur votre liste.',

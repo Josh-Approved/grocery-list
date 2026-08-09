@@ -96,6 +96,7 @@ export default function AddIngredientsSheet({ visible, kitId, onClose }: Props) 
             onClose={onClose}
             presentLabel={t('kits.inKit')}
             presentA11y={(name) => t('kits.inKitItemA11y', { name })}
+            addHint={t('kits.addIngredientHint')}
           />
         </SafeAreaView>
       </SafeAreaProvider>

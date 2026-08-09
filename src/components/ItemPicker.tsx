@@ -65,6 +65,12 @@ interface Props {
   presentLabel: string;
   /** A11y label for an already-present row. */
   presentA11y: (name: string) => string;
+  /**
+   * A11y hint for an addable row (e.g. "Adds it to your list."). The row's
+   * accessible NAME is the item name alone, so that Voice Control can match
+   * the words on screen; this carries the action for VoiceOver.
+   */
+  addHint: string;
 }
 
 type SheetRow =
@@ -121,6 +127,7 @@ export default function ItemPicker({
   onClose,
   presentLabel,
   presentA11y,
+  addHint,
 }: Props) {
   const { c } = useTheme();
   const s = makeStyles(c);
@@ -377,11 +384,10 @@ export default function ItemPicker({
             style={s.itemTap}
             onPress={() => add(name, category)}
             accessibilityRole="button"
-            accessibilityLabel={
-              onList ? presentA11y(name) : t('detail.addNamed', { name })
-            }
+            accessibilityLabel={onList ? presentA11y(name) : name}
+            accessibilityHint={onList ? undefined : addHint}
           >
-            <Text style={[s.itemName, onList && s.itemNameOnList]} numberOfLines={1}>
+            <Text style={[s.itemName, onList && s.itemNameOnList]} numberOfLines={2}>
               {name}
             </Text>
             {onList ? (
@@ -562,7 +568,6 @@ function makeStyles(c: Colors) {
       color: c.fgMuted,
       marginTop: space.s4,
       marginBottom: space.s2,
-      lineHeight: 20,
     },
 
     itemRow: {

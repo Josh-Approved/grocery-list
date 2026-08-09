@@ -128,7 +128,10 @@ export default function ShareScreen({ route, navigation }: Props) {
           <Pressable
             onPress={startScan}
             accessibilityRole="button"
-            accessibilityLabel={t('share.scanInsteadA11y')}
+            // Label is the visible words so Voice Control can match them; the
+            // "list code" clarification moves to the hint.
+            accessibilityLabel={t('share.scanInstead')}
+            accessibilityHint={t('share.scanInsteadA11y')}
             style={({ pressed }) => [s.ghostBtn, pressed && s.pressed]}
           >
             <ScanLine size={18} color={c.fg} strokeWidth={1.5} />

@@ -337,7 +337,11 @@ export default function ListDetailScreen({ route, navigation }: Props) {
               onPress={doClearChecked}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel={t('detail.clearCheckedA11y', {
+              // "Clear" is the visible word, so it is the label; the count
+              // detail moves to the hint. (de/ja put the visible word at the
+              // END of the A11y string, which Voice Control could not match.)
+              accessibilityLabel={t('detail.clearChecked')}
+              accessibilityHint={t('detail.clearCheckedA11y', {
                 count: row.count,
               })}
               style={({ pressed }) => [s.clearBtn, pressed && s.pressed]}
@@ -438,7 +442,7 @@ export default function ListDetailScreen({ route, navigation }: Props) {
           )}
         >
           <View style={s.titleRow}>
-            <Text style={s.headerTitle} numberOfLines={1}>
+            <Text style={s.headerTitle} numberOfLines={2}>
               {list.name}
             </Text>
             {list.shareIdentity && (
@@ -511,7 +515,8 @@ export default function ListDetailScreen({ route, navigation }: Props) {
           <Pressable
             onPress={doClearChecked}
             accessibilityRole="button"
-            accessibilityLabel={t('detail.clearCheckedA11y', {
+            accessibilityLabel={t('detail.clearChecked')}
+            accessibilityHint={t('detail.clearCheckedA11y', {
               count: staleCheckedCount,
             })}
             style={({ pressed }) => [s.staleAction, pressed && s.pressed]}

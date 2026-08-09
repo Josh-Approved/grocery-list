@@ -107,6 +107,9 @@ export default function ReorderAislesScreen({ route, navigation }: Props) {
               disabled={index === 0}
               hitSlop={6}
               accessibilityRole="button"
+              // Greyed out is a colour-only cue on its own; the state makes
+              // "unavailable" reach VoiceOver too.
+              accessibilityState={{ disabled: index === 0 }}
               accessibilityLabel={t('reorder.moveUp', {
                 name: categoryLabel(item),
               })}
@@ -127,6 +130,7 @@ export default function ReorderAislesScreen({ route, navigation }: Props) {
               disabled={index === order.length - 1}
               hitSlop={6}
               accessibilityRole="button"
+              accessibilityState={{ disabled: index === order.length - 1 }}
               accessibilityLabel={t('reorder.moveDown', {
                 name: categoryLabel(item),
               })}

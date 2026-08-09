@@ -2,7 +2,7 @@
 // qa-canonical FAIL rule so prove-gates can prove the rule is a live sensor.
 // This file is NEVER compiled or bundled (excluded from tsconfig + jest); it is
 // only ever read as text by scripts/qa-canonical.mjs. See ../../README.md.
-import { ActionSheetIOS, Alert, Platform, Text, View } from 'react-native';
+import { ActionSheetIOS, Alert, Modal, Platform, Text, View } from 'react-native';
 import { c } from './theme/colors';
 
 // parity/no-platform-early-return: gates whether the feature exists per platform.
@@ -23,8 +23,27 @@ const styles = {
   label: { color: c.fgOnInk },
 };
 
+// a11y/scalable-line-height: a bare numeric lineHeight. RN scales fontSize by the
+// OS text setting but never a literal lineHeight, so at AX sizes the glyphs grow
+// past this 20px box and the lines collide, then clip.
+const textStyles = {
+  body: { fontSize: 16, lineHeight: 20 },
+};
+
 // i18n/no-hardcoded-strings would also fire here, but the fixture omits src/i18n
 // entirely so that rule fails on the missing module (a stronger, simpler signal).
-export function Screen() {
-  return <View style={styles.label}><Text>Rename list</Text></View>;
+export function Screen({ list }: { list: { name: string } }) {
+  return (
+    <View style={styles.label}>
+      <Text style={textStyles.body}>Rename list</Text>
+      {/* a11y/no-truncated-user-content: the user's own list name clamped to one
+          line — the bigger they set their text, the less of it they can read. */}
+      <Text numberOfLines={1}>{list.name}</Text>
+      {/* a11y/reduced-motion-guarded: a literal animationType always animates,
+          so switching Reduce Motion on does nothing to this sheet. */}
+      <Modal visible transparent animationType="slide">
+        <Text>Edit</Text>
+      </Modal>
+    </View>
+  );
 }

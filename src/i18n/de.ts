@@ -47,7 +47,6 @@ const de = {
     emptyTitle: 'Noch keine Listen',
     emptyBody:
       'Erstelle eine Liste und teile sie, damit jeder in deinem Haushalt etwas hinzufügen und beim Einkaufen abhaken kann.',
-    createFirst: 'Erstelle deine erste Liste',
     createList: 'Eine Liste erstellen',
   },
   detail: {
@@ -57,7 +56,7 @@ const de = {
     listOptions: 'Listenoptionen',
     addItem: 'Einen Artikel hinzufügen',
     addItemButton: 'Artikel hinzufügen',
-    addNamed: '{name} hinzufügen',
+    addItemHint: 'Fügt es deiner Liste hinzu.',
     addItemsTitle: 'Artikel hinzufügen',
     tabItems: 'Artikel',
     tabKits: 'Sets',
@@ -116,7 +115,7 @@ const de = {
     forgetSuggestion: '{name} vergessen',
     forgotSuggestion: '{name} wurde vergessen',
     swipeToDeleteA11y: '{name} entfernen',
-    sync: { connected: 'Verbunden', offline: 'Offline', syncing: 'Wird synchronisiert…', trouble: 'Keine Synchronisierung', a11y: 'Synchronisierung der geteilten Liste: {status}. Zum Synchronisieren tippen.' },
+    sync: { connected: 'Verbunden', offline: 'Offline', syncing: 'Wird synchronisiert…', trouble: 'Keine Synchronisierung', hint: 'Synchronisierung der geteilten Liste. Zum Synchronisieren tippen.' },
   },
   share: {
     shareThis: 'Diese Liste teilen',
@@ -162,7 +161,6 @@ const de = {
     emptyTitle: 'Noch keine Sets',
     emptyBody:
       'Ein Set ist eine Sammlung von Artikeln, die du zusammen kaufst – wie alles für einen Hähnchensalat, ohne die Grundzutaten, die du immer hast. Erstelle eins und füge es mit einem Tippen zu jeder Liste hinzu.',
-    createFirst: 'Erstelle dein erstes Set',
     createKit: 'Ein Set erstellen',
     addIngredient: 'Eine Zutat hinzufügen',
     addIngredientsTitle: 'Zutaten hinzufügen',
@@ -173,7 +171,9 @@ const de = {
       'Füge die paar Dinge hinzu, die dieses Set braucht – lass die Grundzutaten weg, die du immer hast.',
     pickHint: 'Tippe auf ein Set, um seine Artikel zu deiner Liste hinzuzufügen.',
     previewMore: '{names} +{count}',
-    addKitA11y: '{name} hinzufügen, {count} Artikel',
+    addKitA11y: '{name}, {count} Artikel',
+    addKitHint: 'Fügt alle Artikel dieses Sets deiner Liste hinzu.',
+    addIngredientHint: 'Fügt es diesem Set hinzu.',
     emptyInSheet: 'Erstelle Sets im Tab „Sets“ und füge sie dann hier hinzu.',
     kitEmpty: 'Dieses Set hat noch keine Artikel.',
     allPresent: 'Alles aus diesem Set ist schon auf deiner Liste.',

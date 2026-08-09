@@ -153,7 +153,7 @@ describe('ShareScreen', () => {
     await renderScreen(list.id);
 
     await user.press(
-      screen.getByRole('button', { name: 'Scan a list code instead' })
+      screen.getByRole('button', { name: 'Scan a code instead' })
     );
 
     // The camera view mounts and the scan title/hint appear.
@@ -168,7 +168,7 @@ describe('ShareScreen', () => {
     await renderScreen(list.id);
 
     await user.press(
-      screen.getByRole('button', { name: 'Scan a list code instead' })
+      screen.getByRole('button', { name: 'Scan a code instead' })
     );
 
     // Permission denied → no camera, the share body still shows.
@@ -183,7 +183,7 @@ describe('ShareScreen', () => {
     const { navigation } = await renderScreen(list.id);
 
     await user.press(
-      screen.getByRole('button', { name: 'Scan a list code instead' })
+      screen.getByRole('button', { name: 'Scan a code instead' })
     );
     expect(await screen.findByLabelText('camera')).toBeTruthy();
 
@@ -206,7 +206,7 @@ describe('ShareScreen', () => {
     const { navigation } = await renderScreen(list.id);
 
     await user.press(
-      screen.getByRole('button', { name: 'Scan a list code instead' })
+      screen.getByRole('button', { name: 'Scan a code instead' })
     );
     await screen.findByLabelText('camera');
 

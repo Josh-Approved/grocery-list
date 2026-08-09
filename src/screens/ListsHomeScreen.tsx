@@ -137,7 +137,7 @@ export default function ListsHomeScreen({ navigation }: Props) {
         >
           <View style={s.rowMain}>
             <View style={s.nameRow}>
-              <Text style={s.rowName} numberOfLines={1}>
+              <Text style={s.rowName} numberOfLines={2}>
                 {item.name}
               </Text>
               {shared && (
@@ -228,7 +228,7 @@ export default function ListsHomeScreen({ navigation }: Props) {
               <Pressable
                 onPress={newList}
                 accessibilityRole="button"
-                accessibilityLabel={t('home.createFirst')}
+                accessibilityLabel={t('home.createList')}
                 style={({ pressed }) => [s.emptyBtn, pressed && s.rowPressed]}
               >
                 <Text style={s.emptyBtnText}>{t('home.createList')}</Text>
@@ -281,9 +281,8 @@ function makeStyles(c: Colors) {
     },
     headerText: { flex: 1, paddingRight: space.s5 },
     title: {
+      ...ty.xl,
       fontFamily: fontFamily.sansSemibold,
-      fontSize: 28,
-      lineHeight: 34,
       color: c.fg,
     },
     subtitle: {

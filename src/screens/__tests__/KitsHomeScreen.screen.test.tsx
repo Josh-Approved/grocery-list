@@ -96,7 +96,7 @@ describe('KitsHomeScreen', () => {
     await renderScreen();
 
     await user.press(
-      screen.getByRole('button', { name: 'Create your first kit' })
+      screen.getByRole('button', { name: 'Create a kit' })
     );
     await user.type(screen.getByPlaceholderText('Chicken salad'), 'Tacos');
     await user.press(screen.getByRole('button', { name: 'Create' }));

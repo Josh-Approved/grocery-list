@@ -50,6 +50,7 @@ function render(onAdd: (name: string) => void) {
           onClose={() => {}}
           presentLabel="On list"
           presentA11y={(name) => `${name} on list`}
+          addHint="Adds it to your list."
         />
       </SafeAreaProvider>
     );
@@ -76,7 +77,7 @@ test('tapping a suggestion adds the item and clears the search box', () => {
   const addApple = tree.root.findAll(
     (el) =>
       el.props.accessibilityRole === 'button' &&
-      el.props.accessibilityLabel === 'Add apple'
+      el.props.accessibilityLabel === 'apple'
   );
   expect(addApple.length).toBeGreaterThan(0);
 

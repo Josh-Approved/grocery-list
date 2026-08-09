@@ -59,6 +59,7 @@ async function renderPicker(props: Partial<React.ComponentProps<typeof ItemPicke
         onClose={onClose}
         presentLabel="On list"
         presentA11y={(name) => `${name} on list`}
+        addHint="Adds it to your list."
         {...props}
       />
     </SafeAreaProvider>
@@ -71,7 +72,7 @@ test('tapping an item row adds that item', async () => {
   const { onAdd, searchBox, getByLabelText } = await renderPicker();
   // Type a partial term that surfaces the built-in "apple" seed row.
   await fireEvent.changeText(searchBox(), 'app');
-  await fireEvent.press(getByLabelText('Add apple'));
+  await fireEvent.press(getByLabelText('apple'));
   expect(onAdd).toHaveBeenCalledWith('apple', expect.anything());
 });
 
@@ -138,10 +139,10 @@ test('the "Show all" usuals toggle expands the peeked list', async () => {
   useAccountStore.setState({ staples: many });
   const { getByLabelText, queryByLabelText } = await renderPicker();
   // Only the first 8 are shown initially — Usual8 is peeked out.
-  expect(queryByLabelText('Add Usual8')).toBeNull();
+  expect(queryByLabelText('Usual8')).toBeNull();
   await fireEvent.press(getByLabelText('Show all'));
   // The toggle flipped and a previously-hidden usual now renders. (Usual9, the
   // very last row, stays virtualized out of the test render by FlatList.)
   expect(getByLabelText('Show less')).toBeTruthy();
-  expect(getByLabelText('Add Usual8')).toBeTruthy();
+  expect(getByLabelText('Usual8')).toBeTruthy();
 });

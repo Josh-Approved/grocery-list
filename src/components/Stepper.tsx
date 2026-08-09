@@ -17,7 +17,14 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Minus, Plus } from 'lucide-react-native';
 import { t } from '../i18n';
-import { useTheme, typography, radius, target, type Colors } from '../theme';
+import {
+  useTheme,
+  typography,
+  radius,
+  target,
+  scaledLineHeight,
+  type Colors,
+} from '../theme';
 
 type Props = {
   value: number;
@@ -167,7 +174,7 @@ function makeStyles(c: Colors) {
     number: {
       fontFamily: typography.monoEmphasis,
       fontSize: 18,
-      lineHeight: 22,
+      lineHeight: scaledLineHeight(22),
       color: c.fg,
       fontVariant: ['tabular-nums'],
     },

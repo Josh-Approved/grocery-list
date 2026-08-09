@@ -40,6 +40,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 
 const DEFAULT_THRESHOLD = 0.01;     // fraction of pixels that may differ before it's a regression
 const PER_PIXEL_THRESHOLD = 0.1;    // pixelmatch per-pixel sensitivity (0..1)
@@ -75,6 +77,33 @@ export function downscale2x(img) {
 export function classifyDiff(numDiffPixels, totalPixels, threshold = DEFAULT_THRESHOLD) {
   const ratio = totalPixels > 0 ? numDiffPixels / totalPixels : 0;
   return { ratio: +ratio.toFixed(5), regression: ratio > threshold, numDiffPixels, totalPixels };
+}
+
+/**
+ * Decide what an --accept run may promote. Pure.
+ *
+ * The diff loop has always refused to touch a cell that ran on a FALLBACK
+ * device (`.unverified-device`) — "those screens belong to a different device,
+ * so they can neither be diffed against this cell's baseline nor become one"
+ * (L23). `--accept` skipped that guard, so it happily wrote a fallback capture
+ * in as truth. That is how iphone-light-f1.0-portrait ended up holding an
+ * iPhone SE capture (375x667 in a 660x1434 cell) as its baseline in BOTH
+ * grocery-list and workout-timer. The guard belongs on every write path.
+ */
+export function acceptPlan(cells, screensOf, { matcher, excluded, isUnverified }) {
+  const accept = [], skippedUnverified = [];
+  for (const cell of cells) {
+    if (isUnverified(cell)) {
+      if (screensOf(cell).some((s) => !excluded.has(s) && matcher(cell, s))) skippedUnverified.push(cell);
+      continue;
+    }
+    for (const screen of screensOf(cell)) {
+      if (excluded.has(screen)) continue;
+      if (!matcher(cell, screen)) continue;
+      accept.push({ cell, screen });
+    }
+  }
+  return { accept, skippedUnverified };
 }
 
 /** Parse an --accept selector into a predicate over (cell, screen). Pure. */
@@ -115,19 +144,68 @@ function selfTest() {
   const mc = acceptMatcher('iphone-light-f1.0-portrait');
   ok(mc('iphone-light-f1.0-portrait', 'anything') === true, 'accept cell matches all its screens');
 
+  // pngjs/pixelmatch are the APP's dev-deps, so the app must be tried FIRST.
+  // Resolving only from this file is what made the net silently skip.
+  const selfUrl = 'file:///factory/scripts/qa/visual-reg.mjs';
+  const roots = pngLibRoots('/ws/grocery-list', selfUrl);
+  ok(roots.length === 2, 'two resolution roots when an app dir is given');
+  ok(roots[0].endsWith('/ws/grocery-list/package.json'), 'the app package.json is tried FIRST');
+  ok(roots[1] === selfUrl, 'the factory is the fallback root, not the primary');
+  ok(pngLibRoots(null, selfUrl)[0] === selfUrl, 'no app dir → factory only');
+
+  // --accept must honour the same fallback-device guard the diff loop has (L23).
+  const screensOf = () => ['list', 'settings', 'share'];
+  const plan = acceptPlan(['iphone-light-f1.0-portrait', 'aosp-nogms-light-f1.0-portrait'], screensOf, {
+    matcher: acceptMatcher('all'),
+    excluded: new Set(['share']),
+    isUnverified: (c) => c.startsWith('aosp-nogms'),
+  });
+  ok(plan.accept.length === 2, 'accept plan covers only the verified cell\'s non-excluded screens');
+  ok(plan.accept.every((a) => a.cell === 'iphone-light-f1.0-portrait'), 'a fallback-device cell is never promoted');
+  ok(!plan.accept.some((a) => a.screen === 'share'), 'an excluded screen is never promoted');
+  ok(plan.skippedUnverified.length === 1, 'the refusal is reported, not silent');
+  const narrowed = acceptPlan(['aosp-nogms-light-f1.0-portrait'], screensOf, {
+    matcher: acceptMatcher('iphone-light-f1.0-portrait/list'),
+    excluded: new Set(), isUnverified: () => true,
+  });
+  ok(narrowed.skippedUnverified.length === 0, 'a cell the selector never targeted is not reported as refused');
+
   console.log(failures === 0 ? '\nself-test PASSED' : `\nself-test FAILED (${failures})`);
   process.exit(failures === 0 ? 0 : 1);
 }
 
 // ---------- image I/O (lazy: only when actually diffing) ----------
 
-async function loadPngLib() {
-  try {
-    const [{ PNG }, pixelmatchMod] = await Promise.all([import('pngjs'), import('pixelmatch')]);
-    return { PNG, pixelmatch: pixelmatchMod.default || pixelmatchMod };
-  } catch {
-    return null;
+/**
+ * pngjs + pixelmatch are dev-dependencies of the APP, not of the factory (see
+ * the header note and each app's package.json). A bare `import('pngjs')` from
+ * this file resolves against the FACTORY's node_modules, so it failed on every
+ * app that had the deps correctly installed — the net silently reported
+ * `status: "skipped"` and, worse, `--accept` promoted ZERO baselines while
+ * still exiting 0. Resolve from the app first, then fall back to the factory.
+ */
+export function pngLibRoots(appDir, selfUrl) {
+  const roots = [];
+  if (appDir) roots.push(pathToFileURL(path.join(appDir, 'package.json')).href);
+  roots.push(selfUrl);
+  return roots;
+}
+
+async function loadPngLib(appDir) {
+  const roots = pngLibRoots(appDir, import.meta.url);
+  for (const parent of roots) {
+    try {
+      const spec = (name) => {
+        try { return pathToFileURL(createRequire(parent).resolve(name)).href; }
+        catch { return name; }
+      };
+      const [{ PNG }, pixelmatchMod] = await Promise.all([
+        import(spec('pngjs')), import(spec('pixelmatch')),
+      ]);
+      return { PNG, pixelmatch: pixelmatchMod.default || pixelmatchMod };
+    } catch { /* try the next root */ }
   }
+  return null;
 }
 
 function readPng(PNG, file) {
@@ -199,8 +277,18 @@ async function main() {
     return;
   }
 
-  const lib = dry ? null : await loadPngLib();
+  const lib = dry ? null : await loadPngLib(appDir);
   if (!dry && !lib) {
+    // --accept without the lib used to promote ZERO baselines and still exit 0,
+    // so a caller's accept loop reported success having done nothing. An accept
+    // that cannot accept is an error, not a skip.
+    if (flags.has('--accept') || flags.has('--lock')) {
+      console.error('visual-reg: pixelmatch/pngjs not resolvable from ' + appDir +
+        ' — cannot accept/lock baselines (nothing was written).\n' +
+        '  Install once in the app: npm i -D pixelmatch pngjs');
+      process.exitCode = 1;
+      return;
+    }
     console.warn('visual-reg: pixelmatch/pngjs not installed — diff SKIPPED (not a failure).\n' +
       '  Install once: npm i -D pixelmatch pngjs   (bootstrap installs them for new apps)');
     // Record a pending status so a reader knows the layer ran but couldn't diff.
@@ -211,18 +299,20 @@ async function main() {
 
   // --accept: promote current -> baseline (downscaled). The self-learning path.
   if (flags.has('--accept')) {
-    const matcher = acceptMatcher(valueOf('--accept'));
-    let accepted = 0;
-    for (const cell of cells) {
-      for (const screen of listScreens(path.join(matrixDir, cell))) {
-        if (excluded.has(screen)) continue;
-        if (!matcher(cell, screen)) continue;
-        const cur = readPng(lib.PNG, path.join(matrixDir, cell, `${screen}.png`));
-        writePng(lib.PNG, path.join(baselineRoot, cell, `${screen}.png`), downscale2x(cur));
-        accepted++;
-      }
+    const plan = acceptPlan(cells, (c) => listScreens(path.join(matrixDir, c)), {
+      matcher: acceptMatcher(valueOf('--accept')),
+      excluded,
+      isUnverified: (c) => fs.existsSync(path.join(matrixDir, c, '.unverified-device')),
+    });
+    for (const { cell, screen } of plan.accept) {
+      const cur = readPng(lib.PNG, path.join(matrixDir, cell, `${screen}.png`));
+      writePng(lib.PNG, path.join(baselineRoot, cell, `${screen}.png`), downscale2x(cur));
     }
-    console.log(`visual-reg: accepted ${accepted} baseline(s) → qa/baselines/`);
+    console.log(`visual-reg: accepted ${plan.accept.length} baseline(s) → qa/baselines/`);
+    for (const cell of plan.skippedUnverified) {
+      console.warn(`visual-reg: REFUSED to accept ${cell} — it ran on a fallback device, not this cell's AVD (L23).\n` +
+        '  Boot the cell\'s canonical AVD, or map your local AVD names in a gitignored qa/devices.local.json.');
+    }
     return;
   }
 

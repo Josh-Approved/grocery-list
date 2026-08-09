@@ -145,11 +145,12 @@ describe('useItemEditor', () => {
     await openEditor(user);
 
     expect(useAccountStore.getState().isStaple('Milk')).toBe(false);
-    // Off → labelled "Save as a usual". `toggleUsual` reads the live staple
-    // state on each press and flips it, so pressing the same control twice
-    // toggles on then back off (the label itself is driven by a stable-ref
-    // selector that doesn't re-render on a bare staple change).
-    const usualBtn = screen.getByRole('button', { name: 'Save as a usual' });
+    // Named by its VISIBLE word, "Usual", so Voice Control can match what is
+    // on screen; the verb lives in the hint. `toggleUsual` reads the live
+    // staple state on each press and flips it, so pressing the same control
+    // twice toggles on then back off.
+    const usualBtn = screen.getByRole('button', { name: 'Usual' });
+    expect(usualBtn.props.accessibilityHint).toBe('Save as a usual');
     await user.press(usualBtn);
     expect(useAccountStore.getState().isStaple('Milk')).toBe(true);
     await user.press(usualBtn);

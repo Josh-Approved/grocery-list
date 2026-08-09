@@ -324,7 +324,13 @@ export function useItemEditor(): {
                     onPress={toggleUsual}
                     accessibilityRole="button"
                     accessibilityState={{ selected: usual }}
-                    accessibilityLabel={
+                    // Voice Control matches the label against what a person can
+                    // SEE, so the label has to be the visible word. The verb
+                    // moves to the hint (de: "Als Stammartikel speichern" put
+                    // the visible "Stammartikel" in the middle, so speaking it
+                    // matched nothing).
+                    accessibilityLabel={t('detail.usual')}
+                    accessibilityHint={
                       usual
                         ? t('detail.removeFromUsuals')
                         : t('detail.saveAsUsual')
@@ -480,7 +486,9 @@ function makeStyles(c: Colors) {
       fontFamily: fontFamily.sans,
       color: c.fg,
     },
-    chipTextOn: { color: c.fgOnAccent },
+    // Weight, not just colour: the chosen aisle chip has to stay readable as
+    // chosen in greyscale, so the fill is backed by a heavier face.
+    chipTextOn: { color: c.fgOnAccent, fontFamily: fontFamily.sansSemibold },
     chipAdd: {
       flexDirection: 'row',
       alignItems: 'center',

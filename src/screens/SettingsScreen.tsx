@@ -145,7 +145,8 @@ export default function SettingsScreen({ navigation }: Props) {
             onPress={() => openUrl(STUDIO_URL)}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={t('settings.learnMoreA11y')}
+            accessibilityLabel={t('about.learnMore')}
+            accessibilityHint={t('settings.learnMoreA11y')}
           >
             <Text style={s.learnMore}>{t('about.learnMore')}</Text>
           </Pressable>

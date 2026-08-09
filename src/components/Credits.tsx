@@ -127,10 +127,12 @@ function makeStyles(c: Colors) {
 
     scroll: { padding: space.s5, paddingBottom: space.s8 },
     intro: {
+      // `...ty.sm` already carries a scaled lineHeight; the literal that used
+      // to sit here re-pinned it to 20px, cancelling the scaling for this
+      // paragraph at every accessibility size.
       ...ty.sm,
       color: c.fgMuted,
       fontFamily: fontFamily.sans,
-      lineHeight: 20,
       marginBottom: space.s5,
       paddingHorizontal: space.s1,
     },

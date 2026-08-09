@@ -136,6 +136,7 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
               onClose={onClose}
               presentLabel={t('detail.onList')}
               presentA11y={(name) => t('detail.onListItemA11y', { name })}
+              addHint={t('detail.addItemHint')}
             />
           ) : (
             <KitPicker listId={listId} />

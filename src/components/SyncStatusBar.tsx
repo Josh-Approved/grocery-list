@@ -61,7 +61,12 @@ export function SyncStatusBar({ secret }: { secret: string }) {
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={t('detail.sync.a11y', { status: label })}
+      // The status word is what a person can see, so it is the accessible name
+      // and Voice Control can match it. The "shared list sync / tap to sync"
+      // framing moves to the hint, which Voice Control ignores and VoiceOver
+      // still reads.
+      accessibilityLabel={label}
+      accessibilityHint={t('detail.sync.hint')}
       style={({ pressed }) => [s.row, pressed && s.pressed]}
     >
       <View

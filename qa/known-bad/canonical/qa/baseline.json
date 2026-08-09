@@ -3,5 +3,6 @@
   "testing/enforce": true,
   "i18n/enforce": true,
   "theme/enforce": true,
-  "absolute-pane/enforce": true
+  "absolute-pane/enforce": true,
+  "a11y/enforce": true
 }

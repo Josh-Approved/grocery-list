@@ -1679,6 +1679,135 @@ const ruleNoFgSubtleAsText = () => {
 // Both Apple AND Google Play reject price/promo words baked into a screenshot.
 // Apple rejected grocery-list's production build 2026-06-24 for "Free" in the
 // slot-1 caption; Play's metadata policy bars the same in screenshot graphics.
+// ---------- rule: line height must scale with the OS text size (canon § Accessibility) ----------
+//
+// React Native scales a Text's *fontSize* by the OS accessibility font scale on
+// its own (`allowFontScaling` defaults true) but does NOT touch a numeric
+// `lineHeight`. So `lineHeight: 22` stays 22 pixels while the glyphs inside it
+// grow past 70 at AX-XXXL — lines collide, then clip. That is the whole of the
+// "Larger Text" defect, and it is invisible at the default text size, which is
+// why 64 of them accumulated across six apps unnoticed while five of those apps
+// published a Larger Text claim to the App Store (found 2026-08-09).
+//
+// The fix is never "pick a bigger number": spread a `type` step (`...ty.base`),
+// or wrap a one-off in `scaledLineHeight(px)` from the design system. Both read
+// `PixelRatio.getFontScale()` at style-construction time.
+//
+// Scope: a numeric `lineHeight` in app source. Allowed: the design-system
+// typography module that DEFINES the scale, and its tests. A `lineHeight`
+// whose value is an identifier or a call (`scaledLineHeight(24)`, `ty.md.lineHeight`)
+// is fine — only bare numbers are the defect.
+const ruleScalableLineHeight = () => {
+  const id = 'a11y/scalable-line-height';
+  if (surface !== 'rn') return skip(id, 'Not a React Native app');
+  if (ruleSkipsAll(id)) return skip(id, `Disabled via qa/baseline.json "${id}/skip"`);
+  const LITERAL_LINE_HEIGHT_RE = /(?<![A-Za-z])lineHeight\s*:\s*-?\d/g;
+  const hits = [];
+  for (const f of srcSourceFiles()) {
+    const rel = relative(appDir, f).replace(/\\/g, '/');
+    // The scale's own definition + its regression test are where the literals
+    // legitimately live — they are the thing being scaled, not a bypass of it.
+    if (rel === 'src/theme/typography.ts') continue;
+    if (rel.startsWith('src/theme/__tests__/')) continue;
+    if (ruleSkipsFile(id, rel)) continue;
+    const raw = readText(f);
+    if (!raw) continue;
+    const code = stripComments(raw);
+    for (const m of code.matchAll(LITERAL_LINE_HEIGHT_RE)) {
+      const line = code.slice(0, m.index).split('\n').length;
+      hits.push(`${rel}:${line}`);
+    }
+  }
+  if (hits.length) {
+    return fail(id,
+      'Numeric lineHeight pinned against the OS text size — RN scales fontSize but never a literal lineHeight, so these lines collide and clip at large Dynamic Type (canon § Accessibility). Spread a type step (`...ty.base`) or wrap the value in `scaledLineHeight(px)` from src/theme/typography.',
+      hits);
+  }
+  return pass(id, 'No pinned numeric lineHeight — leading scales with the OS text size');
+};
+
+// ---------- rule: user-typed content is never clamped to one line (canon § Accessibility) ----------
+//
+// The Dynamic Type sibling of the rule above. `numberOfLines={1}` on a person's
+// name, a list name, a trip name or a user-typed note reads fine at the default
+// size and truncates to an ellipsis the moment text scales — so the larger the
+// user sets their text, the less of their own content they can read, which is
+// precisely backwards. Static chrome (a button label, a settings row title) may
+// clamp: it is our copy, at a length we control, and it is not the thing the
+// user came to read.
+//
+// Mechanically: flag `numberOfLines={1}` on a <Text> whose child interpolates a
+// value that looks like user content (`.name`, `.title`, `.note`, `.topic`,
+// `.label` off a domain object). Deliberately conservative — it cannot see
+// through a prop, so it under-reports rather than crying wolf; the review rubric
+// carries the rest. WARN during rollout, FAIL once an app sets
+// `"a11y/enforce": true` in qa/baseline.json.
+const USER_CONTENT_RE = /\{\s*[A-Za-z_$][\w$]*(?:\?\.|\.)(?:name|title|note|notes|topic|label|displayName|personName|itemName|tripName)\b/;
+
+const ruleNoTruncatedUserContent = () => {
+  const id = 'a11y/no-truncated-user-content';
+  if (surface !== 'rn') return skip(id, 'Not a React Native app');
+  if (ruleSkipsAll(id)) return skip(id, `Disabled via qa/baseline.json "${id}/skip"`);
+  const enforce = baseline['a11y/enforce'] === true;
+  const hits = [];
+  for (const f of srcSourceFiles()) {
+    const rel = relative(appDir, f).replace(/\\/g, '/');
+    if (ruleSkipsFile(id, rel)) continue;
+    const raw = readText(f);
+    if (!raw) continue;
+    const code = stripComments(raw);
+    const lines = code.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (!/numberOfLines\s*=\s*\{?\s*1\s*\}?/.test(lines[i])) continue;
+      // Look at the element's own line and the few after it — the interpolated
+      // child usually sits within the same JSX element.
+      const window = lines.slice(i, i + 4).join('\n');
+      if (USER_CONTENT_RE.test(window)) hits.push(`${rel}:${i + 1}`);
+    }
+  }
+  if (hits.length) {
+    const msg = 'User-typed content clamped to one line — it truncates further the larger the user sets their text, so raising the text size shows them LESS of their own content (canon § Accessibility). Allow 2+ lines, or drop numberOfLines, on names/notes/topics. Static chrome may still clamp.';
+    return enforce ? fail(id, msg, hits) : warn(id, msg, hits);
+  }
+  return pass(id, 'No user-typed content clamped to a single line');
+};
+
+// ---------- rule: every animated surface honours Reduce Motion (canon § Accessibility) ----------
+//
+// The fleet already has the right primitive — a canonical `useReducedMotion()`
+// in Dialogs.tsx that reads `isReduceMotionEnabled()` AND subscribes to
+// `reduceMotionChanged` — and reanimated surfaces use the library hook. The gap
+// is React Native's own `<Modal animationType="slide">`: a prop, not a hook, so
+// it slides past every guard we have. Seven of them were unguarded across the
+// fleet on 2026-08-09 while five apps published a Reduced Motion claim.
+// Fix: `animationType={reduceMotion ? 'none' : 'slide'}`.
+const ruleReducedMotionGuarded = () => {
+  const id = 'a11y/reduced-motion-guarded';
+  if (surface !== 'rn') return skip(id, 'Not a React Native app');
+  if (ruleSkipsAll(id)) return skip(id, `Disabled via qa/baseline.json "${id}/skip"`);
+  // A literal animationType is unguarded by construction; an expression
+  // (`{reduceMotion ? 'none' : 'slide'}`) is the fixed shape.
+  const LITERAL_ANIM_RE = /animationType\s*=\s*["'](?:slide|fade)["']/g;
+  const hits = [];
+  for (const f of srcSourceFiles()) {
+    const rel = relative(appDir, f).replace(/\\/g, '/');
+    if (ruleSkipsFile(id, rel)) continue;
+    const raw = readText(f);
+    if (!raw) continue;
+    const code = stripComments(raw);
+    for (const m of code.matchAll(LITERAL_ANIM_RE)) {
+      const line = code.slice(0, m.index).split('\n').length;
+      hits.push(`${rel}:${line}`);
+    }
+  }
+  if (hits.length) {
+    return fail(id,
+      'Modal animation ignores Reduce Motion — a literal animationType always animates, so the OS setting does nothing here (canon § Accessibility). Use animationType={reduceMotion ? \'none\' : \'slide\'} with the canonical useReducedMotion() from src/components/Dialogs.',
+      hits);
+  }
+  return pass(id, 'Every modal animation collapses under Reduce Motion');
+};
+
 // The cost claim belongs in the description, never the image (canon
 // § Screenshot principles, § Long description structure). We scan every per-slot
 // `caption` across all stores in qa/screenshots.config.json. The slot-2 Josh
@@ -2346,6 +2475,9 @@ const CANONICAL_RULES = [
   ruleAppearanceToggle,
   ruleContrastPairing,
   ruleNoFgSubtleAsText,
+  ruleScalableLineHeight,
+  ruleNoTruncatedUserContent,
+  ruleReducedMotionGuarded,
   ruleLanguageControl,
   ruleLocaleIndependentMatching,
   ruleAppNameSpotlightSafe,
@@ -2638,6 +2770,105 @@ export function inferCategory(name) {
   process.exit(failed ? 1 : 0);
 }
 
+// ---------- meta-rule: every published accessibility claim is backed by a green gate ----------
+//
+// THE POINT OF ALL THE RULES ABOVE. Apple's Accessibility Nutrition Labels are
+// self-declared, so for a year they were whatever a config file said, checked by
+// nobody: on 2026-08-09 five apps were publishing a Larger Text claim while every
+// one of them had line heights pinned against the OS text size, and packing-list
+// published Voice Control over its own open defect. An accessibility claim is
+// the one kind of marketing copy a person can be genuinely harmed by trusting.
+//
+// So the claim is not prose any more — it is the output of a gate. Each Apple
+// feature maps to the rule(s) that mechanically prove it, and claiming a feature
+// whose rules are not green fails here. The remedy is always one of two honest
+// moves: fix the app, or turn the claim off in <app>/privacy.json.
+//
+// Rollout: WARN until an app sets `"a11y/enforce": true` in qa/baseline.json,
+// then FAIL. Features with no mechanical gate yet are reported as such rather
+// than silently counted as proven — an unmeasured claim is exactly the thing
+// this rule exists to stop.
+const A11Y_CLAIM_GATES = {
+  supportsVoiceover: ['a11y/pane-focus'],
+  supportsVoiceControl: [],
+  supportsLargerText: ['a11y/scalable-line-height', 'a11y/no-truncated-user-content'],
+  supportsSufficientContrast: ['theme/contrast-pairing', 'theme/no-fgSubtle-as-text'],
+  supportsDifferentiateWithoutColorAlone: [],
+  supportsReducedMotion: ['a11y/reduced-motion-guarded'],
+  supportsDarkInterface: ['theme/appearance-toggle', 'theme/contrast-pairing'],
+  supportsCaptions: [],
+  supportsAudioDescriptions: [],
+};
+
+const A11Y_CLAIM_LABELS = {
+  supportsVoiceover: 'VoiceOver',
+  supportsVoiceControl: 'Voice Control',
+  supportsLargerText: 'Larger Text',
+  supportsSufficientContrast: 'Sufficient Contrast',
+  supportsDifferentiateWithoutColorAlone: 'Differentiate Without Color Alone',
+  supportsReducedMotion: 'Reduced Motion',
+  supportsDarkInterface: 'Dark Interface',
+  supportsCaptions: 'Captions',
+  supportsAudioDescriptions: 'Audio Descriptions',
+};
+
+/**
+ * The accessibility features this app publishes: the canonical studio config
+ * deep-merged with the app's own privacy.json override — the SAME resolution
+ * push-privacy-forms.mjs uses to decide what to send Apple, so the gate and the
+ * store can never disagree. Returns null when the canonical config isn't
+ * reachable (a detached checkout), so the rule skips rather than inventing a
+ * verdict from half the inputs.
+ */
+function claimedA11yFeatures() {
+  const canonical = readJson(join(appDir, '..', 'josh-approved-factory', 'templates', 'privacy', 'privacy-declarations.json'));
+  if (!canonical) return null;
+  const override = readJson(join(appDir, 'privacy.json'));
+  const merged = { ...(canonical?.apple?.accessibility || {}), ...(override?.apple?.accessibility || {}) };
+  return Object.keys(A11Y_CLAIM_GATES).filter((k) => merged[k] === true);
+}
+
+function ruleA11yClaimsBacked(results) {
+  const id = 'a11y/claims-backed';
+  if (surface !== 'rn') return skip(id, 'Not a React Native app');
+  if (ruleSkipsAll(id)) return skip(id, `Disabled via qa/baseline.json "${id}/skip"`);
+  const claimed = claimedA11yFeatures();
+  if (claimed === null) return skip(id, 'Canonical privacy-declarations.json not reachable from this checkout');
+  if (!claimed.length) return skip(id, 'No accessibility features claimed for this app');
+  const enforce = baseline['a11y/enforce'] === true;
+  const byId = new Map(results.map((r) => [r.id, r]));
+
+  const unproven = [];
+  const ungated = [];
+  for (const feature of claimed) {
+    const gates = A11Y_CLAIM_GATES[feature] || [];
+    if (!gates.length) { ungated.push(A11Y_CLAIM_LABELS[feature]); continue; }
+    const bad = gates.filter((g) => {
+      const r = byId.get(g);
+      // No result at all, or anything short of PASS/SKIP, leaves the claim unproven.
+      return !r || (r.severity !== PASS && r.severity !== SKIP);
+    });
+    if (bad.length) unproven.push(`${A11Y_CLAIM_LABELS[feature]} — gate${bad.length > 1 ? 's' : ''} not green: ${bad.join(', ')}`);
+  }
+
+  const detail = [...unproven];
+  if (ungated.length) {
+    detail.push(`no mechanical gate yet — proof is the written line in STORE_LISTING.md, itself enforced by qa-store-submission's apple/a11y-published-unproven + apple/a11y-overclaim: ${ungated.join(', ')}`);
+  }
+  if (unproven.length) {
+    const msg = 'An accessibility feature is published to the App Store while the gate that proves it is not green (canon § Accessibility). Either fix the app or set the feature false in this app\'s privacy.json — an accessibility claim is the one kind of copy a person can be harmed by trusting.';
+    return enforce ? fail(id, msg, detail) : warn(id, msg, detail);
+  }
+  // An UNGATED claim is not an unproven one — it is carried by a written proof
+  // line that a different gate already enforces. Treating it as a warning here
+  // would make this rule permanently yellow and therefore permanently ignored,
+  // which is how the original claims went unchecked for a year.
+  if (ungated.length) {
+    return pass(id, `All ${claimed.length} published accessibility claims are backed — ${claimed.length - ungated.length} by a green gate, ${ungated.length} by a written proof line`, detail);
+  }
+  return pass(id, `All ${claimed.length} published accessibility claims are backed by green gates`);
+}
+
 (async () => {
   if (flags.has('--self-test')) { runSelfTest(); return; }
   const appRules = await loadAppRules();
@@ -2651,6 +2882,13 @@ export function inferCategory(name) {
     } catch (e) {
       results.push(fail(`internal/${fn.name || 'rule'}`, `Rule threw: ${e.message}`));
     }
+  }
+  // Meta-rule LAST — it reads the other rules' verdicts, so it cannot be one of them.
+  try {
+    const claimResult = ruleA11yClaimsBacked(results);
+    if (claimResult) results.push(claimResult);
+  } catch (e) {
+    results.push(fail('a11y/claims-backed', `Rule threw: ${e.message}`));
   }
 
   if (json) {

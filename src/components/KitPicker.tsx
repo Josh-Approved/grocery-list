@@ -118,10 +118,13 @@ export default function KitPicker({ listId }: Props) {
           style={({ pressed }) => [s.row, pressed && s.pressed]}
           onPress={() => addKit(kit)}
           accessibilityRole="button"
+          // Leads with the kit's own name — the words on the row — so Voice
+          // Control can match them; the action moves to the hint.
           accessibilityLabel={t('kits.addKitA11y', { name: kit.name, count })}
+          accessibilityHint={t('kits.addKitHint')}
         >
           <View style={s.rowMain}>
-            <Text style={s.rowName} numberOfLines={1}>
+            <Text style={s.rowName} numberOfLines={2}>
               {kit.name}
             </Text>
             <Text style={s.rowPreview} numberOfLines={1}>
@@ -181,7 +184,6 @@ function makeStyles(c: Colors) {
       fontFamily: fontFamily.sans,
       color: c.fgMuted,
       marginBottom: space.s4,
-      lineHeight: 20,
     },
     listContent: {
       paddingHorizontal: space.s6,

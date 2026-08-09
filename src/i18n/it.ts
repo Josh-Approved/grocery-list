@@ -45,7 +45,6 @@ const it = {
     emptyTitle: 'Ancora nessuna lista',
     emptyBody:
       'Crea una lista e condividila così chiunque in casa può aggiungere articoli e spuntarli mentre fa la spesa.',
-    createFirst: 'Crea la tua prima lista',
     createList: 'Crea una lista',
   },
   detail: {
@@ -55,7 +54,7 @@ const it = {
     listOptions: 'Opzioni della lista',
     addItem: 'Aggiungi un articolo',
     addItemButton: 'Aggiungi',
-    addNamed: 'Aggiungi {name}',
+    addItemHint: 'Lo aggiunge alla tua lista.',
     addItemsTitle: 'Aggiungi articoli',
     tabItems: 'Articoli',
     tabKits: 'Kit',
@@ -113,7 +112,7 @@ const it = {
     forgetSuggestion: 'Dimentica {name}',
     forgotSuggestion: '{name} dimenticato',
     swipeToDeleteA11y: 'Rimuovi {name}',
-    sync: { connected: 'Connesso', offline: 'Offline', syncing: 'Sincronizzazione…', trouble: 'Non sincronizza', a11y: 'Sincronizzazione lista condivisa: {status}. Tocca per sincronizzare ora.' },
+    sync: { connected: 'Connesso', offline: 'Offline', syncing: 'Sincronizzazione…', trouble: 'Non sincronizza', hint: 'Sincronizzazione lista condivisa. Tocca per sincronizzare ora.' },
   },
   share: {
     shareThis: 'Condividi questa lista',
@@ -159,7 +158,6 @@ const it = {
     emptyTitle: 'Ancora nessun kit',
     emptyBody:
       "Un kit è un gruppo di articoli che compri insieme, come tutto l'occorrente per un'insalata di pollo, senza i fondamentali che hai sempre. Creane uno e aggiungilo a qualsiasi lista con un tocco.",
-    createFirst: 'Crea il tuo primo kit',
     createKit: 'Crea un kit',
     addIngredient: 'Aggiungi un ingrediente',
     addIngredientsTitle: 'Aggiungi ingredienti',
@@ -170,7 +168,9 @@ const it = {
       'Aggiungi le poche cose che servono a questo kit; salta i fondamentali che hai sempre.',
     pickHint: 'Tocca un kit per aggiungere i suoi articoli alla lista.',
     previewMore: '{names} +{count}',
-    addKitA11y: 'Aggiungi {name}, {count} articoli',
+    addKitA11y: '{name}, {count} articoli',
+    addKitHint: 'Aggiunge tutti gli articoli di questo kit alla tua lista.',
+    addIngredientHint: 'Lo aggiunge a questo kit.',
     emptyInSheet: 'Crea i kit nella scheda Kit, poi aggiungili qui.',
     kitEmpty: 'Questo kit non ha ancora articoli.',
     allPresent: 'Tutto questo kit è già nella tua lista.',

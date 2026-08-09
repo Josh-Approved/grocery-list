@@ -56,7 +56,6 @@ export const APP_STRINGS = {
     emptyTitle: 'No lists yet',
     emptyBody:
       'Create a list, then share it so anyone in your household can add to it and check things off as you shop.',
-    createFirst: 'Create your first list',
     createList: 'Create a list',
   },
   detail: {
@@ -66,7 +65,7 @@ export const APP_STRINGS = {
     listOptions: 'List options',
     addItem: 'Add an item',
     addItemButton: 'Add item',
-    addNamed: 'Add {name}',
+    addItemHint: 'Adds it to your list.',
     // Full-screen Add-items sheet (your usuals + recent history + a built-in
     // "common items" seed list). All copy routes through here — no hardcoding.
     addItemsTitle: 'Add items',
@@ -136,7 +135,7 @@ export const APP_STRINGS = {
       offline: 'Offline',
       syncing: 'Syncing…',
       trouble: 'Not syncing',
-      a11y: 'Shared list sync: {status}. Tap to sync now.',
+      hint: 'Shared list sync. Tap to sync now.',
     },
   },
   share: {
@@ -184,7 +183,6 @@ export const APP_STRINGS = {
     emptyTitle: 'No kits yet',
     emptyBody:
       'A kit is a bundle of items you buy together — like everything for chicken salad, minus the staples you always have. Build one, then add it to any list in one tap.',
-    createFirst: 'Create your first kit',
     createKit: 'Create a kit',
     // Kit detail — adding/editing ingredients.
     addIngredient: 'Add an ingredient',
@@ -197,7 +195,9 @@ export const APP_STRINGS = {
     // The Kits tab inside the Add-items sheet (selecting a kit onto a list).
     pickHint: 'Tap a kit to add its items to your list.',
     previewMore: '{names} +{count}',
-    addKitA11y: 'Add {name}, {count} items',
+    addKitA11y: '{name}, {count} items',
+    addKitHint: 'Adds every item in this kit to your list.',
+    addIngredientHint: 'Adds it to this kit.',
     emptyInSheet: 'Build kits in the Kits tab, then add them here.',
     kitEmpty: 'This kit has no items yet.',
     allPresent: "Everything in this kit is already on your list.",
