@@ -125,7 +125,9 @@ function push(level: LogLevel, tag: string, msg: string, data?: Record<string, u
     return;
   }
   const count = (seen.get(sig) || 0) + 1;
-  if (seen.size < MAX_SIGNATURES) seen.set(sig, count);
+  // Keep counting a signature we're already tracking even once the map is full,
+  // or a chatty warning that arrived late would never be suppressed at all.
+  if (seen.has(sig) || seen.size < MAX_SIGNATURES) seen.set(sig, count);
   if (count > MAX_REPEATS) return;
 
   buffer.push({
@@ -252,6 +254,22 @@ export function serialize(): string {
     out = `…(${out.length - MAX_REPORT_BYTES} earlier chars trimmed)\n` + out.slice(-MAX_REPORT_BYTES);
   }
   return out;
+}
+
+/**
+ * The report trimmed to fit somewhere smaller than an attachment — an email
+ * body, a `mailto:` URL. Keeps the counted summary (a bare tail would cut off
+ * the header that says how many errors there are) and then as much of the END
+ * of the trail as the budget allows, because the newest lines are the ones next
+ * to whatever went wrong.
+ */
+export function serializeBounded(maxChars: number): string {
+  const full = serialize();
+  if (full.length <= maxChars) return full;
+  const head = summary();
+  const body = full.slice(head.length);
+  const room = Math.max(0, maxChars - head.length - 40);
+  return `${head}\n\n…(earlier entries trimmed)\n${body.slice(-room)}`;
 }
 
 /** Number of events held this session (for the preview summary). */

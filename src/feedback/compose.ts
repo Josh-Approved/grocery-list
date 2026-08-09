@@ -25,7 +25,7 @@ import { Linking } from 'react-native';
 import * as MailComposer from 'expo-mail-composer';
 import { t } from '../i18n';
 import { collectDiagnostics, formatDiagnostics, type Diagnostics } from './diagnostics';
-import { serialize, writeReportFile, logEvent, logWarn } from './log';
+import { serialize, serializeBounded, writeReportFile, logEvent, logWarn } from './log';
 
 export type FeedbackType = 'bug' | 'feature' | 'general';
 
@@ -119,11 +119,10 @@ function buildEmailBody(
   if (opts.inlineLog !== false) {
     // No attachment on this path (the file couldn't be written, or we're on the
     // mailto floor, which cannot carry one) — so the log the user opted into
-    // rides in the body. The NEWEST lines are the ones worth keeping.
-    const full = serialize();
-    const kept = full.length > opts.inlineLog ? full.slice(-opts.inlineLog) : full;
+    // rides in the body, trimmed to fit from the front.
+    const kept = serializeBounded(opts.inlineLog);
     sections.push(`${t('feedback.body.logHeader')}\n${kept}`);
-    if (kept.length < full.length) sections.push(t('feedback.body.logTruncatedNote'));
+    if (kept.length < serialize().length) sections.push(t('feedback.body.logTruncatedNote'));
   }
   return sections.join('\n\n');
 }

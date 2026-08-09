@@ -31,7 +31,7 @@ jest.mock('../fileStore', () => ({
   remove: jest.fn(async () => {}),
 }));
 
-import { logEvent, logError, logWarn, serialize, entryCount, clear } from '../log';
+import { logEvent, logError, logWarn, serialize, serializeBounded, entryCount, clear } from '../log';
 import { sendFeedback } from '../compose';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -107,6 +107,15 @@ describe('diagnostic log — is it actually readable', () => {
     expect(serialize()).toContain('further repeats suppressed');
     // The breadcrumbs it would otherwise have crowded out are all still there.
     expect(serialize()).toContain('Screen-29');
+  });
+
+  it('trims from the FRONT when it has to fit, keeping the header and the newest lines', () => {
+    for (let i = 0; i < 400; i++) logEvent('loop', `event-${i}`);
+    const kept = serializeBounded(2000);
+    expect(kept.length).toBeLessThanOrEqual(2000);
+    expect(kept).toContain('Recorded:'); // the counted header survives the trim
+    expect(kept).toContain('event-399'); // and the newest events, not the oldest
+    expect(kept).not.toContain('event-1 ');
   });
 
   it('keeps a stack trace at full length — a trace clipped to one frame is useless', () => {
