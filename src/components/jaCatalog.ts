@@ -57,6 +57,20 @@ export const JA_CATALOG: JaCatalogEntry[] = [
     androidUrl: null,
   },
   {
+    slug: 'tend',
+    name: 'Relationships',
+    blurb: 'A quiet place to keep up with the people you care about.',
+    iosUrl: null,
+    androidUrl: null,
+  },
+  {
+    slug: 'home-maintenance',
+    name: 'Home Upkeep',
+    blurb: 'Home maintenance reminders, plus your appliances and where to find their manuals.',
+    iosUrl: null,
+    androidUrl: null,
+  },
+  {
     slug: 'tally',
     name: 'Tally',
     blurb: 'A simple counter for anything you count.',
