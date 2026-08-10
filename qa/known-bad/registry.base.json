@@ -115,6 +115,13 @@
       "why": "src/storage/reviewPrompt.ts is synced and the shell is current (calls recordSessionStart, mounts <ReviewModal>), but App.tsx mounts <AppShell> with no review={…} prop — must FAIL (the shell never counts a session, so the prompt ships dead and no user can ever see it; the tend/tally defect, isolated to the one prop that is now the whole per-app wiring)."
     },
     {
+      "gate": "rn/single-db-connection",
+      "kind": "canonical-rule",
+      "fixture": "canonical",
+      "rule": "rn/single-db-connection",
+      "why": "src/store/db.ts calls SQLite.openDatabaseAsync itself + fixture baseline sets storage/enforce — must FAIL (a second connection races expo-sqlite's directory creation on the first launch after an install; the losing open rejects and hydration fails open to an empty app)."
+    },
+    {
       "gate": "flows/lint-drift",
       "kind": "command",
       "fixture": "flow-drift",

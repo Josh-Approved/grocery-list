@@ -728,26 +728,43 @@ const SQLITE_OPEN_RE = /SQLite\s*\.\s*openDatabase(?:Async|Sync)\s*\(|\bopenData
 const DB_OWNER_FILES = ['src/storage/kv.ts'];
 const isDbOwnerPath = (rel) => DB_OWNER_FILES.includes(rel.replace(/\\/g, '/'));
 
-const ruleSingleDbConnection = () => {
-  if (surface !== 'rn') return skip('rn/single-db-connection', 'Not an RN app');
-  const files = srcSourceFiles();
-  if (!files.length) return skip('rn/single-db-connection', 'No src/ source files');
+/**
+ * The pure core: which of `files` ({ rel, code }) opens the database while not
+ * being the shell's storage layer. Exported shape is a plain function so
+ * --self-test can prove the sensor against a known-bad without a repo.
+ */
+const secondDbConnectionHits = (files) => {
   const hits = [];
-  for (const f of files) {
-    const rel = relative(appDir, f);
-    if (isDbOwnerPath(rel)) continue;
-    if (rel.includes('__tests__') || /\.test\.[jt]sx?$/.test(rel)) continue;
-    const raw = readText(f);
-    if (!raw) continue;
-    if (SQLITE_OPEN_RE.test(stripComments(raw))) {
-      hits.push(`${rel}: opens its own SQLite connection — route through the shell's storage/kv.ts getDb() instead`);
+  for (const { rel, code } of files) {
+    const p = rel.replace(/\\/g, '/');
+    if (isDbOwnerPath(p)) continue;
+    if (p.includes('__tests__') || /\.test\.[jt]sx?$/.test(p)) continue;
+    if (SQLITE_OPEN_RE.test(code)) {
+      hits.push(`${p}: opens its own SQLite connection — route through the shell's storage/kv.ts getDb() instead`);
     }
   }
+  return hits;
+};
+
+const ruleSingleDbConnection = () => {
+  const id = 'rn/single-db-connection';
+  if (surface !== 'rn') return skip(id, 'Not an RN app');
+  if (ruleSkipsAll(id)) return skip(id, `Disabled via qa/baseline.json "${id}/skip"`);
+  const files = srcSourceFiles();
+  if (!files.length) return skip(id, 'No src/ source files');
+  // WARN during rollout (codify -> backfill -> shipgate); FAIL once an app sets
+  // `"storage/enforce": true` in qa/baseline.json.
+  const enforce = baseline['storage/enforce'] === true;
+  const hits = secondDbConnectionHits(
+    files
+      .filter((f) => !ruleSkipsFile(id, relative(appDir, f)))
+      .map((f) => ({ rel: relative(appDir, f), code: stripComments(readText(f) || '') })),
+  );
   if (hits.length) {
-    return warn('rn/single-db-connection',
+    return (enforce ? fail : warn)(id,
       'A second SQLite connection to the app database races directory creation on the first launch after an install; the losing open rejects and hydration fails open to an empty app. Only src/storage/kv.ts may open the database', hits);
   }
-  return pass('rn/single-db-connection', 'Only the shell storage layer opens the database');
+  return pass(id, 'Only the shell storage layer opens the database');
 };
 
 // A React Native <Modal> renders in its OWN native view hierarchy, detached
@@ -2754,6 +2771,19 @@ function runSelfTest() {
     'review-prompt/wired: a trigger call with no mount is still dead (the known-bad tend shape)');
   assert(reviewModalMounted([`<ReviewModalRow/>`]) === false,
     'review-prompt/wired: a same-prefix component (<ReviewModalRow>) is not a mount');
+
+  // rn/single-db-connection — one app, one SQLite handle. The known-bad is a
+  // domain store that opens its own connection to the same file.
+  assert(secondDbConnectionHits([{ rel: 'src/store/db.ts', code: `const db = await SQLite.openDatabaseAsync('app.db');` }]).length === 1,
+    'single-db-connection: a domain store opening its own connection fires (the packing-list first-launch race)');
+  assert(secondDbConnectionHits([{ rel: 'src/storage/kv.ts', code: `const db = await SQLite.openDatabaseAsync('app.db');` }]).length === 0,
+    'single-db-connection: the shell storage layer IS the owner — never flagged');
+  assert(secondDbConnectionHits([{ rel: 'src/store/db.ts', code: `const db = openDatabaseSync('app.db');` }]).length === 1,
+    'single-db-connection: a bare openDatabaseSync import call fires too');
+  assert(secondDbConnectionHits([{ rel: 'src/store/__tests__/db.test.ts', code: `SQLite.openDatabaseAsync(':memory:');` }]).length === 0,
+    'single-db-connection: a test opening an in-memory db is not a second app connection');
+  assert(secondDbConnectionHits([{ rel: 'src/store/db.ts', code: `const db = await getDb();` }]).length === 0,
+    'single-db-connection: taking the handle from getDb() passes (the fix shape)');
 
   // funding/tip-jar-wired regexes (cross-file predicates)
   assert(/<\s*TipJarSheet\b/.test(`<TipJarSheet visible={open}/>`) === true,
