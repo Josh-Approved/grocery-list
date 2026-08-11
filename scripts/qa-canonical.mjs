@@ -26,7 +26,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join, resolve, relative } from 'node:path';
+import { join, resolve, relative, dirname } from 'node:path';
 import { execSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
@@ -2221,6 +2221,126 @@ const ruleEmptyStatePresent = () => {
   return pass(id, 'Every list surface renders an empty state');
 };
 
+// ---------- ux/fab-footer-clearance ----------
+//
+// App-shell geometry invariant. On a screen that lifts a floating action button
+// above a bottom-anchored FundingFooter, the scroll content's bottom padding is
+// what decides whether the "+" button covers the footer's Support / Send
+// feedback row. All offsets measured up from the scroll view's bottom edge:
+//
+//   footer box   [P, P + H]                 P = contentContainer paddingBottom
+//   footer text  starts at P + H - space.s5 H = measured footerHeight
+//   FAB bottom   H + LIFT                   (style `bottom: footerHeight + LIFT`)
+//
+// The FAB intrudes into the footer's buttons exactly when H + LIFT < P + H -
+// space.s5 — H cancels, so the whole thing reduces to `P > LIFT + space.s5`,
+// independent of screen size, font scale and device. That is the ceiling this
+// rule enforces (LIFT is read from the FAB's own style, so it stays honest if an
+// app lifts by something other than space.s4).
+//
+// Why it exists: packing-list's v1.0.7 funding-footer restyle anchored the
+// footer to the bottom of the scroll but left the legacy space.s9 (64px) padding
+// from when the footer scrolled inline, putting the FAB 52px into the footer and
+// clipping "Send feedback" on every device. 16 device-matrix cells went red
+// before anyone read it as a real UX defect (defect packing-list-20260801-2,
+// oracle-kind learning; sessions/2026-08-01-packing-list-fab-footer-clearance.md).
+//
+// FALSE-POSITIVES-FIRST. It fires only on the exact canonical pairing — a
+// <FundingFooter/> plus a FAB lifted by `footerHeight + <token>` plus a resolvable
+// numeric paddingBottom. A screen with an inline (ListFooterComponent) funding
+// footer and no lifted FAB — grocery-list's home — is not this shape and is never
+// flagged. Anything it cannot resolve to a number is silence, not a warning.
+const SPACE_SCALE = { s0: 0, s1: 2, s2: 4, s3: 8, s4: 12, s5: 16, s6: 20, s7: 24, s8: 48, s9: 64 };
+const FAB_LIFT_RE = /\bbottom\s*:\s*footerHeight\s*\+\s*([A-Za-z0-9_.\s+]+?)\s*[,}]/;
+
+// Evaluate a spacing expression made only of `space.sN` tokens and numeric
+// literals joined by `+` (`space.s9`, `space.s4 + space.s5`, `12`). Anything
+// else — a variable, a function call, arithmetic we don't model — is null,
+// which the caller reads as "cannot judge, stay silent".
+const evalSpaceExpr = (expr) => {
+  const src = String(expr || '').trim();
+  if (!src) return null;
+  let total = 0;
+  for (const term of src.split('+')) {
+    const t = term.trim();
+    const tok = /^(?:space|spacing)\s*\.\s*(s\d+)$/.exec(t);
+    if (tok) {
+      if (!(tok[1] in SPACE_SCALE)) return null;
+      total += SPACE_SCALE[tok[1]];
+      continue;
+    }
+    if (/^\d+(?:\.\d+)?$/.test(t)) { total += parseFloat(t); continue; }
+    return null;
+  }
+  return total;
+};
+
+// Pure core (self-tested). `code` is the screen source (comments stripped);
+// `styleCode` is that source plus any co-located `styles.ts` module it imports,
+// because the app-shell convention splits a screen's JSX from its makeStyles
+// factory. Returns [] when the file is not the FAB-over-anchored-footer shape or
+// the padding cannot be resolved; otherwise one hit describing the overlap.
+const detectFabFooterClearance = (code, styleCode = code) => {
+  if (!/<\s*FundingFooter\b/.test(code)) return [];
+  const lift = FAB_LIFT_RE.exec(code);
+  if (!lift) return [];                                   // no lifted FAB → not this geometry
+  const liftPx = evalSpaceExpr(lift[1]);
+  if (liftPx == null) return [];
+  const ceiling = liftPx + SPACE_SCALE.s5;                 // the footer's own paddingTop
+  const attr = /\bcontentContainerStyle\s*=\s*\{/.exec(code);
+  if (!attr) return [];
+  const bal = matchBalanced(code, code.indexOf('{', attr.index), '{', '}');
+  if (!bal) return [];
+  let styleText = bal.inner;
+  for (const ref of bal.inner.matchAll(/\b(?:styles?|s|st)\.(\w+)/g)) {
+    styleText += '\n' + resolveNamedStyle(styleCode, ref[1]);
+  }
+  const pad = /\bpaddingBottom\s*:\s*([^,}\n]+)/.exec(styleText);
+  if (!pad) return [];
+  const padPx = evalSpaceExpr(pad[1]);
+  if (padPx == null || padPx <= ceiling) return [];
+  const line = code.slice(0, attr.index).split(/\r?\n/).length;
+  return [{
+    line,
+    detail: `scroll content paddingBottom is ${pad[1].trim()} (${padPx}px) but the FAB is lifted by ${lift[1].trim()} — the ceiling is that lift + space.s5 = ${ceiling}px, so the + button covers ${padPx - ceiling}px of the footer's Support / Send feedback row`,
+  }];
+};
+
+const ruleFabFooterClearance = () => {
+  const id = 'ux/fab-footer-clearance';
+  if (surface !== 'rn') return skip(id, 'Not an RN app');
+  if (ruleSkipsAll(id)) return skip(id, 'Disabled via qa/baseline.json "ux/fab-footer-clearance/skip"');
+  const files = srcSourceFiles().filter((f) => {
+    const rel = relative(join(appDir, 'src'), f).replace(/\\/g, '/');
+    return rel.startsWith('screens/') || rel.startsWith('components/');
+  });
+  if (!files.length) return skip(id, 'No screen/component source files');
+  const hits = [];
+  for (const f of files) {
+    const rel = relative(appDir, f);
+    if (ruleSkipsFile(id, rel)) continue;
+    const raw = readText(f);
+    if (!raw) continue;
+    const code = stripComments(raw);
+    // The styles usually live in a co-located `styles.ts` the screen imports
+    // (`./tripsHome/styles`), so gather those too or the padding is unresolvable.
+    let styleCode = code;
+    for (const imp of code.matchAll(/from\s+['"](\.[^'"]*styles)['"]/g)) {
+      for (const ext of ['.ts', '.tsx']) {
+        const p = join(dirname(f), imp[1] + ext);
+        const t = readText(p);
+        if (t) { styleCode += '\n' + stripComments(t); break; }
+      }
+    }
+    for (const h of detectFabFooterClearance(code, styleCode)) hits.push(`${rel}:${h.line}: ${h.detail}`);
+  }
+  if (hits.length) {
+    return uxWarn(id,
+      'FAB covers the funding footer — on a screen pairing a lifted floating action button with the bottom-anchored FundingFooter, the scroll content\'s paddingBottom must stay at or under the FAB\'s lift + space.s5, or the + button sits on top of Support / Send feedback (packing-list v1.0.7, 16 red device cells)', hits);
+  }
+  return pass(id, 'No FAB overlapping a funding footer');
+};
+
 // Pure core (self-tested): destructive data deletes that sit in a file with no
 // confirm/undo. Returns null when the file has no destructive call, false when a
 // confirm (Alert.alert / confirm*() / <Confirm…) or an `undo` identifier is
@@ -2573,6 +2693,7 @@ const CANONICAL_RULES = [
   ruleCreateOnMount,
   ruleScrollformKeyboardAvoidance,
   ruleTouchTargetMin,
+  ruleFabFooterClearance,
   ruleEmptyStatePresent,
   ruleDestructiveConfirm,
   ruleMultilineNotes,
@@ -2672,6 +2793,40 @@ function runSelfTest() {
     'touch-target: a non-pressable View is not measured');
   assert(detectSmallTouchTargets(`const s = StyleSheet.create({ fab: { width: 56, height: 56, shadowOffset: { width: 0, height: 4 } } });\n<Pressable style={s.fab} onPress={x}/>`).length === 0,
     'touch-target: a shadowOffset { width: 0 } on a 56dp FAB is NOT a 0dp target');
+
+  // ux/fab-footer-clearance — the known-bad is packing-list's real pre-fix shape
+  // (JSX in the screen, styles in a co-located styles.ts, legacy space.s9 pad).
+  const fabBadScreen = `<ScrollView contentContainerStyle={[s.scrollContent, { flexGrow: 1 }]}>`
+    + `<FundingFooter onSupport={f}/></ScrollView>`
+    + `<Pressable style={({ pressed }) => [s.fab, { bottom: footerHeight + space.s4 }, pressed && s.fabPressed]} onPress={n}/>`;
+  const fabBadStyles = `StyleSheet.create({ scrollContent: { paddingHorizontal: space.s6, paddingBottom: space.s9 } })`;
+  assert(detectFabFooterClearance(fabBadScreen, fabBadScreen + '\n' + fabBadStyles).length === 1,
+    'fab-footer: the packing-list v1.0.7 shape (s9 pad under a lifted FAB) fires');
+  assert(/covers 36px/.test(detectFabFooterClearance(fabBadScreen, fabBadScreen + '\n' + fabBadStyles)[0].detail),
+    'fab-footer: the hit reports how far the FAB intrudes (64 - (12+16) = 36px)');
+  const fabGoodStyles = `StyleSheet.create({ scrollContent: { paddingBottom: space.s5 } })`;
+  assert(detectFabFooterClearance(fabBadScreen, fabBadScreen + '\n' + fabGoodStyles).length === 0,
+    'fab-footer: the shipped fix (space.s5 pad) passes');
+  const fabAtCeiling = `StyleSheet.create({ scrollContent: { paddingBottom: space.s4 + space.s5 } })`;
+  assert(detectFabFooterClearance(fabBadScreen, fabBadScreen + '\n' + fabAtCeiling).length === 0,
+    'fab-footer: exactly at the ceiling (lift + space.s5) passes — the FAB just touches');
+  assert(detectFabFooterClearance(
+    `<FlatList contentContainerStyle={s.listContent} ListFooterComponent={<FundingFooter/>}/>`
+    + `\nStyleSheet.create({ listContent: { paddingBottom: space.s8 } })`).length === 0,
+    'fab-footer: an inline footer with no lifted FAB is not this geometry (grocery-list home)');
+  assert(detectFabFooterClearance(
+    `<ScrollView contentContainerStyle={s.scrollContent}/>`
+    + `\n<Pressable style={[s.fab, { bottom: footerHeight + space.s4 }]}/>`
+    + `\nStyleSheet.create({ scrollContent: { paddingBottom: space.s9 } })`).length === 0,
+    'fab-footer: a lifted FAB with no FundingFooter is not flagged');
+  assert(detectFabFooterClearance(
+    `<ScrollView contentContainerStyle={s.scrollContent}><FundingFooter/></ScrollView>`
+    + `\n<Pressable style={[s.fab, { bottom: footerHeight + space.s4 }]}/>`
+    + `\nStyleSheet.create({ scrollContent: { paddingBottom: computedPad } })`).length === 0,
+    'fab-footer: an unresolvable padding expression stays silent, never guesses');
+  assert(evalSpaceExpr('space.s4 + space.s5') === 28 && evalSpaceExpr('space.s9') === 64
+    && evalSpaceExpr('24') === 24 && evalSpaceExpr('insets.bottom') === null,
+    'fab-footer: the spacing evaluator handles tokens, sums and literals, and gives up on anything else');
 
   // ux/empty-state-present
   assert(detectMissingEmptyState(`<FlatList data={x} renderItem={r}/>`) === true,
