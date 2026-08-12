@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
-  "_comment": "Trust core = the CRDT merge/clock/pairing logic the intent fuzzer exercises (a bug here silently corrupts a shared list). Transport/engine/status glue (transport.ts, index.ts, status.ts, crypto.ts) is DEFERRED — mostly network/timer/UI, not unit-tested here; tracked as ticket mut-grocery-list-DEFERRED-sync-glue. Survivors are a work queue, never a gate. Incremental only. See stack/stryker.md.",
+  "_comment": "Trust core = the shared-list logic a bug silently corrupts. Two rings. (1) CRDT merge/clock/pairing (merge.ts, mergeRecordSet.ts, mergeKits.ts, clock.ts, share.ts) — the surface the 250-scenario intent fuzzer drives. (2) Engine/crypto/status glue ADDED 2026-07-24 now that unit-level tests exist for each: index.ts + crypto.ts via src/sync/__tests__/engine.test.ts (real seal/open, real stores, transport injected through __setTransportFactory), status.ts via publishRejectionStatus.test.tsx. Rule: a glue file joins `mutate` only once a unit test actually drives it. STILL DEFERRED: transport.ts — the Nostr websocket layer. Only its NIP-20 publish/OK path is unit-covered (publishRejectionStatus.test.tsx layer 1); onWire's EVENT branch, connect()'s reconnect/onerror timers and envRelays()'s __DEV__ gate have no unit test, and `mutate` is per-file not per-function, so including it would import ~170 NoCoverage mutants as noise. Also deferred: simHarness.ts (test-only harness — mutating it is noise) and shareConfig.ts (constants). Survivors are a work queue, never a gate — thresholds.break stays unset. Incremental only. See stack/stryker.md.",
   "packageManager": "npm",
   "testRunner": "jest",
   "jest": {
@@ -22,7 +22,10 @@
     "src/sync/mergeRecordSet.ts",
     "src/sync/mergeKits.ts",
     "src/sync/clock.ts",
-    "src/sync/share.ts"
+    "src/sync/share.ts",
+    "src/sync/index.ts",
+    "src/sync/status.ts",
+    "src/sync/crypto.ts"
   ],
   "ignorePatterns": [
     "ios",

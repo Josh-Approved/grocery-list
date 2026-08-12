@@ -79,7 +79,8 @@
       "<rootDir>/qa/quarantine.setup.cjs"
     ],
     "modulePathIgnorePatterns": [
-      "<rootDir>/qa/known-bad/"
+      "<rootDir>/qa/known-bad/",
+      "<rootDir>/.stryker-tmp/"
     ]
   },
   "overrides": {
