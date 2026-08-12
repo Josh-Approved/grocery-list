@@ -14,6 +14,12 @@
  * Menu-option handlers are deferred ~260ms past the sheet dismissal (so native
  * presentations aren't rejected by iOS mid-animation) — those assertions go
  * through waitFor, never a bare expect right after the press.
+ *
+ * These tests wait on real animation wall-clock, so jest's 5s default is too
+ * tight on a 2-core CI runner — they pass in about a second locally and time
+ * out there. The app's jest config carries a `testTimeout` generous enough to
+ * absorb that. Do not "fix" a timeout here by shortening the deferral; it
+ * exists to keep iOS from rejecting a native presentation mid-animation.
  */
 
 import React from 'react';
