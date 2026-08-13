@@ -155,3 +155,48 @@ describe('shared default instance (module-level exports)', () => {
     expect(peek()).toBe(0);
   });
 });
+
+describe('persisting the high-water mark', () => {
+  // The clock is only skew-resistant across app restarts if the mark actually
+  // reaches disk. The app builds its clock with no `persistGranularityMs`, so
+  // the DEFAULT cadence is the one that ships — a clock that silently never
+  // persisted would look perfect in memory and reset to zero on every launch,
+  // which is exactly the pre-logical-clock behaviour the module exists to end.
+  test('a clock built without an explicit granularity still persists on the default cadence', () => {
+    const time = fakeTime(T0);
+    const sink = jest.fn();
+    const c = new LogicalClock({ physicalNow: time.fn });
+    c.init(T0, sink);
+
+    // A stamp that barely moves the mark is not worth a write.
+    c.now();
+    expect(sink).not.toHaveBeenCalled();
+    time.advance(1000);
+    c.now();
+    expect(sink).not.toHaveBeenCalled();
+
+    // Once the mark has moved far enough, it is written.
+    time.advance(2500);
+    const t = c.now();
+    expect(sink).toHaveBeenCalledTimes(1);
+    expect(sink).toHaveBeenCalledWith(t);
+  });
+
+  test('an explicit granularity overrides the default in both directions', () => {
+    const time = fakeTime(T0);
+    const eager = jest.fn();
+    const c = new LogicalClock({ physicalNow: time.fn, persistGranularityMs: 1 });
+    c.init(T0, eager);
+    time.advance(5);
+    c.now();
+    expect(eager).toHaveBeenCalledTimes(1);
+
+    const lazyTime = fakeTime(T0);
+    const lazy = jest.fn();
+    const c2 = new LogicalClock({ physicalNow: lazyTime.fn, persistGranularityMs: 60_000 });
+    c2.init(T0, lazy);
+    lazyTime.advance(2500); // past the default, short of this clock's own bar
+    c2.now();
+    expect(lazy).not.toHaveBeenCalled();
+  });
+});

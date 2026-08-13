@@ -332,10 +332,21 @@ describe('duplicate-name collapse — check state folds by its clock, ties stay 
 // • mergeList L185 `>` → `>=` and L196 `nc > 0` → `nc >= 0` (same shape in
 //   mergeKits.ts L52): both sit inside a `!== 0` / inequality guard.
 //   Guard-shadowed.
-// • mergeList L188 `>=` → `>`: differs only when the two serialized aisle
-//   orders are byte-equal, i.e. the same value — either pick yields the same
-//   categoryOrder.
 // • mergeList L196 / mergeKits L52 `local.name >= remote.name` → `>`: differs
 //   only when the tied names are identical, where both picks yield the same
-//   name.
+//   name. (`nameHead` feeds nothing but `.name`, unlike `head` — see below.)
+//
+// WITHDRAWN 2026-08-13 — mergeList L188 `>=` → `>` was recorded here as
+// equivalent on the grounds that a byte-equal pair of serialized aisle orders
+// makes either pick yield the same `categoryOrder`. That reasoning was
+// incomplete: `head` also decides `shareIdentity`, whose `createdAt` is a
+// per-device fact the two paired phones legitimately disagree on. The mutant
+// is observable and is now killed by "a FULL head tie keeps the local share
+// identity" in mergeRecordSet.test.ts. Lesson for the next sweep: when a
+// tie-break is claimed equivalent because the tied VALUE is the same, check
+// every field the chosen OBJECT goes on to supply, not just the one the
+// comparison is named after.
+//
+// Re-triaged 2026-08-13 against a fresh sweep: this list accounts for the
+// remaining merge.ts (14) and mergeKits.ts (2) survivors, one for one.
 // ---------------------------------------------------------------------------

@@ -56,3 +56,14 @@ describe('parseShareLink', () => {
     expect(parseShareLink(`${SHARE_SCHEME}://join?s=%E0%A4%A`)).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// KNOWN-EQUIVALENT MUTANTS (mutation sweep record — do not chase these).
+//
+// • parseShareLink L41 `if (!m) return null` → false: with no `s=` match, the
+//   next line reads `m[1]` off null, which throws INSIDE the try — and the
+//   catch returns null, the same answer by the same function. The guard is a
+//   readability shortcut over a path the catch already covers, so no input can
+//   tell the two apart. ("no secret param" is pinned by the test above, which
+//   passes either way.)
+// ---------------------------------------------------------------------------

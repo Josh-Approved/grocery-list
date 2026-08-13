@@ -584,6 +584,28 @@ describe('mergeList — head resolution details', () => {
     expect(mergeList(zucchini, apples).name).toBe('Zucchini');
   });
 
+  it('a FULL head tie keeps the local share identity — a device never adopts a peer copy for no reason', () => {
+    // Same list clock AND the same aisle order: nothing distinguishes the two
+    // heads, so the local one is kept. This matters because `shareIdentity`
+    // rides the head, and its `createdAt` is a PER-DEVICE fact (when this phone
+    // joined the list) — the two paired devices legitimately hold different
+    // values behind the same secret. Adopting the peer's copy on an otherwise
+    // idle merge would rewrite local history for no reason, so the tie-break
+    // has to resolve the head, not just the aisle order it is named after.
+    const mine = { secret: 'shared-secret-aaaaaaaa', createdAt: T0 };
+    const theirs = { secret: 'shared-secret-aaaaaaaa', createdAt: T0 + 60_000 };
+    const order = ['Produce', 'Pantry'];
+    const local = listWith({ updatedAt: T0, categoryOrder: order, shareIdentity: mine });
+    const remote = listWith({ id: 'r', updatedAt: T0, categoryOrder: [...order], shareIdentity: theirs });
+
+    expect(mergeList(local, remote).shareIdentity).toEqual(mine);
+    // Symmetric by construction: each device keeps its own join record, and
+    // both still agree on every field that is actually shared.
+    expect(mergeList(remote, local).shareIdentity).toEqual(theirs);
+    expect(mergeList(local, remote).categoryOrder).toEqual(order);
+    expect(mergeList(remote, local).categoryOrder).toEqual(order);
+  });
+
   it("when BOTH sides carry a share identity, the newer head's identity wins", () => {
     const older = { secret: 'older-secret-aaaaaaaa', createdAt: T0 };
     const newer = { secret: 'newer-secret-bbbbbbbb', createdAt: T0 + 1 };
@@ -614,10 +636,21 @@ describe('mergeList — head resolution details', () => {
 //   spurious false is invisible (perf-only).
 // • L68/L69 single-loop weakenings (`!==` → `===` on the value compare, the
 //   `undefined` compares): a record always carries an equal, defined `id`, so
-//   the value-inversion variants reject immediately (→ slow path, see above);
-//   the one-sided under-detections are caught by the symmetric other loop.
-//   The only variants that could wrongly report "equal" — the whole-condition
-//   → false ones — ARE killed (the missing-field tie test above).
+//   the value-inversion variants reject immediately (→ slow path, see above).
+// • L69's whole-condition variants — the second loop made never to reject
+//   (`if (false)`) or to return the wrong verdict (`return true`) — are also
+//   equivalent, and the reason is worth writing down because it is NOT the
+//   obvious "the other loop catches it". Loop 1 already rejects every key `a`
+//   carries that `b` does not match, so the only way to reach a wrong "equal"
+//   here is `a`'s defined keys being a strict SUBSET of `b`'s with equal
+//   values. For that case the fast path returns `a` — and so does the slow
+//   path, always: the first character where the two stable serializations
+//   differ is either `b`'s extra key against a lexicographically greater key
+//   of `a`, or `}` against `,`, so `sa > sb` and `sa.length < sb.length` hold
+//   for EVERY strict subset (checked analytically and over ~200k random subset
+//   pairs, 2026-08-11). Both the lean-tombstone branch and the `sa >= sb`
+//   branch therefore pick `a` too. (Loop 1's own whole-condition variants ARE
+//   killed, by the missing-field tie test above.)
 // • winner L89 `sa.length < sb.length` → `<=`: inside the
 //   `sa.length !== sb.length` guard. Guard-shadowed.
 // • stableStringify L49/L55 `','` → '' (join separators): a separator can only
@@ -628,5 +661,10 @@ describe('mergeList — head resolution details', () => {
 //   index-keyed objects. The rewrite decorates both compared serializations
 //   identically ('["…' → '{"0":"…'), so every diverging character pair is
 //   unchanged (or `]` vs `,` becomes `}` vs `,` — same order). Deterministic
-//   and order-preserving, hence unobservable through the winner.
+//   and order-preserving, hence unobservable through the winner. Precisely:
+//   this holds while the two records agree on which fields are arrays. A field
+//   that is an array on one device and a plain object on the other WOULD order
+//   differently ('[' sorts below '{'), but no record shape in this app has a
+//   field of both kinds, and nothing on the wire can introduce one — a peer
+//   sends the same typed records we do. (Verified 2026-08-13.)
 // ---------------------------------------------------------------------------
