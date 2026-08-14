@@ -63,6 +63,8 @@ jobs:
     outputs:
       is-rn: ${{ steps.check.outputs.is-rn }}
       has-flow: ${{ steps.check.outputs.has-flow }}
+      macos-runner: ${{ steps.check.outputs.macos-runner }}
+      xcode: ${{ steps.check.outputs.xcode }}
     steps:
       - uses: actions/checkout@v6
       - id: check
@@ -73,11 +75,28 @@ jobs:
           # CI time, so journey.json presence counts even though qa/flows/mobile.yaml
           # isn't committed. (Same rule as qa-e2e.yml.template.)
           if [ -f qa/journey.json ] || [ -f qa/flows/mobile.yaml ]; then echo "has-flow=true" >> "$GITHUB_OUTPUT"; else echo "has-flow=false" >> "$GITHUB_OUTPUT"; fi
+          # iOS toolchain, derived from the app's Expo SDK rather than pinned in
+          # the workflow — same table as qa-e2e.yml.template, keep them in step.
+          # Expo SDK 57 ships an expo-modules-jsi that Xcode 26.2 CANNOT compile
+          # (the ExpoModulesJSI xcframework phase dies type-checking
+          # JavaScriptCodable+Date.swift — that held packing-list's nightly red
+          # from 2026-07-28), and the Xcode 26.6 that does compile it exists
+          # only on the macos-26 image. Older SDKs stay on macos-15 / 26.2.
+          SDK=$(node -p "try{((require('./package.json').dependencies||{}).expo||'').replace(/[^0-9.]/g,'').split('.')[0]||0}catch(e){0}")
+          echo "Expo SDK major: ${SDK:-0}"
+          if [ "${SDK:-0}" -ge 57 ]; then
+            echo "macos-runner=macos-26" >> "$GITHUB_OUTPUT"
+            echo "xcode=26.6.0" >> "$GITHUB_OUTPUT"
+          else
+            echo "macos-runner=macos-15" >> "$GITHUB_OUTPUT"
+            echo "xcode=26.2.0" >> "$GITHUB_OUTPUT"
+          fi
 
   ios-nightly:
     needs: detect
     if: needs.detect.outputs.is-rn == 'true' && needs.detect.outputs.has-flow == 'true'
-    runs-on: macos-15
+    # Image + Xcode are derived from the app's Expo SDK in `detect`.
+    runs-on: ${{ needs.detect.outputs.macos-runner }}
     timeout-minutes: 90
     env:
       EXPO_PUBLIC_QA_MODE: '1'
@@ -94,8 +113,10 @@ jobs:
           echo "$HOME/.maestro/bin" >> $GITHUB_PATH
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          # See qa-eyaml pin rationale: eas.json's `image` is ignored for --local.
-          xcode-version: '26.2.0'
+          # See qa-e2e.yml.template's pin rationale: eas.json's `image` is
+          # ignored for --local, so the Xcode choice is ours and is derived
+          # per-app from the Expo SDK in `detect`.
+          xcode-version: ${{ needs.detect.outputs.xcode }}
       - name: npm ci
         run: npm ci
 
@@ -177,10 +198,37 @@ jobs:
             exit 1
           fi
           echo "app-path=$APP_PATH" >> "$GITHUB_OUTPUT"
-      - name: Boot iPhone 16 Pro Max (iOS 26.2)
+      - name: Boot the QA iPhone simulator
         id: sim
+        # Runtime + device type are RESOLVED, not hard-pinned: which iOS
+        # runtimes and device types exist moves with the runner image and the
+        # selected Xcode, and a stale pin fails the whole job at boot. The
+        # runtime preferred is the one matching the selected Xcode's simulator
+        # SDK (so the sim always pairs with the toolchain that built the .app),
+        # falling back to the newest available; the device is iPhone 16 Pro Max
+        # when present — what the flows were authored against — then the newest
+        # Pro Max, then any iPhone.
         run: |
-          UDID=$(xcrun simctl create "qa-iphone" "iPhone 16 Pro Max" "com.apple.CoreSimulator.SimRuntime.iOS-26-2")
+          SDKVER=$(xcrun --sdk iphonesimulator --show-sdk-version 2>/dev/null || echo "")
+          RUNTIME=$(xcrun simctl list runtimes --json | SDKVER="$SDKVER" node -e '
+            let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const rs=JSON.parse(s).runtimes.filter(r=>r.isAvailable&&r.platform==="iOS");
+              rs.sort((a,b)=>a.version.localeCompare(b.version,undefined,{numeric:true}));
+              if(!rs.length){console.error("no iOS runtimes");process.exit(1)}
+              const pick=rs.find(r=>r.version===process.env.SDKVER)||rs[rs.length-1];
+              console.log(pick.identifier);
+            })')
+          DEVICE=$(xcrun simctl list devicetypes --json | node -e '
+            let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const ds=JSON.parse(s).devicetypes.map(d=>d.name);
+              const pick=ds.find(n=>n==="iPhone 16 Pro Max")
+                || ds.filter(n=>/^iPhone .*Pro Max$/.test(n)).pop()
+                || ds.filter(n=>/^iPhone /.test(n)).pop();
+              if(!pick){console.error("no iPhone device types");process.exit(1)}
+              console.log(pick);
+            })')
+          echo "Simulator: $DEVICE on $RUNTIME"
+          UDID=$(xcrun simctl create "qa-iphone" "$DEVICE" "$RUNTIME")
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
