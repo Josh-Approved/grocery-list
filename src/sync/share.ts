@@ -38,6 +38,7 @@ export function buildShareLink(secret: string): string {
 export function parseShareLink(url: string): string | null {
   if (!url) return null;
   const m = url.match(/[?&]s=([^&]+)/);
+  // Stryker disable next-line ConditionalExpression: equivalent mutant, with no `s=` match the next line reads `m[1]` off null, which throws inside the try — and the catch returns null, the same answer by the same function
   if (!m) return null;
   try {
     const secret = decodeURIComponent(m[1]);

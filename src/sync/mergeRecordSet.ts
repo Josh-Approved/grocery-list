@@ -46,13 +46,17 @@ function clock(r: Record): number {
  *  insertion order. */
 function stableStringify(v: unknown): string {
   if (v === null || typeof v !== 'object') return JSON.stringify(v) ?? 'null';
+  // Stryker disable next-line ConditionalExpression,StringLiteral: equivalent mutant, index-keyed array serialization decorates both compared serializations identically ('["…' → '{"0":"…'), and a mutated join separator can only diverge against `]`/`}` (which sort above `,` and `"` alike) or against the same separator mutated identically on the other side — the `sa >= sb` outcome never flips
   if (Array.isArray(v)) return `[${v.map(stableStringify).join(',')}]`;
   const keys = Object.keys(v as object)
     .filter((k) => (v as Record2)[k] !== undefined)
     .sort();
   return `{${keys
     .map((k) => `${JSON.stringify(k)}:${stableStringify((v as Record2)[k])}`)
-    .join(',')}}`;
+    .join(
+      // Stryker disable next-line StringLiteral: equivalent mutant, a join separator can only become the diverging character against `]`/`}` (both sort above `,` and `"` alike) or against the same separator mutated the same way in the other serialization, so the `sa >= sb` outcome never flips
+      ','
+    )}}`;
 }
 type Record2 = { [k: string]: unknown };
 
@@ -62,11 +66,15 @@ type Record2 = { [k: string]: unknown };
  *  the expensive stable serialization must not run per item per message. Any
  *  nested value (arrays/objects) fails === and falls through to the full
  *  serialization — correctness is never traded, only work. */
+// Stryker disable next-line BlockStatement: equivalent mutant, an emptied body returns undefined, which only disables the fast path — the slow path computes the same winner
 function shallowEqual(a: object, b: object): boolean {
   const ra = a as { [k: string]: unknown };
   const rb = b as { [k: string]: unknown };
+  // Stryker disable next-line ConditionalExpression,LogicalOperator,EqualityOperator: equivalent mutant, these variants only make shallowEqual return false more often, which costs the fast path but never the verdict — the slow path returns the same winner
   for (const k in ra) if (ra[k] !== rb[k] && ra[k] !== undefined) return false;
+  // Stryker disable next-line ConditionalExpression,LogicalOperator,EqualityOperator,BooleanLiteral: equivalent mutant, loop 1 already rejects every key `a` carries that `b` does not match, so the only case a wrong verdict here can reach is `a`'s defined keys being a strict SUBSET of `b`'s — and for every strict subset the slow path picks `a` too (both the lean-tombstone and the `sa >= sb` branch)
   for (const k in rb) if (rb[k] !== ra[k] && rb[k] !== undefined) return false;
+  // Stryker disable next-line BooleanLiteral: equivalent mutant, a spurious `false` only costs the fast path — the slow path returns the same winner
   return true;
 }
 
@@ -79,13 +87,16 @@ function shallowEqual(a: object, b: object): boolean {
 function winner<T extends Record>(a: T, b: T): T {
   const ca = clock(a);
   const cb = clock(b);
+  // Stryker disable next-line EqualityOperator: equivalent mutant, guard-shadowed — inside the `ca !== cb` test, so `>` and `>=` are identical
   if (ca !== cb) return ca > cb ? a : b;
   const aDead = a.deletedAt != null;
   const bDead = b.deletedAt != null;
   if (aDead !== bDead) return aDead ? a : b;
+  // Stryker disable next-line ConditionalExpression: equivalent mutant, shallowEqual only gates a fast path — when the copies are genuinely equal the slow path computes equal stable serializations and `sa >= sb` returns the same first argument
   if (shallowEqual(a, b)) return a;
   const sa = stableStringify(a);
   const sb = stableStringify(b);
+  // Stryker disable next-line EqualityOperator: equivalent mutant, guard-shadowed — `sa.length < sb.length` sits inside the `sa.length !== sb.length` test, so `<` and `<=` decide identically
   if (aDead) return sa.length !== sb.length ? (sa.length < sb.length ? a : b) : sa >= sb ? a : b;
   return sa >= sb ? a : b;
 }

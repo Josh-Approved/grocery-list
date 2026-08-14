@@ -106,6 +106,7 @@ let unsub: (() => void) | null = null;
 // `_sync`), and old app versions ignore anything carrying `_sync`.
 let unsubKits: (() => void) | null = null;
 let kitsTimer: ReturnType<typeof setTimeout> | null = null;
+// Stryker disable next-line StringLiteral: equivalent mutant, the sentinel is only ever compared against a serialized kits payload, which can never equal it
 let lastKitsPayload = '';
 
 function kitsPayload(): string {
@@ -141,6 +142,7 @@ function ensureChannel(secret: string): Channel {
     },
     (delivered) => markDelivered(secret, delivered)
   );
+  // Stryker disable next-line StringLiteral: equivalent mutant, lastSent exists only to be compared against a serialized list payload, which can never equal the sentinel
   ch = { transport, lastSent: '', timer: null, lastHelloAt: 0 };
   channels.set(secret, ch);
   transport.start();
@@ -161,9 +163,12 @@ function receive(secret: string, ct: string): void {
   let obj: unknown;
   try {
     obj = JSON.parse(json);
-  } catch {
+  }
+  // Stryker disable next-line BlockStatement: equivalent mutant, the early return is redundant — `obj` stays undefined, the object guard below is false and `remote?.shareIdentity` short-circuits, so a malformed frame is dropped either way
+  catch {
     return; // malformed — next publish re-converges
   }
+  // Stryker disable next-line ConditionalExpression: equivalent mutant, the typeof half only guards the property access below it, and reading `._sync` off a truthy non-object yields undefined rather than throwing — the `obj &&` half already excludes null/undefined
   if (obj && typeof obj === 'object') {
     const sync = (obj as { _sync?: string })._sync;
     if (sync === 'hello') {
@@ -223,9 +228,11 @@ function forcePublish(secret: string): void {
   const list = useListsStore
     .getState()
     .lists.find((l) => sharedSecret(l) === secret);
+  // Stryker disable next-line ConditionalExpression: equivalent mutant, a channel whose secret no list carries cannot exist — channels are created only by publish() from reconcile() with the secret-carrying list, and the same reconcile deletes the channel synchronously when it stops carrying it
   if (!list) return;
   // Cancel any pending debounced publish: it captured an OLDER snapshot, and
   // letting it fire after this one would re-send stale state.
+  // Stryker disable next-line ConditionalExpression: equivalent mutant, clearTimeout(null) is a no-op and the `= null` is idempotent, so the guard changes nothing
   if (ch.timer) {
     clearTimeout(ch.timer);
     ch.timer = null;
@@ -259,6 +266,7 @@ function publishKitsNow(): void {
  *  Skips a no-op (same serialized collection as last sent). */
 function scheduleKitsPublish(): void {
   if (kitsPayload() === lastKitsPayload) return;
+  // Stryker disable next-line ConditionalExpression: equivalent mutant, clearTimeout(null) is a no-op, so the guard cannot change behaviour
   if (kitsTimer) clearTimeout(kitsTimer);
   kitsTimer = setTimeout(() => {
     kitsTimer = null;
@@ -270,6 +278,7 @@ function publish(secret: string, list: GroceryList): void {
   const ch = ensureChannel(secret);
   const payload = JSON.stringify(list);
   if (payload === ch.lastSent) return; // nothing changed since last send
+  // Stryker disable next-line ConditionalExpression: equivalent mutant, clearTimeout(null) is a no-op, so the guard cannot change behaviour
   if (ch.timer) clearTimeout(ch.timer);
   ch.timer = setTimeout(() => {
     ch.lastSent = payload;
@@ -295,6 +304,7 @@ function reconcile(lists: GroceryList[]): void {
   // Close channels for lists that are gone / no longer shared.
   for (const [secret, ch] of channels) {
     if (!live.has(secret)) {
+      // Stryker disable next-line ConditionalExpression: equivalent mutant, clearTimeout(null) is a no-op, so the guard cannot change behaviour
       if (ch.timer) clearTimeout(ch.timer);
       ch.transport.close();
       channels.delete(secret);
@@ -320,6 +330,7 @@ export function startSyncEngine(): void {
 export function flushSyncEngine(): void {
   for (const secret of channels.keys()) {
     const ch = channels.get(secret);
+    // Stryker disable next-line ConditionalExpression,OptionalChaining,BlockStatement: equivalent mutant, this whole block is redundant with the forcePublish below (which clears the same timer), and `ch` comes from channels.get() inside a channels.keys() loop so it is never undefined
     if (ch?.timer) {
       clearTimeout(ch.timer);
       ch.timer = null;
@@ -328,6 +339,7 @@ export function flushSyncEngine(): void {
   }
   // Push kit edits too — the 700ms kit debounce would otherwise be suspended
   // mid-wait when the app backgrounds, stranding a just-made kit change.
+  // Stryker disable next-line ConditionalExpression: equivalent mutant, clearTimeout(null) is a no-op and the `= null` is idempotent, so the guard changes nothing
   if (kitsTimer) {
     clearTimeout(kitsTimer);
     kitsTimer = null;
@@ -344,12 +356,15 @@ export function stopSyncEngine(): void {
     unsubKits();
     unsubKits = null;
   }
+  // Stryker disable next-line ConditionalExpression: equivalent mutant, clearTimeout(null) is a no-op and the `= null` is idempotent, so the guard changes nothing
   if (kitsTimer) {
     clearTimeout(kitsTimer);
     kitsTimer = null;
   }
+  // Stryker disable next-line StringLiteral: equivalent mutant, the sentinel is only ever compared against a serialized kits payload, which can never equal it
   lastKitsPayload = '';
   for (const ch of channels.values()) {
+    // Stryker disable next-line ConditionalExpression: equivalent mutant, clearTimeout(null) is a no-op, so the guard cannot change behaviour
     if (ch.timer) clearTimeout(ch.timer);
     ch.transport.close();
   }

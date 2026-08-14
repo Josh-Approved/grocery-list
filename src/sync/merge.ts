@@ -104,16 +104,20 @@ function collapseDuplicateNames(items: GroceryItem[]): GroceryItem[] {
   // In the overwhelmingly common no-duplicate case (every received message,
   // once converged) this is one pass and no per-group allocation.
   const seen = new Set<string>();
+  // Stryker disable next-line BooleanLiteral: equivalent mutant, seeding the fast bail the other way just runs the grouping pass, which computes replace.size === 0 and returns the same items array — perf-only
   let hasDup = false;
   for (const it of items) {
+    // Stryker disable next-line ConditionalExpression,StringLiteral: equivalent mutant, a different fast-bail decision still returns the same items array (perf-only), and the '' sentinel is observable only for an item literally named the mutation string
     if (it.name === '') continue; // stripped tombstone — no name to group by
     const key = normName(it.name);
+    // Stryker disable next-line ConditionalExpression: equivalent mutant, a different fast-bail decision still runs the grouping pass and returns the same items array — perf-only
     if (seen.has(key)) {
       hasDup = true;
       break;
     }
     seen.add(key);
   }
+  // Stryker disable next-line ConditionalExpression: equivalent mutant, a different fast-bail decision still runs the grouping pass, which computes replace.size === 0 and returns the same items array — perf-only
   if (!hasDup) return items;
 
   const groups = new Map<string, GroceryItem[]>();
@@ -127,6 +131,7 @@ function collapseDuplicateNames(items: GroceryItem[]): GroceryItem[] {
 
   const replace = new Map<string, GroceryItem>();
   for (const group of groups.values()) {
+    // Stryker disable next-line ConditionalExpression: equivalent mutant, processing a singleton group is a no-op — no losers to tombstone, checkSource === keeper, and the rewrite guard fails
     if (group.length < 2) continue;
     const live = group.filter((it) => it.deletedAt == null);
     if (live.length === 0) continue;
@@ -134,6 +139,7 @@ function collapseDuplicateNames(items: GroceryItem[]): GroceryItem[] {
       (a, b) =>
         b.updatedAt - a.updatedAt ||
         b.addedAt - a.addedAt ||
+        // Stryker disable next-line EqualityOperator: equivalent mutant, ids inside one name group are unique (mergeRecordSet keys by id upstream), so the equality branch of this comparator is unreachable
         (a.id < b.id ? -1 : 1)
     );
     const keeper = sorted[0];
@@ -154,6 +160,7 @@ function collapseDuplicateNames(items: GroceryItem[]): GroceryItem[] {
     // — identity-preserving for memoized rows, and no hidden legacy-stamp
     // materialization on a value-equal pass.
     if (
+      // Stryker disable next-line ConditionalExpression: equivalent mutant, when checkSource IS the keeper the or-chain compares the keeper to itself and every clause is false, so the rewrite still never fires
       checkSource !== keeper &&
       (checkSource.checked !== keeper.checked ||
         checkSource.checkedAt !== keeper.checkedAt ||
@@ -167,6 +174,7 @@ function collapseDuplicateNames(items: GroceryItem[]): GroceryItem[] {
       });
     }
   }
+  // Stryker disable next-line ConditionalExpression: equivalent mutant, falling through with an empty replace map returns items.map(...) — value-identical items in a fresh array, and that identity is not observable through mergeList, which always returns a fresh list
   if (replace.size === 0) return items;
   return items.map((it) => replace.get(it.id) ?? it);
 }
@@ -182,7 +190,9 @@ export function mergeList(
   // two edits land in the same millisecond ("keep local" would diverge).
   const head =
     local.updatedAt !== remote.updatedAt
-      ? local.updatedAt > remote.updatedAt
+      ?
+        // Stryker disable next-line EqualityOperator: equivalent mutant, guard-shadowed — this sits inside the `updatedAt !== updatedAt` test, so `>` and `>=` decide identically
+        local.updatedAt > remote.updatedAt
         ? local
         : remote
       : JSON.stringify(local.categoryOrder) >= JSON.stringify(remote.categoryOrder)
@@ -193,6 +203,7 @@ export function mergeList(
   // two renames land in the same millisecond.
   const nc = nameClock(local) - nameClock(remote);
   const nameHead =
+    // Stryker disable next-line EqualityOperator: equivalent mutant, `nc > 0` is guard-shadowed by the `nc !== 0` test, and `local.name >= remote.name` → `>` differs only when the tied names are identical, where both picks yield the same name
     nc !== 0 ? (nc > 0 ? local : remote) : local.name >= remote.name ? local : remote;
   return {
     id: local.id, // keep the local id — devices have independent local ids

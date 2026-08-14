@@ -107,6 +107,12 @@ export function lintFlows(appDir) {
   };
   collectAnchors(journey.steps);
   collectAnchors(journey.survival && journey.survival.steps);
+  // The upgrade harness (T5) authors its own write/assert sub-flows, and their
+  // anchors are every bit as used as the main journey's. Omitting them made an
+  // app that adopted the block get a false "defined but unused" warning on the
+  // one anchor the harness exists to check — surfaced on workout-timer.
+  collectAnchors(journey.upgrade && journey.upgrade.write && journey.upgrade.write.steps);
+  collectAnchors(journey.upgrade && journey.upgrade.assert && journey.upgrade.assert.steps);
   try {
     yaml = compileJourney(journey, selectors, appDir);
     add('pass', 'flows/journey', `journey compiles (${(journey.steps || []).length} steps, ${referenced.size} anchors used)`);

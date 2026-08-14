@@ -49,6 +49,7 @@ export function mergeKit(local: Kit, remote: Kit): Kit {
   // kit in the same millisecond still converge instead of each keeping its own.
   const nc = nameClock(local) - nameClock(remote);
   const nameHead =
+    // Stryker disable next-line EqualityOperator: equivalent mutant, `nc > 0` is guard-shadowed by the `nc !== 0` test, and `local.name >= remote.name` → `>` differs only when the tied names are identical, where both picks yield the same name
     nc !== 0 ? (nc > 0 ? local : remote) : local.name >= remote.name ? local : remote;
   return {
     id: local.id,
