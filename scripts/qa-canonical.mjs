@@ -1462,6 +1462,61 @@ const ruleAppearanceToggle = () => {
   return themeWarn('theme/appearance-toggle', 'Dark-mode appearance control incomplete (canon § Theming)', missing);
 };
 
+// The other half of the appearance control: the NATIVE pin that silently
+// overrides it. theme/appearance-toggle above proves the JS chain exists, and
+// on workout-timer that chain was perfect — yet picking Dark or System did
+// nothing on iPhone for months (defect workout-timer-20260803-1), because
+// app.json pinned `userInterfaceStyle: "light"`, which writes
+// UIUserInterfaceStyle=Light into Info.plist and forces the app light at the OS
+// level. Android happened to escape only because the pin needs expo-system-ui
+// to reach it there — i.e. the bug presented as a platform-parity break.
+//
+// The trap worth pinning: DELETING the key is not a fix. @expo/prebuild-config's
+// getUserInterfaceStyle() is `ios.userInterfaceStyle ?? userInterfaceStyle ??
+// 'light'`, so an absent value resolves to Light too. An app that ships the
+// control must say "automatic" out loud.
+export function appearancePinProblems({ hasToggle, root, ios, android }) {
+  if (!hasToggle) return [];
+  const problems = [];
+  const check = (where, value) => {
+    if (value === undefined || value === null) return;
+    if (value !== 'automatic') problems.push(`app.json ${where} = "${value}" — pins the OS appearance, so the in-app control cannot take effect`);
+  };
+  check('expo.userInterfaceStyle', root);
+  check('expo.ios.userInterfaceStyle', ios);
+  check('expo.android.userInterfaceStyle', android);
+  // Absent everywhere is the silent version of the same bug (prebuild → Light).
+  if (root === undefined && ios === undefined) {
+    problems.push('app.json declares no userInterfaceStyle — prebuild resolves an absent value to Light, so iOS ignores the control');
+  }
+  return problems;
+}
+
+const ruleAppearanceNotPinned = () => {
+  const id = 'theme/appearance-not-pinned';
+  if (surface !== 'rn') return skip(id, 'Not a React Native app');
+  const haystack = [...srcSourceFiles(), join(appDir, 'App.tsx')]
+    .map(readText)
+    .filter(Boolean)
+    .join('\n');
+  const hasToggle = /<AppearanceToggle\b/.test(haystack);
+  if (!hasToggle) return skip(id, 'No in-app appearance control to override');
+  const expo = readJson(join(appDir, 'app.json'))?.expo;
+  if (!expo) return skip(id, 'app.json unreadable');
+  const problems = appearancePinProblems({
+    hasToggle,
+    root: expo.userInterfaceStyle,
+    ios: expo.ios?.userInterfaceStyle,
+    android: expo.android?.userInterfaceStyle,
+  });
+  if (problems.length) {
+    return fail(id,
+      'The app ships a System/Light/Dark control, but the native config pins the appearance — the setting does nothing (defect workout-timer-20260803-1). Set "userInterfaceStyle": "automatic"; removing the key is NOT equivalent (prebuild defaults it to Light)',
+      problems);
+  }
+  return pass(id, 'Appearance is left to the OS ("automatic"), so the in-app control actually works');
+};
+
 // ---------- rule: in-app language control (canon § Translations) ----------
 //
 // The shell already follows the device locale automatically; this rule guards
@@ -2677,6 +2732,7 @@ const CANONICAL_RULES = [
   ruleNoPlatformEarlyReturn,
   ruleEasJsonShape,
   ruleAppearanceToggle,
+  ruleAppearanceNotPinned,
   ruleContrastPairing,
   ruleNoFgSubtleAsText,
   ruleScalableLineHeight,
@@ -2926,6 +2982,19 @@ function runSelfTest() {
     'review-prompt/wired: a trigger call with no mount is still dead (the known-bad tend shape)');
   assert(reviewModalMounted([`<ReviewModalRow/>`]) === false,
     'review-prompt/wired: a same-prefix component (<ReviewModalRow>) is not a mount');
+
+  // theme/appearance-not-pinned — the known-bad is workout-timer's real pre-fix
+  // app.json: a perfect JS appearance chain under a native pin that overrode it.
+  assert(appearancePinProblems({ hasToggle: true, root: 'light' }).length === 1,
+    'appearance-not-pinned: the shipped workout-timer pin ("light" + a control) fires');
+  assert(appearancePinProblems({ hasToggle: true, root: 'automatic' }).length === 0,
+    'appearance-not-pinned: "automatic" passes');
+  assert(appearancePinProblems({ hasToggle: true, root: 'automatic', ios: 'dark' }).length === 1,
+    'appearance-not-pinned: a per-platform pin under an automatic root still fires');
+  assert(appearancePinProblems({ hasToggle: true }).length === 1,
+    'appearance-not-pinned: an ABSENT key fires too — prebuild resolves it to Light, so deleting the line is not a fix');
+  assert(appearancePinProblems({ hasToggle: false, root: 'light' }).length === 0,
+    'appearance-not-pinned: an app with no in-app control may legitimately pin (nothing to override)');
 
   // rn/single-db-connection — one app, one SQLite handle. The known-bad is a
   // domain store that opens its own connection to the same file.

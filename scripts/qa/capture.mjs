@@ -31,6 +31,9 @@
  *   --device <udid|name>     target a specific sim/emulator (else first booted)
  *   --no-build               reuse the cached artifact even if source changed
  *   --rebuild                force a build even on a cache hit
+ *   --build-only             build (or reuse) the artifact and stop — no device,
+ *                            no traverse. Used by drop-released.mjs to refresh a
+ *                            stale QA build cache at ship time.
  *   --heal                   auto-repair confident anchor drift and retry once
  *   --contact-sheet          also emit the downscaled montage
  *   --dry-run                print every command without executing
@@ -43,9 +46,12 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { withHeavyLock, concurrency } from '../lib/heavy.mjs';
+// The build cache key lives in one place so anything else that asks "is this
+// cached build current?" (the ship path's upgrade-harness slot drop) agrees
+// with us instead of guessing — scripts/qa/source-hash.mjs.
+import { sourceHash } from './source-hash.mjs';
 
 // store → how to build, what device, how to normalize.
 // NOTE: iOS device names are Xcode-version-specific — the boot step greps
@@ -106,34 +112,13 @@ function run(label, cmd, argv, opts = {}) {
 
 // ---------- 1. build (hash-cached) ----------
 
-function sourceHash() {
-  const h = crypto.createHash('sha256');
-  const inputs = ['app.json', 'package.json', 'package-lock.json', 'qa/journey.json', 'qa/selectors.json'];
-  const walk = (dir) => {
-    let entries = [];
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-    for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
-      const full = path.join(dir, e.name);
-      if (e.isDirectory()) walk(full);
-      else { try { h.update(e.name); h.update(fs.readFileSync(full)); } catch {} }
-    }
-  };
-  walk(path.join(appDir, 'src'));
-  for (const f of inputs) {
-    const p = path.join(appDir, f);
-    if (fs.existsSync(p)) { h.update(f); h.update(fs.readFileSync(p)); }
-  }
-  return h.digest('hex');
-}
-
 async function buildArtifact() {
   const ext = platform === 'ios' ? 'tar.gz' : 'apk';
   const outPath = path.join(appDir, 'qa', 'captures', `.build-${platform}.${ext}`);
   const hashPath = path.join(appDir, 'qa', 'captures', `.build-${platform}.hash`);
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
 
-  const hash = dry ? 'DRYRUN' : sourceHash();
+  const hash = dry ? 'DRYRUN' : sourceHash(appDir);
   const cachedHash = fs.existsSync(hashPath) ? fs.readFileSync(hashPath, 'utf8').trim() : null;
   const hit = fs.existsSync(outPath) && cachedHash === hash;
 
@@ -385,12 +370,21 @@ function learn() {
 
 console.log(`capture: app=${path.basename(appDir)} platform=${platform} store=${storeKey} device=${device || '(first booted)'}${dry ? '  [DRY RUN]' : ''}`);
 
-if (!fs.existsSync(path.join(appDir, 'qa', 'journey.json'))) {
+// --build-only never traverses, so it doesn't need a journey — it exists so the
+// ship path can refresh the QA build cache (and with it the upgrade harness's
+// released slot) on an app whose journey may not even be current.
+if (!flags.has('--build-only') && !fs.existsSync(path.join(appDir, 'qa', 'journey.json'))) {
   console.error(`No qa/journey.json in ${appDir}. This app hasn't adopted the journey pipeline yet.`);
   process.exit(1);
 }
 
 const artifact = await buildArtifact();
+
+if (flags.has('--build-only')) {
+  console.log(`\n✓ capture: build-only — artifact at ${path.relative(appDir, artifact)}. No device, no traverse.`);
+  process.exit(0);
+}
+
 if (platform === 'ios') iosPrepare(artifact); else androidPrepare(artifact);
 compileFlow();
 
