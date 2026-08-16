@@ -87,11 +87,24 @@ export default function ReviewModal({
   const handleReview = async () => {
     // Canonical write-review host is apps.apple.com (modern; itunes.apple.com
     // is legacy). ReviewModal is the authoritative source for this link.
+    //
+    // Android lands on the plain listing, and that is correct, not a gap.
+    // Google documents no deep link that opens a review composer — the only
+    // sanctioned in-app path is the Play In-App Review API, and its own docs
+    // say NOT to put a button behind it: "you should not have a call-to-action
+    // option (such as a button) to trigger the API, as a user might have
+    // already hit their quota and the flow won't be shown, presenting a broken
+    // experience to the user. For this use case, redirect the user to the Play
+    // Store instead." (developer.android.com/guide/playcore/in-app-review,
+    // re-read 2026-08-14). This modal is exactly that call-to-action, so the
+    // listing link-out is the prescribed behaviour. The old
+    // `&showAllReviews=true` parameter was dropped here: it no longer opens
+    // anything and only made the URL look like it did something it didn't.
     const id = Platform.OS === 'ios' ? iosAppStoreId : androidPackageName;
     const url =
       Platform.OS === 'ios'
         ? `itms-apps://apps.apple.com/app/id${iosAppStoreId}?action=write-review`
-        : `https://play.google.com/store/apps/details?id=${androidPackageName}&showAllReviews=true`;
+        : `https://play.google.com/store/apps/details?id=${androidPackageName}`;
 
     // OPEN FIRST, mark second — and only mark on success.
     //
