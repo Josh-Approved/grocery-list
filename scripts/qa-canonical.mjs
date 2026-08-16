@@ -157,16 +157,48 @@ const ruleReadme = () => {
 const LEAK_FILES = ['CLAUDE.md', '.claude', 'STORE_LISTING.md', 'store-assets/production-packet.md'];
 const LEAK_GLOBS = [/\.p8$/, /service-account.*\.json$/i];
 
-const ruleLeakFilesNotTracked = () => {
-  if (gitTrackedFiles == null) return skip('repo/leak-files', 'Not a git repo or git unavailable');
-  const tracked = [...gitTrackedFiles];
+// Pure core (self-tested): the tracked paths that must never be committed.
+export function detectLeakFiles(tracked) {
   const leaks = [];
   for (const f of tracked) {
     if (LEAK_FILES.includes(f) || LEAK_FILES.some((d) => f.startsWith(`${d}/`))) leaks.push(f);
-    if (LEAK_GLOBS.some((re) => re.test(f))) leaks.push(f);
+    else if (LEAK_GLOBS.some((re) => re.test(f))) leaks.push(f);
   }
+  return leaks;
+}
+
+const ruleLeakFilesNotTracked = () => {
+  if (gitTrackedFiles == null) return skip('repo/leak-files', 'Not a git repo or git unavailable');
+  const leaks = detectLeakFiles([...gitTrackedFiles]);
   if (leaks.length) return fail('repo/leak-files', 'Files that must not be tracked are committed', leaks);
   return pass('repo/leak-files', 'No CLAUDE.md / .claude/ / STORE_LISTING.md / *.p8 / service-account JSON tracked');
+};
+
+// `qa/captures/` is device-matrix build output — the framed PNGs, raw shots and
+// hierarchy dumps a capture run regenerates every time. workout-timer tracked
+// it in its PUBLIC repo (ticket wt-captures-tracked-in-git) and the cost was not
+// cosmetic: every matrix run left the working tree dirty, which fails the
+// release train's clean-tree preflight, so that app could not ride the train.
+// repo/leak-files covers secrets and studio-internal context, not generated
+// output, so this went unchecked fleet-wide. The QA tree convention (factory
+// CLAUDE.md § QA tree convention) is explicit that `qa/captures/` is gitignored.
+const BUILD_OUTPUT_DIRS = ['qa/captures'];
+
+// Pure core (self-tested): tracked paths that are regenerated build output.
+export function detectTrackedBuildOutput(tracked) {
+  return tracked.filter((f) => BUILD_OUTPUT_DIRS.some((d) => f === d || f.startsWith(`${d}/`)));
+}
+
+const ruleBuildOutputNotTracked = () => {
+  const id = 'repo/build-output-tracked';
+  if (gitTrackedFiles == null) return skip(id, 'Not a git repo or git unavailable');
+  const tracked = detectTrackedBuildOutput([...gitTrackedFiles]);
+  if (tracked.length) {
+    return fail(id,
+      'Generated capture output is committed — every device-matrix run will dirty the working tree and fail the release train\'s clean-tree preflight. Untrack it (git rm -r --cached qa/captures) and keep it gitignored',
+      tracked.slice(0, 10));
+  }
+  return pass(id, 'No qa/captures build output tracked');
 };
 
 // ---------- rules: AI/Claude fingerprint in tracked text ----------
@@ -2720,6 +2752,7 @@ const CANONICAL_RULES = [
   rulePrivacy,
   ruleReadme,
   ruleLeakFilesNotTracked,
+  ruleBuildOutputNotTracked,
   ruleNoFingerprintInTracked,
   ruleNoAiTellsInUserFacing,
   ruleNoRetiredVoicePhrases,
@@ -2809,6 +2842,26 @@ const sym = {
 function runSelfTest() {
   let failed = 0;
   const assert = (cond, msg) => { if (!cond) { failed++; console.error(`  ✗ ${msg}`); } else console.log(`  ✓ ${msg}`); };
+
+  // repo/leak-files
+  assert(detectLeakFiles(['CLAUDE.md', 'src/App.tsx']).length === 1,
+    'leak-files: a tracked CLAUDE.md fires');
+  assert(detectLeakFiles(['.claude/settings.json']).length === 1,
+    'leak-files: anything under .claude/ fires');
+  assert(detectLeakFiles(['certs/AuthKey_ABC.p8', 'play-service-account.json']).length === 2,
+    'leak-files: credential globs fire');
+  assert(detectLeakFiles(['README.md', 'qa/journey.json']).length === 0,
+    'leak-files: an ordinary repo passes');
+
+  // repo/build-output-tracked (the known-bad: workout-timer's committed captures)
+  assert(detectTrackedBuildOutput(['qa/captures/ios/iphone-17/01-home.png']).length === 1,
+    'build-output: a tracked capture PNG fires (the workout-timer shape)');
+  assert(detectTrackedBuildOutput(['qa/captures']).length === 1,
+    'build-output: the bare qa/captures path fires');
+  assert(detectTrackedBuildOutput(['qa/journey.json', 'qa/baseline.json', 'qa/baselines/ios.png']).length === 0,
+    'build-output: the tracked QA sources and visual-reg baselines are not build output');
+  assert(detectTrackedBuildOutput(['src/qa/captures.ts']).length === 0,
+    'build-output: a same-named source path outside qa/captures/ passes');
 
   // copy/retired-voice-phrases
   assert(detectRetiredVoicePhrases('On-device AI reads the receipt.').length === 1,
