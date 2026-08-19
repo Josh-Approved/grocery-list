@@ -73,6 +73,14 @@ const toStdout = flags.has('--json');
 const exists = (p) => fs.existsSync(p);
 const readJson = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
 
+/** The commit this verdict describes. null outside a git work tree (never throws
+ *  — an unstamped report is treated as unknown by consumers, not as green). */
+function headSha(dir) {
+  try {
+    return execFileSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null;
+  } catch { return null; }
+}
+
 // ---------- Tier 1: unit (jest) ----------
 function runUnit() {
   const pkg = readJson(path.join(appDir, 'package.json'));
@@ -483,9 +491,23 @@ const report = {
   app: path.basename(appDir),
   profile,
   ok,
-  // NOTE: timestamp intentionally omitted — Date.now() is unavailable in some
-  // factory contexts and would make the artifact non-deterministic. CI/commit
-  // metadata carries the time.
+  // COMMIT BINDING + FRESHNESS (ticket qa-verdict-commit-binding, 2026-08-15).
+  // A verdict with no commit on it is a verdict about nothing: consumers
+  // (release-board.mjs readQaGreen, submit-production.mjs gateFor) read the bare
+  // `ok` flag and trust it as current, so a report from weeks and dozens of
+  // commits ago reads exactly like one run a minute ago. That is not
+  // hypothetical — grocery-list sat HELD off the release train for 26 days on a
+  // 2026-07-20 report whose 21 visual regressions had been resolved 2026-08-03,
+  // while home-maintenance and tend carried July `ok:true` reports that would
+  // have read as a green build gate ~40 commits later.
+  //
+  // `gitSha` is the binding (does this verdict describe the code you are about
+  // to ship?); `at` is human-readable freshness. The artifact is untracked
+  // (each app's .git/info/exclude), so a per-run timestamp costs no git churn.
+  // Both are null-safe: a non-git directory simply gets null and consumers treat
+  // an unstamped report as unknown, never as green.
+  at: new Date().toISOString(),
+  gitSha: headSha(appDir),
   tiers: { unit, flow, lint, matrix, twoDevice, upgrade, defects, proveGates, nightly, survival, engagement },
   // The agent's reading guide — what to do, in one line, without opening logs.
   verdict: ok
