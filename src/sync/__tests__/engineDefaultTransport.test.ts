@@ -14,6 +14,16 @@
  * @noble/*), so the engine takes its real production path into `new
  * DropBoxTransport(...)`, and then drives each captured callback to prove it
  * lands on the behaviour the engine documents.
+ *
+ * MUTATION-REPORT CAVEAT — do not "fix" this file again. The default factory is
+ * a module-init expression, so its mutant (ArrowFunction → `() => undefined`)
+ * is STATIC: Stryker records no per-test coverage for it. All three tests below
+ * do fail when that mutant is applied by hand, but Stryker's incremental cache
+ * can never notice, because a static mutant has no covering tests to diff, so
+ * `mutantCanBeReused` keeps re-serving its old Survived verdict however many
+ * tests are added. If the report still lists it as a survivor, invalidate the
+ * cache (`--force`, or delete stryker-incremental.json) rather than writing
+ * another test — there is no test that can clear a reused result.
  */
 
 /** What the engine's production factory hands the transport constructor. */

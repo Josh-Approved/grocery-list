@@ -277,6 +277,45 @@ describe('duplicate-name collapse — check state folds by its clock, ties stay 
     expect(get(out, 'k1')).toBe(keeper);
   });
 
+  it('two equal-clock unchecked copies that disagree only on checkedAt converge from both directions', () => {
+    // The check stamps of an incoming copy are NOT validated at the receive
+    // boundary (store/lists.ts mergeRemoteList only heals future stamps), so
+    // the merge must stay commutative for any pair the GroceryItem type
+    // permits — including a peer whose `checked` and `checkedAt` disagree.
+    //
+    // Both copies are unchecked with the SAME check clock (500), so neither
+    // out-clocks the other and the tie resolves to unchecked. They differ only
+    // in `checkedAt`. The keeper (the fresher content clock) must still adopt
+    // the group's fold source, and must do so regardless of which side the
+    // merge starts from — otherwise the two phones settle on different
+    // `checkedAt` values and the list never converges.
+    const other = item({
+      id: 'a1',
+      name: 'Milk',
+      updatedAt: T0 + 100,
+      checked: false,
+      checkedAt: T0 + 200,
+      checkedUpdatedAt: T0 + 500,
+    });
+    const keeper = item({
+      id: 'k1',
+      name: 'Milk',
+      updatedAt: T0 + 200,
+      checked: false,
+      checkedAt: T0 + 300,
+      checkedUpdatedAt: T0 + 500,
+    });
+    for (const out of bothWays([other], [keeper])) {
+      expect(get(out, 'k1')?.deletedAt).toBeUndefined(); // fresher copy keeps
+      expect(get(out, 'a1')?.deletedAt).toBe(T0 + 100); // loser at its own clock
+      expect(get(out, 'k1')?.checked).toBe(false);
+      expect(get(out, 'k1')?.checkedUpdatedAt).toBe(T0 + 500);
+      // The fold source is the non-keeper copy on every device — the keeper is
+      // never allowed to fold onto itself and shadow it.
+      expect(get(out, 'k1')?.checkedAt).toBe(T0 + 200);
+    }
+  });
+
   it('a payload-stripped tombstone (name cleared) never donates state to a name group', () => {
     // Stripping empties the name; normalization maps whitespace names to the
     // same '' key. Even while a real duplicate collapse is in flight (the Milk
@@ -318,11 +357,6 @@ describe('duplicate-name collapse — check state folds by its clock, ties stay 
 // • L137 `a.id < b.id` → `a.id <= b.id`: ids inside one name group are unique
 //   (mergeRecordSet keys by id upstream), so the equality branch of the
 //   comparator is unreachable.
-// • L143 `it === keeper` → false and L159 checkedAt-differs → false: only
-//   distinguishable via an item that is unchecked but carries a checkedAt
-//   different from another equal-clock unchecked copy. The store clears
-//   checkedAt on every uncheck (see store/lists.ts), so that state is
-//   unreachable from app code and the wire fold preserves the pairing.
 // • L157 `checkSource !== keeper` → true: when checkSource IS the keeper, the
 //   or-chain compares the keeper to itself and every clause is false, so the
 //   rewrite still never fires.
@@ -346,6 +380,23 @@ describe('duplicate-name collapse — check state folds by its clock, ties stay 
 // tie-break is claimed equivalent because the tied VALUE is the same, check
 // every field the chosen OBJECT goes on to supply, not just the one the
 // comparison is named after.
+//
+// WITHDRAWN 2026-08-19 — the `it === keeper` skip and the checkedAt-differs
+// clause of the keeper-rewrite guard were both recorded here as equivalent,
+// on the grounds that only an unchecked item carrying a `checkedAt` can tell
+// them apart and no shipped build ever writes that pairing (every uncheck
+// clears `checkedAt`). That reasoning stopped at our own writers. `mergeList`
+// is fed by a PEER over the wire and the receive boundary validates nothing
+// about the check stamps (mergeRemoteList only heals future stamps), so the
+// pairing is an unwritten invariant of a remote device, not of this function's
+// input. It matters because the skip is what keeps the fold commutative:
+// without it the keeper folds onto itself and shadows the real fold source
+// only when the keeper happens to come second in the merged order, so the two
+// phones settle on different `checkedAt` values. Both are now killed by "two
+// equal-clock unchecked copies that disagree only on checkedAt converge from
+// both directions" above. Lesson for the next sweep, and it is the same one as
+// the 2026-08-13 withdrawal: "no caller produces this" is not equivalence when
+// the caller is another device.
 //
 // Re-triaged 2026-08-13 against a fresh sweep: this list accounts for the
 // remaining merge.ts (14) and mergeKits.ts (2) survivors, one for one.
