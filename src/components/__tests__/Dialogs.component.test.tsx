@@ -23,7 +23,7 @@
  */
 
 import React from 'react';
-import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { View, Text, Pressable } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -154,6 +154,23 @@ describe('useActionMenu', () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(onPress).not.toHaveBeenCalled();
   });
+
+  it('stays open when the sheet itself is pressed, not the scrim', async () => {
+    const onPress = jest.fn();
+    await render(
+      wrap(<MenuHarness title="List options" options={[{ label: 'Rename', onPress }]} />)
+    );
+
+    await userEvent.setup({ delay: 0 }).press(screen.getByRole('button', { name: 'trigger' }));
+    // The sheet card swallows taps that land on it (it sits inside the scrim),
+    // so a miss between two rows must not dismiss the menu. fireEvent bubbles to
+    // the nearest ancestor with a press handler — the sheet, not the scrim.
+    fireEvent.press(screen.getByRole('header', { name: 'List options' }));
+
+    await new Promise((r) => setTimeout(r, 300));
+    expect(screen.getByRole('header', { name: 'List options' })).toBeTruthy();
+    expect(onPress).not.toHaveBeenCalled();
+  });
 });
 
 // --- Prompt ----------------------------------------------------------------
@@ -237,6 +254,36 @@ describe('usePrompt', () => {
     ).toBeNull();
   });
 
+  it('closes without submitting when the in-card Cancel is pressed', async () => {
+    const user = userEvent.setup({ delay: 0 });
+    const onSubmit = jest.fn();
+    await render(wrap(<PromptHarness onSubmit={onSubmit} initialValue="Keep me" />));
+
+    await user.press(screen.getByRole('button', { name: 'trigger' }));
+    // Index 0 is the scrim (covered above); index 1 is the ghost button in the
+    // card — the one a user actually aims at. Both must abandon the edit.
+    await user.press(screen.getAllByRole('button', { name: 'Cancel' })[1]);
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Rename list', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it('stays open when the card itself is pressed, not the scrim', async () => {
+    const user = userEvent.setup({ delay: 0 });
+    const onSubmit = jest.fn();
+    await render(wrap(<PromptHarness onSubmit={onSubmit} initialValue="Keep me" />));
+
+    await user.press(screen.getByRole('button', { name: 'trigger' }));
+    // Tapping inside the card (here, its title) must not throw away the edit.
+    fireEvent.press(screen.getByRole('header', { name: 'Rename list' }));
+
+    await new Promise((r) => setTimeout(r, 300));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(
+      screen.getByLabelText('Rename list', { includeHiddenElements: true })
+    ).toBeTruthy();
+  });
+
   it('uses a custom confirm label when provided', async () => {
     const user = userEvent.setup({ delay: 0 });
     const onSubmit = jest.fn();
@@ -317,6 +364,35 @@ describe('useConfirm', () => {
     await user.press(screen.getAllByRole('button', { name: 'Cancel' })[0]);
     expect(onConfirm).not.toHaveBeenCalled();
     expect(screen.queryByRole('header', { name: 'Delete this list?' })).toBeNull();
+  });
+
+  it('closes without confirming when the in-card Cancel is pressed', async () => {
+    const user = userEvent.setup({ delay: 0 });
+    const onConfirm = jest.fn();
+    await render(wrap(<ConfirmHarness onConfirm={onConfirm} />));
+
+    await user.press(screen.getByRole('button', { name: 'trigger' }));
+    // Index 0 is the scrim (covered above); index 1 is the ghost button in the
+    // card — the deliberate "no" a user aims at on a destructive confirm.
+    await user.press(screen.getAllByRole('button', { name: 'Cancel' })[1]);
+
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.queryByRole('header', { name: 'Delete this list?' })).toBeNull();
+  });
+
+  it('stays open when the card itself is pressed, not the scrim', async () => {
+    const user = userEvent.setup({ delay: 0 });
+    const onConfirm = jest.fn();
+    await render(wrap(<ConfirmHarness onConfirm={onConfirm} />));
+
+    await user.press(screen.getByRole('button', { name: 'trigger' }));
+    // A tap that lands on the card must neither confirm nor dismiss — the
+    // decision stays with the user.
+    fireEvent.press(screen.getByRole('header', { name: 'Delete this list?' }));
+
+    await new Promise((r) => setTimeout(r, 300));
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.getByRole('header', { name: 'Delete this list?' })).toBeTruthy();
   });
 
   it('uses a custom confirm label on a destructive confirm', async () => {
