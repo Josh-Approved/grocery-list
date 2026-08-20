@@ -19,6 +19,11 @@
         "id": "autocomplete",
         "source": "ios/autocomplete.png",
         "caption": "It remembers the items you buy."
+      },
+      {
+        "id": "home",
+        "source": "ios/home.png",
+        "caption": "All your lists in one place."
       }
     ],
     "android": [
@@ -40,6 +45,11 @@
         "id": "autocomplete",
         "source": "android/autocomplete.png",
         "caption": "It remembers the items you buy."
+      },
+      {
+        "id": "home",
+        "source": "android/home.png",
+        "caption": "All your lists in one place."
       }
     ],
     "ipad": [
@@ -56,6 +66,11 @@
         "id": "autocomplete",
         "source": "ipad/autocomplete.png",
         "caption": "It remembers the items you buy."
+      },
+      {
+        "id": "home",
+        "source": "ipad/home.png",
+        "caption": "All your lists in one place."
       }
     ],
     "androidTablet": [
@@ -77,6 +92,11 @@
         "id": "autocomplete",
         "source": "androidTablet/autocomplete.png",
         "caption": "It remembers the items you buy."
+      },
+      {
+        "id": "home",
+        "source": "androidTablet/home.png",
+        "caption": "All your lists in one place."
       }
     ]
   },

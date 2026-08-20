@@ -20,6 +20,7 @@ appId: com.joshapproved.grocerylist
 - extendedWaitUntil:
     visible: { text: "Weekly shop.*" }
     timeout: 15000
+- takeScreenshot: qa/captures/${STORE}/home
 - tapOn:
     text: "Weekly shop.*"
     retryTapIfNoChange: true

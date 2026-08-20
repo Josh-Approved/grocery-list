@@ -1,5 +1,5 @@
 {
-  "$comment": "grocery-list screenshot traversal + Tier-2 outcome assertion. Generates qa/flows/mobile.yaml (run scripts/qa/compile-flow.mjs). Screenshot names match qa/screenshots.config.json sources. The 'share' shot rides the List-detail header share button -> Share screen, last so the minted share identity can't disturb earlier waypoints; its QR renders from a random per-run secret, so 'share' is visual-reg-excluded in qa/baseline.json. The add-item assertion pins the core action: a typed item that was absent before the add is visible (by its row accessibilityLabel) after it.",
+  "$comment": "grocery-list screenshot traversal + Tier-2 outcome assertion. Generates qa/flows/mobile.yaml (run scripts/qa/compile-flow.mjs). Screenshot names match qa/screenshots.config.json sources. The 'home' shot is the ONLY visual-net coverage of ListsHomeScreen: it is taken after BOTH home waypoints have resolved (@home-title proves the screen mounted, @weekly-list proves the seeded lists hydrated from SQLite and painted), so the frame is deterministic by construction. It replaces the old diagnosticLaunchShot '00-launch' for that purpose — that shot fires on a fixed timer before any waypoint, so across cells it caught the splash, a blank pre-hydration frame, or the home screen at random, and it flapped the gate forever (visual-reg-excluded in qa/baseline.json, 2026-08-03). Never move 'home' above @weekly-list: the pre-hydration frame is exactly the nondeterminism this replaces. The 'share' shot rides the List-detail header share button -> Share screen, last so the minted share identity can't disturb earlier waypoints; its QR renders from a random per-run secret, so 'share' is visual-reg-excluded in qa/baseline.json. The add-item assertion pins the core action: a typed item that was absent before the add is visible (by its row accessibilityLabel) after it.",
   "appId": "com.joshapproved.grocerylist",
   "clearState": true,
   "diagnosticLaunchShot": true,
@@ -7,6 +7,7 @@
   "steps": [
     { "waitFor": "@home-title", "timeout": 30000 },
     { "waitFor": "@weekly-list", "timeout": 15000 },
+    { "screenshot": "home" },
 
     { "tap": "@weekly-list" },
     { "waitFor": "@first-item", "timeout": 10000 },
