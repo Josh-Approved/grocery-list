@@ -14,43 +14,43 @@ export const CREDITS_INTRO = "Grocery List is built on the work of these open-so
 export const CREDITS: CreditEntry[] = [
   {
     "name": "React Native",
-    "version": "0.81.5",
+    "version": "0.86.2",
     "license": "MIT",
     "url": "https://reactnative.dev/"
   },
   {
     "name": "Expo",
-    "version": "54.0.34",
+    "version": "57.0.14",
     "license": "MIT",
     "url": "https://github.com/expo/expo/tree/main/packages/expo"
   },
   {
     "name": "React Navigation",
-    "version": "7.3.4",
+    "version": "7.3.17",
     "license": "MIT",
     "url": "https://reactnavigation.org"
   },
   {
     "name": "Zustand",
-    "version": "5.0.13",
+    "version": "5.0.15",
     "license": "MIT",
     "url": "https://github.com/pmndrs/zustand"
   },
   {
     "name": "Expo SQLite",
-    "version": "16.0.10",
+    "version": "57.0.1",
     "license": "MIT",
     "url": "https://docs.expo.dev/versions/latest/sdk/sqlite/"
   },
   {
     "name": "Reanimated",
-    "version": "4.1.6",
+    "version": "4.5.1",
     "license": "MIT",
     "url": "https://docs.swmansion.com/react-native-reanimated"
   },
   {
     "name": "react-native-svg",
-    "version": "15.12.1",
+    "version": "15.15.4",
     "license": "MIT",
     "url": "https://github.com/react-native-community/react-native-svg"
   },
@@ -62,19 +62,19 @@ export const CREDITS: CreditEntry[] = [
   },
   {
     "name": "Expo Camera",
-    "version": "17.0.10",
+    "version": "57.0.3",
     "license": "MIT",
     "url": "https://docs.expo.dev/versions/latest/sdk/camera/"
   },
   {
     "name": "Noble Curves",
-    "version": "2.2.0",
+    "version": "2.3.0",
     "license": "MIT",
     "url": "https://paulmillr.com/noble/"
   },
   {
     "name": "Noble Hashes",
-    "version": "2.2.0",
+    "version": "2.3.0",
     "license": "MIT",
     "url": "https://paulmillr.com/noble/"
   },

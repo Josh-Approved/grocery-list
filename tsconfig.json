@@ -1,7 +1,10 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
+    "strict": true,
+    // TypeScript 6 (Expo SDK 56+) no longer auto-includes every @types/* package
+    // from node_modules, so the Jest globals (describe/it/expect) must be named.
+    "types": ["jest", "node"]
   },
   "exclude": [
     "qa/known-bad"

@@ -156,7 +156,10 @@ function makeStyles(c: Colors) {
     // the swipe slides it aside.
     content: { backgroundColor: c.bg },
     actionLayer: {
-      ...StyleSheet.absoluteFillObject,
+      // React Native 0.86 dropped `absoluteFillObject`; `absoluteFill` is now
+      // the plain object it used to be, so it is what spreads here. Spreading
+      // the old name resolved to undefined, leaving the action layer unpositioned.
+      ...StyleSheet.absoluteFill,
       alignItems: 'flex-end',
       justifyContent: 'center',
     },

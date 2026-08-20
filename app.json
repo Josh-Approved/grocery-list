@@ -7,19 +7,21 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FAFAF7"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.joshapproved.grocerylist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleName": "Grocery List",
-        "CFBundleLocalizations": ["en", "es", "de", "fr", "it", "pt-BR", "ja"]
+        "CFBundleLocalizations": [
+          "en",
+          "es",
+          "de",
+          "fr",
+          "it",
+          "pt-BR",
+          "ja"
+        ]
       }
     },
     "android": {
@@ -27,7 +29,6 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FAFAF7"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.joshapproved.grocerylist",
       "permissions": [
@@ -52,7 +53,17 @@
       "./plugins/withGradleJvmArgs",
       "./plugins/withSiriIntents",
       "expo-mail-composer",
-      "./plugins/withAndroidLocaleConfig"
+      "./plugins/withAndroidLocaleConfig",
+      "expo-sharing",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#FAFAF7"
+        }
+      ],
+      "expo-status-bar"
     ],
     "extra": {
       "eas": {

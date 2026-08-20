@@ -22,9 +22,20 @@ jest.mock('expo-font', () => ({
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
-jest.mock('react-native-reanimated', () =>
-  require('react-native-reanimated/mock')
-);
+// The wordmark's pull-to-reveal animation is reanimated-backed. Reanimated 4.5
+// dropped its self-contained `/mock` entry point — it now loads the real index,
+// which reaches for the worklets native module and throws under jest — so the
+// three pieces the footer actually imports are stubbed to plain React.
+jest.mock('react-native-reanimated', () => {
+  const { View } = require('react-native');
+  return {
+    __esModule: true,
+    default: { View },
+    useAnimatedStyle: (fn: () => unknown) => fn(),
+    interpolate: (v: number, inRange: number[], outRange: number[]) =>
+      outRange[0] + (v - inRange[0]) * (outRange[1] - outRange[0]),
+  };
+});
 
 // Supply the feedback context via a mock so we can assert `open()` fired.
 // (Prefixed `mock` so jest's hoisted factory may reference it.)

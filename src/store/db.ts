@@ -94,7 +94,16 @@ async function openDb(): Promise<SQLite.SQLiteDatabase> {
     'PRAGMA table_info(lists)'
   );
   if (!cols.some((c) => c.name === 'nameUpdatedAt')) {
-    await _db.execAsync('ALTER TABLE lists ADD COLUMN nameUpdatedAt INTEGER');
+    try {
+      await _db.execAsync('ALTER TABLE lists ADD COLUMN nameUpdatedAt INTEGER');
+    } catch (err) {
+      // Another connection (a second app instance, a restored background task)
+      // may have added the column between the PRAGMA above and here. Losing
+      // that race is fine — the column exists either way, and throwing would
+      // fail hydration and show an upgrading user an empty list. Anything else
+      // is a real error and still propagates.
+      if (!/duplicate column name/i.test(String(err))) throw err;
+    }
   }
   return _db;
 }

@@ -47,6 +47,6 @@ export function openReview(): void {
   const url =
     Platform.OS === 'ios'
       ? `itms-apps://apps.apple.com/app/id${IOS_APP_STORE_ID}?action=write-review`
-      : `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE}&showAllReviews=true`;
+      : `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE}`;
   openUrl(url);
 }

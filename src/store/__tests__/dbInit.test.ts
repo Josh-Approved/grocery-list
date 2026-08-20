@@ -144,4 +144,35 @@ describe('db init', () => {
       expect(columns).toContain('nameUpdatedAt');
     });
   }, TIMER_BOUND_TIMEOUT_MS);
+
+  /**
+   * Sharing one open promise removes the race INSIDE this process, but not the
+   * one against a second connection to the same file — another app instance, or
+   * a background task the OS restored — which can add the column between our
+   * PRAGMA and our ALTER. SQLite answers that with "duplicate column name", and
+   * an upgrading user whose hydration threw there would open to an empty list.
+   * The column exists either way, so losing the race is the harmless outcome.
+   */
+  it('survives another connection adding the column first', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const db = require('../db');
+
+      // Slip the column in after the PRAGMA has been read but before the ALTER
+      // lands — exactly the window a second connection occupies.
+      const realGetAll = mockDb.getAllAsync;
+      const spy = jest
+        .spyOn(mockDb, 'getAllAsync')
+        .mockImplementation(async (sql: string) => {
+          const rows = await realGetAll.call(mockDb, sql);
+          if (/PRAGMA table_info\(lists\)/.test(sql)) {
+            columns.push('nameUpdatedAt');
+          }
+          return rows;
+        });
+
+      await expect(db.loadAllLists()).resolves.toEqual([]);
+      expect(columns).toContain('nameUpdatedAt');
+      spy.mockRestore();
+    });
+  }, TIMER_BOUND_TIMEOUT_MS);
 });
