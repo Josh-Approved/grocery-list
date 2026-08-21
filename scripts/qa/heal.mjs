@@ -100,8 +100,17 @@ function escapeRegex(s) {
 
 // ---------- resolution ----------
 
-function anchorResolves(anchor, nodes) {
-  if (anchor.testID) return nodes.some((n) => n.id === anchor.testID);
+/**
+ * Does this anchor still find something on this screen?
+ *
+ * EITHER half counts — a testID OR the text. Maestro matches on either, so an
+ * anchor whose testID isn't exposed in the tree (common on iOS, where RN's
+ * testID often surfaces only as the accessibility identifier) but whose text is
+ * plainly there has NOT drifted. Treating it as broken is how a correct anchor
+ * gets "repaired" into a wrong one.
+ */
+export function anchorResolves(anchor, nodes) {
+  if (anchor.testID && nodes.some((n) => n.id === anchor.testID)) return true;
   if (anchor.text) {
     let re;
     try { re = new RegExp(anchor.text); } catch { re = null; }
@@ -113,8 +122,35 @@ function anchorResolves(anchor, nodes) {
 const CONFIDENT = 0.6;   // absolute score to auto-apply
 const MARGIN = 0.15;     // top must beat runner-up by this much
 
-/** Rank on-screen elements as replacements for a broken anchor. */
-export function proposeForAnchor(key, anchor, baseline, nodes) {
+/** Case/punctuation/whitespace-insensitive equality — `norm` already strips all
+ *  three, so this is "the same words, styled differently". */
+function sameWords(a, b) {
+  return !!a && !!b && norm(a) === norm(b);
+}
+
+/**
+ * Rank on-screen elements as replacements for a broken anchor.
+ *
+ * `opts.appDisplayName` is the app's BUNDLE display name (app.json). It is worth
+ * naming explicitly because it is the one string guaranteed to sit in every
+ * accessibility tree on every screen, which makes it the default winner for any
+ * title-ish anchor that happens not to resolve on the screen heal was pointed
+ * at. On 2026-08-13 that is exactly what happened to workout-timer: the healer
+ * rewrote a correct in-app `Workout timer` anchor to the bundle's
+ * `Workout Timer`, and the drift lint would then have defended the wrong value.
+ *
+ * Two guards follow from that, and both are refusals to AUTO-APPLY, never
+ * refusals to report — a real drift still shows up for review:
+ *   1. The bundle display name is never an auto-applied replacement unless the
+ *      anchor was already pointing at it. In-app copy is the source of truth for
+ *      an in-app anchor.
+ *   2. A candidate that is the current text with different casing/punctuation is
+ *      not drift. Copy that did not change cannot have broken the anchor; a
+ *      case-only "fix" means we matched a DIFFERENT element that says the same
+ *      words, which is precisely the platform-specific trap above.
+ */
+export function proposeForAnchor(key, anchor, baseline, nodes, opts = {}) {
+  const appDisplayName = opts.appDisplayName || '';
   const want = (baseline && baseline.text) || anchor.text || key;
   const scored = nodes
     .filter((n) => n.text)
@@ -123,7 +159,27 @@ export function proposeForAnchor(key, anchor, baseline, nodes) {
 
   const top = scored[0];
   const second = scored[1];
-  const confident = !!top && top.score >= CONFIDENT && (!second || top.score - second.score >= MARGIN);
+  let confident = !!top && top.score >= CONFIDENT && (!second || top.score - second.score >= MARGIN);
+  let blockedReason = null;
+
+  if (top && confident) {
+    // EXACT, not sameWords: the whole failure mode is an in-app string that
+    // matches the bundle name apart from its casing. A loose compare here would
+    // classify that anchor as "already the bundle name" and wave the rewrite
+    // straight through — which is the bug, not the guard.
+    const anchorIsAlreadyTheBundleName = !!anchor.text && anchor.text === appDisplayName;
+    if (sameWords(top.text, appDisplayName) && !anchorIsAlreadyTheBundleName) {
+      confident = false;
+      blockedReason =
+        `best match "${top.text}" is the app's bundle display name, not in-app copy — ` +
+        `an in-app anchor is not repaired from the bundle name`;
+    } else if (anchor.text && sameWords(top.text, anchor.text) && top.text !== anchor.text) {
+      confident = false;
+      blockedReason =
+        `best match "${top.text}" differs from the current anchor only in case/punctuation — ` +
+        `the copy did not change, so this is a different element saying the same words, not drift`;
+    }
+  }
 
   // Build the suggested anchor. Prefer a stable testID when the matched node has
   // one — that's the permanent cure for churn, not just a patched string.
@@ -139,8 +195,19 @@ export function proposeForAnchor(key, anchor, baseline, nodes) {
     was: anchor,
     suggestion,
     confident,
+    ...(blockedReason ? { blockedReason } : {}),
     candidates: scored.slice(0, 4).map((c) => ({ text: c.text, id: c.id || null, score: +c.score.toFixed(3) })),
   };
+}
+
+/** The app's bundle display name, as it appears in an accessibility tree. */
+export function readAppDisplayName(appJson) {
+  const e = (appJson && appJson.expo) || appJson || {};
+  return (
+    (e.ios && e.ios.infoPlist && e.ios.infoPlist.CFBundleDisplayName) ||
+    e.name ||
+    ''
+  );
 }
 
 // ---------- I/O helpers ----------
@@ -242,8 +309,9 @@ function main() {
     return;
   }
 
+  const appDisplayName = readAppDisplayName(readJson(path.join(appDir, 'app.json'), null));
   const proposals = broken.map((key) =>
-    proposeForAnchor(key, anchors[key], (baseline.anchors || {})[key], nodes));
+    proposeForAnchor(key, anchors[key], (baseline.anchors || {})[key], nodes, { appDisplayName }));
 
   const apply = flags.has('--apply');
   let applied = 0;
@@ -270,6 +338,7 @@ function main() {
       ? (p.suggestion.testID ? `id:${p.suggestion.testID}` : `text:${p.suggestion.text}`)
       : '(no candidate)';
     console.log(`  [${verb}] @${p.anchor}: was ${JSON.stringify(p.was)} → ${sug}  (score ${p.candidates[0]?.score ?? 'n/a'})`);
+    if (p.blockedReason) console.log(`           ! held back: ${p.blockedReason}`);
     if (!p.applied && p.candidates.length) {
       for (const c of p.candidates) console.log(`           · ${c.score}  ${c.id ? `id:${c.id} ` : ''}"${c.text}"`);
     }
@@ -282,6 +351,91 @@ function main() {
   process.exit(proposals.some((p) => !p.applied) ? 3 : 0);
 }
 
+// ---------- self-test ----------
+
+function selfTest() {
+  let pass = 0;
+  const fails = [];
+  const check = (name, cond) => { if (cond) pass++; else fails.push(name); };
+
+  // The 2026-08-13 workout-timer screen: the in-app sentence-case title, plus
+  // the iOS bundle DISPLAY NAME, which sits in the tree on every screen.
+  const screen = [
+    { text: 'Workout Timer', id: '' },   // bundle display name
+    { text: 'Workout timer', id: '' },   // in-app title (the anchor's real target)
+    { text: 'Start', id: 'start-btn' },
+  ];
+  const titleAnchor = { text: 'Workout timer', note: 'parity guard' };
+
+  check('an anchor whose text is on screen resolves', anchorResolves(titleAnchor, screen));
+  check('an anchor whose text is absent does not resolve',
+    !anchorResolves({ text: 'Nowhere' }, screen));
+  check('a testID anchor resolves on its id', anchorResolves({ testID: 'start-btn' }, screen));
+  // The gap that let a correct anchor be declared broken: testID missing from
+  // the tree (iOS) while the text is plainly there.
+  check('an anchor resolves on its TEXT when its testID is absent from the tree',
+    anchorResolves({ testID: 'not-exposed', text: 'Workout timer' }, screen));
+  check('an anchor with neither half present does not resolve',
+    !anchorResolves({ testID: 'not-exposed', text: 'Nowhere' }, screen));
+
+  // Guard 1 — the bundle display name is never an auto-applied replacement.
+  // The real 2026-08-13 shape: heal ran untargeted after some OTHER anchor
+  // failed, so the screen it read did not carry the in-app title at all — and
+  // the bundle name, which is on every screen, was the only close match.
+  const offTitleScreen = [
+    { text: 'Workout Timer', id: '' },   // bundle display name
+    { text: 'Rest', id: 'rest-btn' },
+  ];
+  let p = proposeForAnchor('app-title', titleAnchor, null, offTitleScreen, { appDisplayName: 'Workout Timer' });
+  check('the bundle display name is not auto-applied over in-app copy', p.confident === false);
+  check('the bundle-name refusal says why', /bundle display name/.test(p.blockedReason || ''));
+  check('the bundle-name refusal still reports candidates for review', p.candidates.length > 0);
+
+  // ...unless the anchor was already pointing at the bundle name (then it is a
+  // legitimate target and a real repair must still be possible).
+  p = proposeForAnchor('app-title', { text: 'Workout Timer' }, null,
+    [{ text: 'Workout Timer', id: 'title' }], { appDisplayName: 'Workout Timer' });
+  check('an anchor already on the bundle name can still be repaired', p.confident === true);
+
+  // Guard 2 — a case-only variant is not drift, even with no bundle name known.
+  p = proposeForAnchor('app-title', titleAnchor, null,
+    [{ text: 'Workout Timer', id: '' }], {});
+  check('a case-only "repair" is not auto-applied', p.confident === false);
+  check('the case-only refusal says the copy did not change',
+    /only in case\/punctuation/.test(p.blockedReason || ''));
+
+  // Genuine drift still heals — that is the whole point of the tool, and the
+  // guards above are worthless if they cost it.
+  p = proposeForAnchor('add-row', { text: 'Add item' }, null,
+    [{ text: 'Add an item', id: 'row-1' }, { text: 'Settings', id: '' }], { appDisplayName: 'Workout Timer' });
+  check('genuine copy drift is still confident', p.confident === true);
+  check('genuine drift upgrades to a testID when the matched node has one',
+    p.suggestion && p.suggestion.testID === 'row-1');
+  check('a clean proposal carries no blockedReason', p.blockedReason === undefined);
+
+  // An ambiguous screen stays a judgement call (unchanged behaviour).
+  p = proposeForAnchor('x', { text: 'Save' }, null,
+    [{ text: 'Saved', id: '' }, { text: 'Saves', id: '' }], {});
+  check('an ambiguous match is not auto-applied', p.confident === false);
+
+  check('display name reads ios.infoPlist.CFBundleDisplayName first',
+    readAppDisplayName({ expo: { name: 'wt', ios: { infoPlist: { CFBundleDisplayName: 'Workout Timer' } } } }) === 'Workout Timer');
+  check('display name falls back to expo.name',
+    readAppDisplayName({ expo: { name: 'Workout Timer' } }) === 'Workout Timer');
+  check('a missing app.json yields no display name', readAppDisplayName(null) === '');
+
+  check('flattenHierarchy walks nested children',
+    flattenHierarchy({ attributes: { text: 'a' }, children: [{ attributes: { text: 'b' } }] }).length === 2);
+  check('similarity is 1 for the same string', similarity('Workout timer', 'Workout timer') === 1);
+  check('similarity ignores case', similarity('Workout timer', 'Workout Timer') === 1);
+
+  console.log(fails.length
+    ? `heal --self-test: ${pass} passed, ${fails.length} FAILED\n` + fails.map((f) => `  ✗ ${f}`).join('\n')
+    : `heal --self-test: ${pass} checks passed`);
+  return fails.length === 0;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
+  if (process.argv.includes('--self-test')) process.exit(selfTest() ? 0 : 1);
   main();
 }
