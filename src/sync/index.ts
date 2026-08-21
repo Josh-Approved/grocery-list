@@ -266,8 +266,14 @@ function publishKitsNow(): void {
  *  Skips a no-op (same serialized collection as last sent). */
 function scheduleKitsPublish(): void {
   if (kitsPayload() === lastKitsPayload) return;
+  // Braced on purpose: the ConditionalExpression suppression below is line-and-mutator
+  // granular, so a bare one-liner would leave this line with no live mutant at all. The
+  // block mints a BlockStatement mutant (dropping the clear leaks the old timer) that the
+  // suite still has to kill.
   // Stryker disable next-line ConditionalExpression: equivalent mutant, clearTimeout(null) is a no-op, so the guard cannot change behaviour
-  if (kitsTimer) clearTimeout(kitsTimer);
+  if (kitsTimer) {
+    clearTimeout(kitsTimer);
+  }
   kitsTimer = setTimeout(() => {
     kitsTimer = null;
     publishKitsNow();
@@ -278,8 +284,11 @@ function publish(secret: string, list: GroceryList): void {
   const ch = ensureChannel(secret);
   const payload = JSON.stringify(list);
   if (payload === ch.lastSent) return; // nothing changed since last send
+  // Braced on purpose — see scheduleKitsPublish above.
   // Stryker disable next-line ConditionalExpression: equivalent mutant, clearTimeout(null) is a no-op, so the guard cannot change behaviour
-  if (ch.timer) clearTimeout(ch.timer);
+  if (ch.timer) {
+    clearTimeout(ch.timer);
+  }
   ch.timer = setTimeout(() => {
     ch.lastSent = payload;
     ch.transport.publish(seal(secret, payload));
@@ -304,8 +313,11 @@ function reconcile(lists: GroceryList[]): void {
   // Close channels for lists that are gone / no longer shared.
   for (const [secret, ch] of channels) {
     if (!live.has(secret)) {
+      // Braced on purpose — see scheduleKitsPublish above.
       // Stryker disable next-line ConditionalExpression: equivalent mutant, clearTimeout(null) is a no-op, so the guard cannot change behaviour
-      if (ch.timer) clearTimeout(ch.timer);
+      if (ch.timer) {
+        clearTimeout(ch.timer);
+      }
       ch.transport.close();
       channels.delete(secret);
       dropStatus(secret);
@@ -364,8 +376,11 @@ export function stopSyncEngine(): void {
   // Stryker disable next-line StringLiteral: equivalent mutant, the sentinel is only ever compared against a serialized kits payload, which can never equal it
   lastKitsPayload = '';
   for (const ch of channels.values()) {
+    // Braced on purpose — see scheduleKitsPublish above.
     // Stryker disable next-line ConditionalExpression: equivalent mutant, clearTimeout(null) is a no-op, so the guard cannot change behaviour
-    if (ch.timer) clearTimeout(ch.timer);
+    if (ch.timer) {
+      clearTimeout(ch.timer);
+    }
     ch.transport.close();
   }
   channels.clear();
