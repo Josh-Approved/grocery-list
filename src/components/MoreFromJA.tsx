@@ -1,9 +1,12 @@
 /**
  * "More from Josh Approved" — the quiet in-app cross-promo row for the Settings
- * / About screen. Lists the studio's OTHER live apps, each opening its store
- * listing. Self-contained: depends only on the design-system theme barrel
- * (present in every app via `design-system-native`) and the synced `jaCatalog`,
- * so it drops cleanly into the shell AND into pre-shell hand-rolled screens.
+ * / About screen. Lists the studio's OTHER live apps, each opening that app's
+ * page on joshapproved.com with `?install=1`, which forwards a phone straight to
+ * the right store and lets anyone else browse the studio (Josh, 2026-08-21 — a
+ * direct store link spends the tap and shows the reader nothing else we make).
+ * Self-contained: depends only on the design-system theme barrel (present in
+ * every app via `design-system-native`) and the synced `jaCatalog`, so it drops
+ * cleanly into the shell AND into pre-shell hand-rolled screens.
  *
  * Canon (`canonical-voice.md` § Truth standard): the ONE allowed exception to
  * "No ads, ever" — plain text, not an ad unit. No images, no tap tracking, no
