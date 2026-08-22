@@ -1,0 +1,63 @@
+# monkey crash — app=grocery-list pkg=com.joshapproved.grocerylist seed=20260813 events=50000 throttle=50 date=2026-08-13
+# kind=java errorType=RemoteServiceException$ForegroundServiceDidNotStartInTimeException topFrame=ActivityThread.generateForegroundServiceDidNotStartInTimeException(ActivityThread.java)
+# replay: node scripts/qa/monkey.mjs ../grocery-list --seed 20260813 --events 50000
+
+## monkey stdout (tail)
+// Short Msg: android.app.RemoteServiceException$ForegroundServiceDidNotStartInTimeException
+// Long Msg: android.app.RemoteServiceException$ForegroundServiceDidNotStartInTimeException: Context.startForegroundService() did not then call Service.startForeground(): ServiceRecord{51b2507 u0 com.joshapproved.freeworkouttimer/expo.modules.livetimer.LiveTimerService}
+// Build Label: google/sdk_gphone64_arm64/emu64a:14/UE1A.230829.050/12077443:userdebug/dev-keys
+// Build Changelist: 12077443
+// Build Time: 1720722111000
+// android.app.RemoteServiceException$ForegroundServiceDidNotStartInTimeException: Context.startForegroundService() did not then call Service.startForeground(): ServiceRecord{51b2507 u0 com.joshapproved.freeworkouttimer/expo.modules.livetimer.LiveTimerService}
+// 	at android.app.ActivityThread.generateForegroundServiceDidNotStartInTimeException(ActivityThread.java:2104)
+// 	at android.app.ActivityThread.throwRemoteServiceException(ActivityThread.java:2075)
+// 	at android.app.ActivityThread.-$$Nest$mthrowRemoteServiceException(Unknown Source:0)
+// 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2369)
+// 	at android.os.Handler.dispatchMessage(Handler.java:106)
+// 	at android.os.Looper.loopOnce(Looper.java:205)
+// 	at android.os.Looper.loop(Looper.java:294)
+// 	at android.app.ActivityThread.main(ActivityThread.java:8177)
+// 	at java.lang.reflect.Method.invoke(Native Method)
+// 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:552)
+// 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:971)
+// 
+** System appears to have crashed at event 7446 of 50000 using seed 20260813
+
+
+## logcat slice
+08-12 22:22:52.175   746   898 E OpenGLRenderer: Unable to match the desired swap behavior.
+08-12 22:22:52.177  7769  8035 D TrafficStats: tagSocket(222) with statsTag=0x1065fff, statsUid=10131
+08-12 22:22:52.192  7769  8035 D TrafficStats: tagSocket(222) with statsTag=0x1065fff, statsUid=10131
+08-12 22:22:52.195  7769  8035 D TrafficStats: tagSocket(222) with statsTag=0x1065fff, statsUid=10131
+08-12 22:22:52.241 29321 29321 D AndroidRuntime: Shutting down VM
+--------- beginning of crash
+08-12 22:22:52.242 29321 29321 E AndroidRuntime: FATAL EXCEPTION: main
+08-12 22:22:52.242 29321 29321 E AndroidRuntime: Process: com.joshapproved.freeworkouttimer, PID: 29321
+08-12 22:22:52.242 29321 29321 E AndroidRuntime: android.app.RemoteServiceException$ForegroundServiceDidNotStartInTimeException: Context.startForegroundService() did not then call Service.startForeground(): ServiceRecord{51b2507 u0 com.joshapproved.freeworkouttimer/expo.modules.livetimer.LiveTimerService}
+08-12 22:22:52.242 29321 29321 E AndroidRuntime: 	at android.app.ActivityThread.generateForegroundServiceDidNotStartInTimeException(ActivityThread.java:2104)
+08-12 22:22:52.242 29321 29321 E AndroidRuntime: 	at android.app.ActivityThread.throwRemoteServiceException(ActivityThread.java:2075)
+08-12 22:22:52.242 29321 29321 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mthrowRemoteServiceException(Unknown Source:0)
+08-12 22:22:52.242 29321 29321 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2369)
+08-12 22:22:52.242 29321 29321 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:106)
+08-12 22:22:52.242 29321 29321 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:205)
+08-12 22:22:52.242 29321 29321 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:294)
+08-12 22:22:52.242 29321 29321 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:8177)
+08-12 22:22:52.242 29321 29321 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+08-12 22:22:52.242 29321 29321 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:552)
+08-12 22:22:52.242 29321 29321 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:971)
+08-12 22:22:52.269   386   492 D audioserver: FGS Logger Transaction failed
+08-12 22:22:52.269   386   492 D audioserver: -129
+08-12 22:22:52.269   542 10594 I DropBoxManagerService: add tag=data_app_crash isTagEnabled=true flags=0x2
+08-12 22:22:52.269   386   492 D audioserver: FGS Logger Transaction failed
+08-12 22:22:52.269   386   492 D audioserver: -129
+08-12 22:22:52.269   386   492 D audioserver: FGS Logger Transaction failed
+08-12 22:22:52.269   386   492 D audioserver: -129
+08-12 22:22:52.274  9743  9758 W Monkey  : // CRASH: com.joshapproved.freeworkouttimer (pid 29321)
+08-12 22:22:52.274  9743  9758 W Monkey  : // Short Msg: android.app.RemoteServiceException$ForegroundServiceDidNotStartInTimeException
+08-12 22:22:52.274  9743  9758 W Monkey  : // Long Msg: android.app.RemoteServiceException$ForegroundServiceDidNotStartInTimeException: Context.startForegroundService() did not then call Service.startForeground(): ServiceRecord{51b2507 u0 com.joshapproved.freeworkouttimer/expo.modules.livetimer.LiveTimerService}
+08-12 22:22:52.274  9743  9758 W Monkey  : // Build Label: google/sdk_gphone64_arm64/emu64a:14/UE1A.230829.050/12077443:userdebug/dev-keys
+08-12 22:22:52.274  9743  9758 W Monkey  : // Build Changelist: 12077443
+08-12 22:22:52.275  9743  9758 W Monkey  : // Build Time: 1720722111000
+08-12 22:22:52.275  9743  9758 W Monkey  : // android.app.RemoteServiceException$ForegroundServiceDidNotStartInTimeException: Context.startForegroundService() did not then call Service.startForeground(): ServiceRecord{51b2507 u0 com.joshapproved.freeworkouttimer/expo.modules.livetimer.LiveTimerService}
+08-12 22:22:52.275  9743  9758 W Monkey  : // 	at android.app.ActivityThread.generateForegroundServiceDidNotStartInTimeException(ActivityThread.java:2104)
+08-12 22:22:52.275  9743  9758 W Monkey  : // 	at android.app.ActivityThread.throwRemoteServiceException(ActivityThread.java:2075)

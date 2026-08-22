@@ -1,0 +1,28 @@
+# monkey crash — app=grocery-list pkg=com.joshapproved.grocerylist seed=20260821 events=50000 throttle=50 date=2026-08-21
+# kind=unknown errorType=MonkeyAbort topFrame=-
+# replay: node scripts/qa/monkey.mjs ../grocery-list --seed 20260821 --events 50000
+
+## monkey stdout (tail)
+     11,940K: .ttf mmap
+      2,738K: Other dev
+          0K: Cursor
+          0K: Gfx dev
+          0K: EGL mtrack
+          0K: GL mtrack
+          0K: Other mtrack
+
+Total RAM: 4,016,820K (status normal)
+ Free RAM: 1,920,342K (  328,366K cached pss + 1,155,264K cached kernel +   436,712K free)
+DMA-BUF:         0K (        0K mapped +         0K unmapped)
+DMA-BUF Heaps:         0K
+      GPU:         0K
+ Used RAM: 2,067,235K (1,787,359K used pss +   279,876K kernel)
+ Lost RAM:    84,007K
+     ZRAM:    40,252K physical used for    92,416K in swap (3,012,608K total swap)
+   Tuning: 192 (large 576), oom   322,560K, restore limit   107,520K (high-end-gfx)
+// meminfo status was 0
+** System appears to have crashed at event 20588 of 50000 using seed 20260821
+
+
+## logcat slice
+
