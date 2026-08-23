@@ -29,6 +29,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve, relative, dirname } from 'node:path';
 import { execSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
 
 // ---------- args ----------
 
@@ -578,6 +579,288 @@ const rulePaneFocus = () => {
       'Custom modal pane (accessibilityViewIsModal) without screen-reader focus management — move focus to the pane title on present (reference: DrilldownSheet)', hits);
   }
   return pass('a11y/pane-focus', 'Every accessibilityViewIsModal surface manages screen-reader focus');
+};
+
+// Voice Control users speak what they SEE: "tap Save". iOS matches the spoken
+// phrase against the accessibility label, so a label that does not begin with
+// the control's visible text makes that control unspeakable — the user reads
+// "Speichern", says it, and nothing happens, because the label is
+// "Timer speichern".
+//
+// This is the gate behind the published Voice Control claim
+// (A11Y_CLAIM_GATES.supportsVoiceControl). Until 2026-08-22 it was the ONE
+// claimed accessibility feature resting on a written proof line rather than a
+// mechanical check.
+//
+// It MUST resolve t() keys per locale, and that is the whole reason the rule was
+// hard to build: an English-only or source-level check is worse than useless
+// here, because these divergences are word-order ones that only surface in
+// verb-final languages. All three of workout-timer's findings read perfectly in
+// English and break in German and Japanese.
+//
+// WHAT IT DELIBERATELY CANNOT DO — reported as REVIEW, never as a failure:
+//   - resolve runtime-composed visible text (`{item.name}`, `formatTime(...)`),
+//   - know whether a <Text> is actually on screen,
+//   - model Apple's own fuzzy matching, which may rescue a borderline case.
+// Counting REVIEW as a failure would fail dozens of call sites that are very
+// likely correct at runtime; counting it as proof would silently exempt most of
+// the fleet. So it is surfaced in the detail and excluded from the verdict.
+const VC_PRESSABLE_TAGS = new Set([
+  'Pressable', 'TouchableOpacity', 'TouchableHighlight', 'TouchableWithoutFeedback',
+  'Button', 'AnimatedPressable',
+]);
+const VC_TEXTISH_TAGS = new Set(['Text', 'Animated.Text']);
+const VOICE_LOCALES = ['es', 'de', 'fr', 'it', 'pt-BR', 'ja'];
+
+const normSpoken = (s) => String(s)
+  .toLowerCase()
+  .replace(/[‘’']/g, '')
+  .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const ruleVoiceControlNameMatch = () => {
+  const id = 'a11y/voice-control-name-match';
+  if (surface !== 'rn') return skip(id, 'Not an RN app');
+  if (ruleSkipsAll(id)) return skip(id, `Disabled via qa/baseline.json "${id}/skip"`);
+
+  let ts;
+  try {
+    ts = createRequire(join(appDir, 'package.json'))('typescript');
+  } catch {
+    // Without a parser this rule cannot produce a verdict. Say so — a silent
+    // pass here would certify the Voice Control claim off nothing at all.
+    return skip(id, 'typescript is not resolvable from this app — cannot parse JSX (run npm install)');
+  }
+
+  // ---- dictionaries: en + every canonical locale, deep-merged the way the app
+  // resolves them at runtime. A locale we cannot load is skipped, not guessed.
+  const deepMerge = (a, b) => {
+    const out = { ...a };
+    for (const [k, v] of Object.entries(b || {})) {
+      const cur = out[k];
+      out[k] = v && typeof v === 'object' && cur && typeof cur === 'object' ? deepMerge(cur, v) : v;
+    }
+    return out;
+  };
+  const loadTsModule = (file) => {
+    const src = readText(file);
+    if (src == null) return null;
+    const js = ts.transpileModule(src, {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+    }).outputText;
+    const mod = { exports: {} };
+    // eslint-disable-next-line no-new-func
+    new Function('exports', 'module', 'require', js)(mod.exports, mod, () => ({}));
+    return mod.exports;
+  };
+  const i18n = (p) => join(appDir, 'src', 'i18n', p);
+  const dicts = {};
+  try {
+    const shell = loadTsModule(i18n('shellStrings.ts'))?.SHELL_STRINGS || {};
+    const app = loadTsModule(i18n('appStrings.ts'))?.APP_STRINGS || {};
+    const shellLocales = loadTsModule(i18n('shellLocales.ts'))?.SHELL_LOCALES || {};
+    const base = deepMerge(shell, app);
+    dicts.en = base;
+    for (const loc of VOICE_LOCALES) {
+      const domain = loadTsModule(i18n(`${loc}.ts`))?.default;
+      if (!domain && !shellLocales[loc]) continue;
+      dicts[loc] = deepMerge(base, deepMerge(shellLocales[loc] || {}, domain || {}));
+    }
+  } catch (e) {
+    return skip(id, `Could not load this app's i18n dictionaries (${e.message}) — a per-locale check is the whole point, so no verdict`);
+  }
+  const lookup = (dict, key) => {
+    let node = dict;
+    for (const part of key.split('.')) {
+      if (node && typeof node === 'object') node = node[part];
+      else return null;
+    }
+    return typeof node === 'string' ? node : null;
+  };
+
+  // ---- JSX walk
+  const tagOf = (node) => {
+    const n = ts.isJsxElement(node) ? node.openingElement.tagName
+      : ts.isJsxSelfClosingElement(node) ? node.tagName : null;
+    return n ? n.getText(node.getSourceFile()) : null;
+  };
+  const attrOf = (node, name) => {
+    const open = ts.isJsxElement(node) ? node.openingElement : node;
+    for (const a of open.attributes ? open.attributes.properties : []) {
+      if (ts.isJsxAttribute(a) && a.name.getText(node.getSourceFile()) === name) return a;
+    }
+    return null;
+  };
+  // t('k') → a key; a literal → itself; anything else → an opaque marker that
+  // forces REVIEW rather than a made-up comparison.
+  const candidates = (node, sf) => {
+    if (!node) return [];
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return [{ kind: 'lit', value: node.text }];
+    if (ts.isJsxExpression(node) || ts.isParenthesizedExpression(node)) return candidates(node.expression, sf);
+    if (ts.isConditionalExpression(node)) return [...candidates(node.whenTrue, sf), ...candidates(node.whenFalse, sf)];
+    if (ts.isBinaryExpression(node)) return [...candidates(node.left, sf), ...candidates(node.right, sf)];
+    if (ts.isCallExpression(node)) {
+      const fn = node.expression.getText(sf);
+      if (fn === 't' && node.arguments.length && ts.isStringLiteral(node.arguments[0])) {
+        return [{ kind: 'key', value: node.arguments[0].text }];
+      }
+      return [{ kind: 'dyn', value: node.getText(sf) }];
+    }
+    if (ts.isTemplateExpression(node)) {
+      const segs = [{ kind: 'lit', value: node.head.text }];
+      for (const span of node.templateSpans) {
+        segs.push({ kind: 'expr', sub: candidates(span.expression, sf) });
+        segs.push({ kind: 'lit', value: span.literal.text });
+      }
+      return [{ kind: 'tpl', segs }];
+    }
+    return [{ kind: 'dyn', value: node.getText(sf) }];
+  };
+  const textContent = (el, sf) => {
+    const out = [];
+    for (const child of (ts.isJsxElement(el) ? el.children : [])) {
+      if (ts.isJsxText(child)) {
+        const v = child.text.trim();
+        if (v) out.push({ kind: 'lit', value: v });
+      } else if (ts.isJsxExpression(child)) {
+        out.push(...candidates(child.expression, sf));
+      } else if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
+        const tag = tagOf(child);
+        if (VC_PRESSABLE_TAGS.has(tag)) continue;
+        if (VC_TEXTISH_TAGS.has(tag)) out.push(...textContent(child, sf));
+      }
+    }
+    return out;
+  };
+  // Visible text = <Text> descendants, EXCLUDING nested interactive subtrees.
+  // That exclusion is load-bearing: without it every sheet backdrop inherits its
+  // sheet's entire text and the rule reports nonsense.
+  const visibleText = (node, sf) => {
+    const out = [];
+    for (const child of (ts.isJsxElement(node) ? node.children : [])) {
+      if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
+        const tag = tagOf(child);
+        if (VC_PRESSABLE_TAGS.has(tag)) continue;
+        if (VC_TEXTISH_TAGS.has(tag)) { out.push(...textContent(child, sf)); continue; }
+        out.push(...visibleText(child, sf));
+      } else if (ts.isJsxExpression(child)) {
+        const visit = (n) => {
+          if (!n) return;
+          if (ts.isJsxElement(n) || ts.isJsxSelfClosingElement(n)) {
+            const tag = tagOf(n);
+            if (VC_PRESSABLE_TAGS.has(tag)) return;
+            if (VC_TEXTISH_TAGS.has(tag)) { out.push(...textContent(n, sf)); return; }
+            out.push(...visibleText(n, sf));
+            return;
+          }
+          ts.forEachChild(n, visit);
+        };
+        visit(child.expression);
+      }
+    }
+    return out;
+  };
+
+  const markers = new Map();
+  const markerFor = (src) => {
+    const k = String(src).replace(/\s+/g, '');
+    if (!markers.has(k)) markers.set(k, `qq${markers.size}qq`);
+    return markers.get(k);
+  };
+  const resolve = (cand, dict) => {
+    if (!cand) return null;
+    if (cand.kind === 'lit') return cand.value;
+    if (cand.kind === 'key') {
+      const v = lookup(dict, cand.value);
+      return v == null ? ` ${markerFor('KEYMISSING:' + cand.value)} ` : v;
+    }
+    if (cand.kind === 'dyn') return ` ${markerFor(cand.value)} `;
+    if (cand.kind === 'tpl') {
+      let out = '';
+      for (const seg of cand.segs) {
+        if (seg.kind === 'lit') out += seg.value;
+        else {
+          const sub = seg.sub && seg.sub.length === 1 ? seg.sub[0] : null;
+          out += sub ? resolve(sub, dict) : ` ${markerFor('expr')} `;
+        }
+      }
+      return out;
+    }
+    return null;
+  };
+  const hasMarker = (s) => /qq\d+qq/.test(s);
+
+  const files = srcSourceFiles().filter((f) => f.endsWith('.tsx'));
+  if (!files.length) return skip(id, 'No src/**/*.tsx files');
+
+  const mismatches = [];
+  let reviews = 0;
+  let checked = 0;
+
+  for (const file of files) {
+    const src = readText(file);
+    if (!src) continue;
+    // Cheap pre-filter — building a TS SourceFile for every .tsx roughly doubles
+    // the linter's runtime, and a file with no accessibilityLabel anywhere in it
+    // can never produce a finding.
+    if (!src.includes('accessibilityLabel')) continue;
+    const sf = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const visit = (node) => {
+      if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
+        const tag = tagOf(node);
+        const labelAttr = attrOf(node, 'accessibilityLabel');
+        if (labelAttr && (VC_PRESSABLE_TAGS.has(tag) || attrOf(node, 'onPress'))) {
+          const labels = candidates(labelAttr.initializer, sf);
+          const texts = ts.isJsxElement(node) ? visibleText(node, sf) : [];
+          if (texts.length) {
+            checked++;
+            const pairs = labels.length > 1 && labels.length === texts.length
+              ? labels.map((l, i) => [l, texts[i]])
+              : labels.map((l) => [l, texts[0]]);
+            const bad = [];
+            let sawReview = false;
+            for (const [L, T] of pairs) {
+              for (const [loc, dict] of Object.entries(dicts)) {
+                const lv = resolve(L, dict);
+                const tv = resolve(T, dict);
+                if (lv == null || tv == null) { sawReview = true; continue; }
+                const nl = normSpoken(lv);
+                const nt = normSpoken(tv);
+                if (!nt) continue;
+                if (nl.startsWith(nt)) continue;
+                if (hasMarker(nl) || hasMarker(nt)) { sawReview = true; continue; }
+                bad.push(`${loc}: visible "${tv}" → label "${lv}"`);
+              }
+            }
+            if (bad.length) {
+              const line = sf.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+              mismatches.push(`${relative(appDir, file)}:${line} <${tag}> — ${bad.join('; ')}`);
+            } else if (sawReview) reviews++;
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+  }
+
+  const locales = Object.keys(dicts).join(', ');
+  const reviewNote = reviews
+    ? `${reviews} control(s) have runtime-composed visible text and cannot be resolved statically — reported, never failed`
+    : null;
+
+  if (mismatches.length) {
+    const enforce = baseline['a11y/enforce'] === true;
+    const msg = `An accessibility label does not begin with the control's visible text, so Voice Control cannot activate it by name (canon § Accessibility). Fix the LABEL, not the visible text — it must start with what the user reads. Checked locales: ${locales}.`;
+    const detail = reviewNote ? [...mismatches, reviewNote] : mismatches;
+    return enforce ? fail(id, msg, detail) : warn(id, msg, detail);
+  }
+  return pass(
+    id,
+    `All ${checked} labelled control(s) with visible text are speakable in every locale (${locales})`,
+    reviewNote ? [reviewNote] : undefined,
+  );
 };
 
 // Early-return guards that gate WHETHER a feature exists, e.g.
@@ -2762,6 +3045,7 @@ const CANONICAL_RULES = [
   ruleNoIosOnlyImports,
   ruleNoAlertPrompt,
   rulePaneFocus,
+  ruleVoiceControlNameMatch,
   ruleNoPlatformEarlyReturn,
   ruleEasJsonShape,
   ruleAppearanceToggle,
@@ -3165,7 +3449,7 @@ export function inferCategory(name) {
 // this rule exists to stop.
 const A11Y_CLAIM_GATES = {
   supportsVoiceover: ['a11y/pane-focus'],
-  supportsVoiceControl: [],
+  supportsVoiceControl: ['a11y/voice-control-name-match'],
   supportsLargerText: ['a11y/scalable-line-height', 'a11y/no-truncated-user-content'],
   supportsSufficientContrast: ['theme/contrast-pairing', 'theme/no-fgSubtle-as-text'],
   supportsDifferentiateWithoutColorAlone: [],

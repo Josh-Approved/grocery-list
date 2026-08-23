@@ -2,7 +2,7 @@
 // qa-canonical FAIL rule so prove-gates can prove the rule is a live sensor.
 // This file is NEVER compiled or bundled (excluded from tsconfig + jest); it is
 // only ever read as text by scripts/qa-canonical.mjs. See ../../README.md.
-import { ActionSheetIOS, Alert, Modal, Platform, Text, View } from 'react-native';
+import { ActionSheetIOS, Alert, Modal, Platform, Pressable, Text, View } from 'react-native';
 import { c } from './theme/colors';
 
 // parity/no-platform-early-return: gates whether the feature exists per platform.
@@ -44,6 +44,15 @@ export function Screen({ list }: { list: { name: string } }) {
       <Modal visible transparent animationType="slide">
         <Text>Edit</Text>
       </Modal>
+      {/* a11y/voice-control-name-match: the button READS "Save" but its label
+          starts with "Store" — a Voice Control user says "tap Save" and nothing
+          happens, because iOS matches the spoken phrase against the LABEL. The
+          real fleet's version of this bug is subtler and per-locale (German and
+          Japanese put the verb last, so the visible word lands at the END of the
+          label); a literal pair is used here because the fixture has no i18n. */}
+      <Pressable accessibilityLabel="Store this timer" onPress={() => {}}>
+        <Text>Save</Text>
+      </Pressable>
     </View>
   );
 }

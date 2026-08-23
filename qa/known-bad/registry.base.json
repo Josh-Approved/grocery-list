@@ -24,6 +24,13 @@
       "why": "Bad.tsx has `if (Platform.OS !== 'ios') return` — must FAIL (gates whether a feature exists)."
     },
     {
+      "gate": "a11y/voice-control-name-match",
+      "kind": "canonical-rule",
+      "fixture": "canonical",
+      "rule": "a11y/voice-control-name-match",
+      "why": "Bad.tsx has a button reading \"Save\" whose accessibilityLabel is \"Store this timer\" — must FAIL (Voice Control matches the spoken visible text against the label, so the control cannot be activated by name)."
+    },
+    {
       "gate": "telemetry/no-analytics-deps",
       "kind": "canonical-rule",
       "fixture": "canonical",
