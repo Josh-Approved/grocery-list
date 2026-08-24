@@ -20,9 +20,9 @@
  *   withHeavyLock(label, fn)  → run fn() holding a machine-wide heavy lock. On
  *                               'low-ram' at most ONE heavy task runs; others
  *                               QUEUE (FIFO by arrival, logged "waiting on …"),
- *                               never fail. Stale holders (dead PID) are stolen.
- *                               On 'full' it just runs fn() (no serialization)
- *                               unless {force:true}.
+ *                               never fail. Stale holders are stolen — see
+ *                               ORPHANED HOLDERS below. On 'full' it just runs
+ *                               fn() (no serialization) unless {force:true}.
  *   concurrency()             → the profile's worker knobs the callers read
  *                               (jest --maxWorkers, Stryker --concurrency,
  *                               emulator -memory / -no-window, Gradle/Metro
@@ -33,10 +33,35 @@
  *   node scripts/lib/heavy.mjs profile            # prints low-ram|full
  *   node scripts/lib/heavy.mjs concurrency --json # prints the knobs
  *   node scripts/lib/heavy.mjs status             # who holds the lock + queue
+ *   node scripts/lib/heavy.mjs break [--kill]     # clear a wedged lock by hand
  *   node scripts/lib/heavy.mjs --self-test        # pure-logic tests, exit 0/1
  *
- * The lock lives at ~/.ja-heavy.lock (+ ~/.ja-heavy.queue). Override the
- * directory with HEAVY_LOCK_DIR (used by the self-test to stay isolated).
+ * The lock lives at ~/.ja-heavy.lock (+ ~/.ja-heavy.queue + ~/.ja-heavy.hb).
+ * Override the directory with HEAVY_LOCK_DIR (used by the self-test to stay
+ * isolated).
+ *
+ * ORPHANED HOLDERS (ticket heavy-lock-orphan-blocks-train, 2026-08-15)
+ * A dead holder PID was the ONLY staleness signal, which is not enough: on
+ * 2026-08-15 an orphaned Stryker run — its parent job had already exited, but
+ * the process itself was very much alive — held the lock and blocked the
+ * packing-list 1.0.8 release build for ~20 minutes, with nothing able to break
+ * it but a human with `kill`. A waiter now steals on any of three signals:
+ *
+ *   dead-pid    the holder PID is gone (the original rule).
+ *   heartbeat   the holder advertised a heartbeat (`hb: true` in the lock file)
+ *               and has not refreshed ~/.ja-heavy.hb for HEARTBEAT_STALE_MS
+ *               (5 min). A live holder rewrites it every 30 s from an UNREF'd
+ *               timer, so a frozen/SIGSTOPped/orphaned holder goes quiet while
+ *               a legitimately long build keeps beating for hours.
+ *   max-hold    the lock has been held longer than HEAVY_MAX_HOLD_MS (default
+ *               3 h, env-overridable). The backstop for a holder written before
+ *               heartbeats existed — "indefinitely" is never a valid hold.
+ *
+ * A holder with no `hb` flag is NEVER judged by the heartbeat rule (a missing
+ * heartbeat file must not read as a stalled one), so an old build in flight
+ * during a rollout degrades to exactly the previous behaviour plus max-hold.
+ * Every steal is logged loudly with its reason — a silent steal would hide the
+ * OOM risk of two heavy jobs overlapping.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -47,6 +72,16 @@ import { fileURLToPath } from 'node:url';
 
 const GIB = 1024 ** 3;
 const LOW_RAM_THRESHOLD = 16 * GIB; // < 16 GB ⇒ serialize heavy work
+
+/** How often a holder refreshes its heartbeat file while it works. */
+export const HEARTBEAT_MS = 30_000;
+/** A heartbeat older than this means the holder is orphaned/frozen, not busy.
+ *  Ten missed beats — generous enough that a swapping 8 GB mini under a build
+ *  never trips it, short enough that a release train is not blocked for long. */
+export const HEARTBEAT_STALE_MS = 5 * 60_000;
+/** Nothing legitimately holds the heavy lock for three hours. The backstop for
+ *  holders that predate heartbeats. Override with HEAVY_MAX_HOLD_MS (ms). */
+export const DEFAULT_MAX_HOLD_MS = 3 * 60 * 60_000;
 
 // ---------------------------------------------------------------------------
 // pure logic (self-tested, no IO)
@@ -69,10 +104,30 @@ export function pickHead(entries, isAlive) {
   return live.reduce((a, b) => (a.seq <= b.seq ? a : b));
 }
 
-/** A held lock is stale (steal-able) when its holder PID is no longer alive. */
-export function isStale(holder, isAlive) {
-  if (!holder || typeof holder.pid !== 'number') return true;
-  return !isAlive(holder.pid);
+/** Why a held lock is steal-able, or null when the holder is healthy.
+ *
+ *  'no-holder' | 'dead-pid' | 'heartbeat' | 'max-hold'  (see the header).
+ *  Pure: pass `now`/`hbTs` explicitly, inject the aliveness predicate. */
+export function staleReason(holder, isAlive, opts = {}) {
+  if (!holder || typeof holder.pid !== 'number') return 'no-holder';
+  if (!isAlive(holder.pid)) return 'dead-pid';
+  const now = Number.isFinite(opts.now) ? opts.now : Date.now();
+  const hbStaleMs = Number.isFinite(opts.heartbeatStaleMs) ? opts.heartbeatStaleMs : HEARTBEAT_STALE_MS;
+  const maxHoldMs = Number.isFinite(opts.maxHoldMs) ? opts.maxHoldMs : DEFAULT_MAX_HOLD_MS;
+  // Only a holder that ADVERTISED a heartbeat may be judged by one. A holder
+  // written by an older build never beats, and a missing beat must not read as
+  // a stalled beat — that would steal the lock out from under healthy work.
+  if (holder.hb === true) {
+    const beat = Number.isFinite(opts.hbTs) ? opts.hbTs : holder.ts;
+    if (Number.isFinite(beat) && now - beat > hbStaleMs) return 'heartbeat';
+  }
+  if (Number.isFinite(holder.ts) && now - holder.ts > maxHoldMs) return 'max-hold';
+  return null;
+}
+
+/** A held lock is stale (steal-able) — see staleReason for the three signals. */
+export function isStale(holder, isAlive, opts) {
+  return staleReason(holder, isAlive, opts) !== null;
 }
 
 /** The worker knobs for a profile. 0 ⇒ leave the tool at its own default. */
@@ -108,7 +163,13 @@ export function concurrency(profile = machineProfile()) {
 const lockDir = () => process.env.HEAVY_LOCK_DIR || os.homedir();
 const lockPath = () => path.join(lockDir(), '.ja-heavy.lock');
 const queuePath = () => path.join(lockDir(), '.ja-heavy.queue');
+const hbPath = () => path.join(lockDir(), '.ja-heavy.hb');
 const machineFile = () => path.join(os.homedir(), '.ja-machine.json');
+
+function envMaxHoldMs() {
+  const n = Number(process.env.HEAVY_MAX_HOLD_MS);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_HOLD_MS;
+}
 
 function pidAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -159,6 +220,55 @@ function readHolder() {
   }
 }
 
+/** The heartbeat lives in its OWN file so the lock file is written exactly once
+ *  (by the `wx` claim) and can never be seen half-written by a waiter — a
+ *  truncated lock file would parse as "no holder" and get stolen instantly. */
+function readHb() {
+  try {
+    return JSON.parse(fs.readFileSync(hbPath(), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+let _hbTimer = null;
+
+function writeHb() {
+  try {
+    fs.writeFileSync(hbPath(), JSON.stringify({ pid: process.pid, ts: Date.now() }));
+  } catch {
+    /* a missed beat is survivable; ten in a row is what we act on */
+  }
+}
+
+function startHeartbeat() {
+  if (_hbTimer) return;
+  writeHb();
+  _hbTimer = setInterval(writeHb, HEARTBEAT_MS);
+  if (_hbTimer.unref) _hbTimer.unref(); // must never hold the process open
+}
+
+function stopHeartbeat() {
+  if (_hbTimer) {
+    clearInterval(_hbTimer);
+    _hbTimer = null;
+  }
+  const hb = readHb();
+  if (!hb || hb.pid === process.pid) {
+    try {
+      fs.unlinkSync(hbPath());
+    } catch {}
+  }
+}
+
+/** staleReason for the lock as it exists on disk right now (reads the heartbeat
+ *  file, and only trusts it when it belongs to the current holder). */
+function currentStaleReason(holder) {
+  const hb = readHb();
+  const hbTs = hb && hb.pid === holder?.pid && Number.isFinite(hb.ts) ? hb.ts : undefined;
+  return staleReason(holder, pidAlive, { hbTs, maxHoldMs: envMaxHoldMs() });
+}
+
 function readQueue() {
   try {
     return fs
@@ -193,21 +303,32 @@ function dequeue(seq) {
 }
 
 /** Try to atomically claim the lock file for {pid,label}. Returns true on win. */
-function tryClaim(label) {
+function tryClaim(label, log = defaultLog) {
   try {
     const fd = fs.openSync(lockPath(), 'wx'); // exclusive create; EEXIST if held
-    fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, label, ts: Date.now() }));
+    fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, label, ts: Date.now(), hb: true }));
     fs.closeSync(fd);
+    startHeartbeat();
     return true;
   } catch (e) {
     if (e.code !== 'EEXIST') throw e;
-    // Held — steal only if the current holder is dead.
+    // Held — steal only from a holder that is dead, gone quiet, or over the
+    // max-hold ceiling. Never silently: a steal means two heavy jobs may now
+    // overlap, which is exactly what this module exists to prevent.
     const holder = readHolder();
-    if (isStale(holder, pidAlive)) {
+    const reason = currentStaleReason(holder);
+    if (reason) {
+      if (reason !== 'no-holder') {
+        log(`[heavy] stealing the lock from ${holder.label} (pid ${holder.pid}) — ${reason}`);
+      }
       try {
         fs.unlinkSync(lockPath());
       } catch {}
-      return tryClaim(label);
+      try {
+        const hb = readHb();
+        if (hb && holder && hb.pid === holder.pid) fs.unlinkSync(hbPath());
+      } catch {}
+      return tryClaim(label, log);
     }
     return false;
   }
@@ -227,13 +348,13 @@ async function acquire(label, { pollMs = 1000, log = defaultLog } = {}) {
     const q = readQueue().filter((e) => pidAlive(e.pid));
     const head = pickHead(q, pidAlive);
     const holder = readHolder();
-    const free = !holder || isStale(holder, pidAlive);
-    if (free && head && head.pid === process.pid && tryClaim(label)) {
+    const free = !holder || currentStaleReason(holder) !== null;
+    if (free && head && head.pid === process.pid && tryClaim(label, log)) {
       dequeue(seq);
       if (waitedFor) log(`[heavy] acquired after waiting — running ${label}`);
       return { seq, label };
     }
-    const blockerLabel = holder && !isStale(holder, pidAlive) ? holder.label : head && head.label;
+    const blockerLabel = holder && currentStaleReason(holder) === null ? holder.label : head && head.label;
     if (blockerLabel && blockerLabel !== waitedFor) {
       log(`[heavy] ${label}: waiting on ${blockerLabel} …`);
       waitedFor = blockerLabel;
@@ -244,6 +365,7 @@ async function acquire(label, { pollMs = 1000, log = defaultLog } = {}) {
 
 function releaseHandle(handle) {
   if (!handle) return;
+  stopHeartbeat();
   const holder = readHolder();
   if (holder && holder.pid === process.pid) {
     try {
@@ -260,6 +382,7 @@ function cleanupOnExit(seq) {
   if (_exitHooked) return;
   _exitHooked = true;
   const cleanup = () => {
+    stopHeartbeat();
     const holder = readHolder();
     if (holder && holder.pid === process.pid) {
       try {
@@ -355,17 +478,51 @@ async function main() {
   }
   if (sub === 'status') {
     const holder = readHolder();
+    const hb = readHb();
     const q = readQueue();
     console.log(
       JSON.stringify(
-        { profile: machineProfile(), holder, holderAlive: holder ? pidAlive(holder.pid) : false, queue: q },
+        {
+          profile: machineProfile(),
+          holder,
+          holderAlive: holder ? pidAlive(holder.pid) : false,
+          heartbeatAgeMs: hb && Number.isFinite(hb.ts) ? Date.now() - hb.ts : null,
+          heldForMs: holder && Number.isFinite(holder.ts) ? Date.now() - holder.ts : null,
+          staleReason: holder ? currentStaleReason(holder) : 'no-holder',
+          queue: q,
+        },
         null,
         2
       )
     );
     return;
   }
-  console.error('usage: heavy.mjs run|profile|concurrency|status|--self-test');
+  // The manual escape hatch. The automatic rules above cover an orphan that has
+  // gone quiet or run long; `break` is for the operator who knows NOW that the
+  // holder is junk and does not want to wait out the heartbeat window.
+  if (sub === 'break') {
+    const holder = readHolder();
+    if (!holder) {
+      console.log('heavy lock is not held — nothing to break');
+      return;
+    }
+    if (has('--kill') && pidAlive(holder.pid)) {
+      try {
+        process.kill(holder.pid, 'SIGTERM');
+        console.log(`sent SIGTERM to ${holder.label} (pid ${holder.pid})`);
+      } catch (e) {
+        console.error(`could not signal pid ${holder.pid}: ${e.message}`);
+      }
+    }
+    for (const p of [lockPath(), hbPath()]) {
+      try {
+        fs.unlinkSync(p);
+      } catch {}
+    }
+    console.log(`broke the heavy lock held by ${holder.label} (pid ${holder.pid})`);
+    return;
+  }
+  console.error('usage: heavy.mjs run|profile|concurrency|status|break|--self-test');
   process.exit(2);
 }
 
@@ -406,6 +563,46 @@ async function selfTest() {
   check('not stale when holder alive', isStale({ pid: 1 }, alive) === false);
   check('stale when no holder', isStale(null, alive) === true);
 
+  // staleReason — the orphaned-holder rules (heavy-lock-orphan-blocks-train)
+  const NOW = 1_000_000_000;
+  const mins = (n) => n * 60_000;
+  check('reason no-holder', staleReason(null, alive) === 'no-holder');
+  check('reason dead-pid', staleReason({ pid: 999, ts: NOW }, alive, { now: NOW }) === 'dead-pid');
+  check(
+    'a beating holder is healthy however long it runs',
+    staleReason({ pid: 1, hb: true, ts: NOW - mins(120) }, alive, { now: NOW, hbTs: NOW - 1000 }) === null
+  );
+  check(
+    'a holder that stopped beating is orphaned',
+    staleReason({ pid: 1, hb: true, ts: NOW - mins(30) }, alive, { now: NOW, hbTs: NOW - mins(6) }) === 'heartbeat'
+  );
+  check(
+    'a beat inside the window is not orphaned',
+    staleReason({ pid: 1, hb: true, ts: NOW - mins(30) }, alive, { now: NOW, hbTs: NOW - mins(4) }) === null
+  );
+  check(
+    'an hb-advertising holder with NO beat falls back to its claim time',
+    staleReason({ pid: 1, hb: true, ts: NOW - mins(6) }, alive, { now: NOW }) === 'heartbeat'
+  );
+  // The rollout guard: a holder from a build that predates heartbeats writes no
+  // `hb` flag and must never be judged by a heartbeat it never promised.
+  check(
+    'a legacy holder is never heartbeat-stale',
+    staleReason({ pid: 1, ts: NOW - mins(60) }, alive, { now: NOW }) === null
+  );
+  check(
+    'max-hold is the backstop for a legacy holder',
+    staleReason({ pid: 1, ts: NOW - mins(200) }, alive, { now: NOW }) === 'max-hold'
+  );
+  check(
+    'dead-pid outranks the timing rules',
+    staleReason({ pid: 999, hb: true, ts: NOW - mins(200) }, alive, { now: NOW }) === 'dead-pid'
+  );
+  check(
+    'a holder with no ts is judged only on liveness',
+    staleReason({ pid: 1 }, alive, { now: NOW }) === null
+  );
+
   // isolated lock IO: acquire → held → release → re-acquire; steal a stale lock
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ja-heavy-'));
   const prev = process.env.HEAVY_LOCK_DIR;
@@ -418,7 +615,28 @@ async function selfTest() {
     check('claim after release', tryClaim('c') === true);
     // simulate a dead holder, then confirm a steal
     fs.writeFileSync(lockPath(), JSON.stringify({ pid: 999, label: 'zombie', ts: 1 }));
-    check('steals a stale (dead-pid) lock', tryClaim('d') === true && readHolder().label === 'd');
+    check('steals a stale (dead-pid) lock', tryClaim('d', () => {}) === true && readHolder().label === 'd');
+
+    // the orphan case: holder pid is ALIVE (us) but its heartbeat went quiet.
+    // Before heavy-lock-orphan-blocks-train this wedged the release train.
+    stopHeartbeat();
+    fs.unlinkSync(lockPath());
+    fs.writeFileSync(lockPath(), JSON.stringify({ pid: process.pid, label: 'orphan-stryker', ts: Date.now() - 30 * 60_000, hb: true }));
+    fs.writeFileSync(hbPath(), JSON.stringify({ pid: process.pid, ts: Date.now() - 10 * 60_000 }));
+    let stealLog = '';
+    check('steals from a live-but-silent holder', tryClaim('train', (m) => { stealLog = m; }) === true && readHolder().label === 'train');
+    check('the steal is logged with its reason', /orphan-stryker/.test(stealLog) && /heartbeat/.test(stealLog));
+    check('claiming writes a fresh heartbeat', !!readHb() && Date.now() - readHb().ts < 5000);
+    stopHeartbeat();
+    check('release clears the heartbeat file', !fs.existsSync(hbPath()));
+
+    // a holder whose beat is CURRENT is not stealable, however long it has held
+    fs.unlinkSync(lockPath());
+    fs.writeFileSync(lockPath(), JSON.stringify({ pid: process.pid, label: 'long-build', ts: Date.now() - 60 * 60_000, hb: true }));
+    fs.writeFileSync(hbPath(), JSON.stringify({ pid: process.pid, ts: Date.now() }));
+    check('never steals from a holder that is still beating', tryClaim('greedy', () => {}) === false);
+    fs.unlinkSync(hbPath());
+
     // queue round-trip + dead-pruning on dequeue
     fs.unlinkSync(lockPath());
     writeQueue([{ pid: process.pid, label: 'x', seq: 1 }, { pid: 999, label: 'dead', seq: 2 }]);
