@@ -20,10 +20,19 @@
  * into each shared-sync consumer's scripts/e2e/. Do not fork per app.
  */
 
-import ws from 'ws';
-// Older `ws` majors (the one RN's dep tree pins) export Server, not
-// WebSocketServer.
-const WebSocketServer = ws.WebSocketServer ?? ws.Server;
+import * as ws from 'ws';
+// Resolve the server class across every shape `ws` has shipped: modern majors
+// expose a NAMED `WebSocketServer` on the module namespace, older ones hang
+// `Server` off the default (CJS `module.exports`) object. A default-only lookup
+// throws "WebSocketServer is not a constructor" on ws >= 8.19, whose default
+// export is the WebSocket CLIENT class with no server statics attached — which
+// meant this relay could not start at all, and with it the whole two-device
+// suite (found 2026-08-25 on packing-list's first real execution).
+const WebSocketServer =
+  ws.WebSocketServer ?? ws.Server ?? ws.default?.WebSocketServer ?? ws.default?.Server;
+if (typeof WebSocketServer !== 'function') {
+  throw new Error(`mini-relay: no WebSocketServer export found in 'ws' (keys: ${Object.keys(ws)})`);
+}
 
 const args = process.argv.slice(2);
 const flag = (name, dflt) => {
