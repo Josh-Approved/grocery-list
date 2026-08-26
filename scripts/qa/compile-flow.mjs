@@ -303,17 +303,30 @@ export function survivalJourney(journey) {
  * disk by the released build survives the upgrade, so neither flow may wipe it.
  * (The write flow runs against a FRESH install, so its first boot seeds anyway;
  * the assert flow must read the persisted store, so clearing it would be a lie.)
- * Returns { write, assert } journey objects, or null when no upgrade block.
+ *
+ * An OPTIONAL third sub-flow, `pressure`, is the app's storage-pressure oracle
+ * (upgrade-test.mjs --storage-pressure): it runs on HEAD while the sandbox is
+ * deliberately filled to near-full, and it must assert that a write FAILS
+ * GRACEFULLY — an honest on-screen error, no crash. It is per-app because only
+ * the app knows which write to attempt and what its honest error says. Same
+ * clearState:false contract: the pre-pressure data must still be on disk.
+ *
+ * Returns { write, assert, pressure } journey objects (pressure null when the
+ * app declares no oracle), or null when there is no upgrade block at all.
  */
 export function upgradeJourneys(journey) {
   if (!journey || !journey.upgrade) return null;
   const u = journey.upgrade;
   if (!Array.isArray(u.write?.steps)) throw new Error('journey.json: "upgrade.write.steps" must be an array');
   if (!Array.isArray(u.assert?.steps)) throw new Error('journey.json: "upgrade.assert.steps" must be an array');
+  if (u.pressure !== undefined && !Array.isArray(u.pressure?.steps)) {
+    throw new Error('journey.json: "upgrade.pressure.steps" must be an array when the pressure block is present');
+  }
   const base = { appId: journey.appId, clearState: false };
   return {
     write: { ...base, steps: u.write.steps },
     assert: { ...base, steps: u.assert.steps },
+    pressure: u.pressure ? { ...base, steps: u.pressure.steps } : null,
   };
 }
 
@@ -340,6 +353,7 @@ function main() {
   const survivalPath = path.join(appDir, 'qa', 'flows', 'state-survival.yaml');
   const upgradeWritePath = path.join(appDir, 'qa', 'flows', 'upgrade-write.yaml');
   const upgradeAssertPath = path.join(appDir, 'qa', 'flows', 'upgrade-assert.yaml');
+  const upgradePressurePath = path.join(appDir, 'qa', 'flows', 'upgrade-pressure.yaml');
 
   if (!fs.existsSync(journeyPath)) {
     console.error(`No qa/journey.json in ${appDir}. Copy qa/journey.example.json to start.`);
@@ -348,7 +362,7 @@ function main() {
   const journey = readJson(journeyPath);
   const selectors = fs.existsSync(selectorsPath) ? readJson(selectorsPath) : { anchors: {} };
 
-  let yaml, survivalYaml, upgradeWriteYaml, upgradeAssertYaml;
+  let yaml, survivalYaml, upgradeWriteYaml, upgradeAssertYaml, upgradePressureYaml;
   try {
     yaml = compileJourney(journey, selectors, appDir, { orientation });
     // The state-survival flow (T4) uses no orientation axis — it's a behavioral
@@ -360,6 +374,7 @@ function main() {
     const uj = upgradeJourneys(journey);
     upgradeWriteYaml = uj ? compileJourney(uj.write, selectors, appDir) : null;
     upgradeAssertYaml = uj ? compileJourney(uj.assert, selectors, appDir) : null;
+    upgradePressureYaml = uj && uj.pressure ? compileJourney(uj.pressure, selectors, appDir) : null;
   } catch (e) {
     console.error(`compile-flow: ${e.message}`);
     process.exit(1);
@@ -369,6 +384,7 @@ function main() {
     const which = flags.has('--survival') ? survivalYaml
       : flags.has('--upgrade-write') ? upgradeWriteYaml
       : flags.has('--upgrade-assert') ? upgradeAssertYaml
+      : flags.has('--upgrade-pressure') ? upgradePressureYaml
       : yaml;
     process.stdout.write(which || yaml);
     return;
@@ -387,7 +403,7 @@ function main() {
         process.exit(1);
       }
     }
-    for (const [yamlStr, p, name] of [[upgradeWriteYaml, upgradeWritePath, 'upgrade-write.yaml'], [upgradeAssertYaml, upgradeAssertPath, 'upgrade-assert.yaml']]) {
+    for (const [yamlStr, p, name] of [[upgradeWriteYaml, upgradeWritePath, 'upgrade-write.yaml'], [upgradeAssertYaml, upgradeAssertPath, 'upgrade-assert.yaml'], [upgradePressureYaml, upgradePressurePath, 'upgrade-pressure.yaml']]) {
       if (yamlStr == null) continue;
       const cur = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
       if (cur !== yamlStr) {
@@ -412,6 +428,10 @@ function main() {
     fs.writeFileSync(upgradeWritePath, upgradeWriteYaml);
     fs.writeFileSync(upgradeAssertPath, upgradeAssertYaml);
     console.log(`Wrote ${path.relative(appDir, upgradeWritePath)} + upgrade-assert.yaml (${journey.upgrade.write.steps?.length || 0} write / ${journey.upgrade.assert.steps?.length || 0} assert steps).`);
+  }
+  if (upgradePressureYaml != null) {
+    fs.writeFileSync(upgradePressurePath, upgradePressureYaml);
+    console.log(`Wrote ${path.relative(appDir, upgradePressurePath)} (${journey.upgrade.pressure.steps?.length || 0} storage-pressure oracle steps).`);
   }
 }
 
