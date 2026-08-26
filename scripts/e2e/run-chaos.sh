@@ -19,6 +19,23 @@
 set -euo pipefail
 
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# ── Mac-mini load governor (Uplevel 3 / T5) ──────────────────────────────────
+# The full chaos sweep (two device drivers + Metro + toxiproxy, once per scenario)
+# is ONE heavy unit; on the 8 GB mini heavy work must run one-at-a-time. Re-exec
+# the whole script under the factory's machine-wide heavy-lock CLI shim (a no-op
+# on a full-size machine). JA_HEAVY_HELD is set once inside the lock, so this
+# fires exactly once, BEFORE the arg shifts below (so "$@" is still the original).
+# If the factory sibling isn't present we run unguarded — the lock only matters on
+# the mini, where the factory is always a sibling.
+if [ -z "${JA_HEAVY_HELD:-}" ]; then
+  _JA_HEAVY="$E2E_DIR/../../../josh-approved-factory/scripts/lib/heavy.mjs"
+  if [ -f "$_JA_HEAVY" ]; then
+    _JA_APP="$(basename "$(cd "$E2E_DIR/../.." && pwd)")"
+    exec node "$_JA_HEAVY" run --label "e2e:$_JA_APP" -- "$0" "$@"
+  fi
+fi
+
 IOS_UDID="${1:?usage: run-chaos.sh <ios-sim-udid> [android-serial] [scenario...]}"
 shift
 ANDROID_SERIAL="${1:-emulator-5554}"; [ $# -gt 0 ] && shift || true
