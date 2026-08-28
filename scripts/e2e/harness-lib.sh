@@ -32,6 +32,16 @@ h_droid() { maestro --device "$ANDROID_SERIAL" test "$FLOWS/$1"; }
 # directory creation and hydrate fails, so the QA fixtures never seed. Reinstall
 # + warm-up gives the first real flow a fresh-but-healthy DB to relaunch into.
 h_reset_android() {
+  # Restore the radios BEFORE anything else. A suite that cuts the network for
+  # an offline window and then dies inside it leaves the emulator offline for
+  # good: the EXIT trap below covers an ordinary abort, but an OOM jetsam kill
+  # or `kill -9` never runs a trap, and on the 8 GB mini that is the normal way
+  # these runs die. The damage lands on the NEXT run, which fails at a totally
+  # unrelated assertion — phase 1's "Connected" — sending the reader into the
+  # sync/relay code instead of at leftover device state. That is exactly what
+  # happened on 2026-08-28: the 2026-08-25 run died at phase 4, immediately
+  # after h_android_offline, and every run after it was doomed before it began.
+  h_android_online_safe
   adb -s "$ANDROID_SERIAL" uninstall "$APP_ID" >/dev/null 2>&1 || true
   adb -s "$ANDROID_SERIAL" install -r "$ANDROID_APK" >/dev/null
   adb -s "$ANDROID_SERIAL" shell am start -n "$APP_ID/.MainActivity" >/dev/null
@@ -51,6 +61,16 @@ h_android_offline() {
 h_android_online() {
   adb -s "$ANDROID_SERIAL" shell svc wifi enable
   adb -s "$ANDROID_SERIAL" shell svc data enable
+}
+
+# Best-effort network restore. Never fails, never aborts its caller — it runs
+# both from the EXIT trap (where a non-zero would rewrite the run's exit code)
+# and from h_reset_android (where the device may not be attached yet).
+h_android_online_safe() {
+  [ -n "${ANDROID_SERIAL:-}" ] || return 0
+  adb -s "$ANDROID_SERIAL" shell svc wifi enable >/dev/null 2>&1 || true
+  adb -s "$ANDROID_SERIAL" shell svc data enable >/dev/null 2>&1 || true
+  return 0
 }
 
 # --- relay lifecycle ---------------------------------------------------------
@@ -100,5 +120,16 @@ h_write_report() {
   echo "wrote $out (suite=$suite ok=$ok)"
 }
 
-h_cleanup() { h_stop_chaos; h_stop_relay; }
+# Runs on EVERY exit, green or red. Restoring the radios is part of cleanup for
+# the same reason killing the relay is: an offline window is borrowed device
+# state, and a suite that borrows it owes it back even when it fails. Ordinary
+# aborts (a failed assertion under `set -e`, Ctrl-C) land here; the belt to this
+# brace is h_reset_android's restore, which also covers a kill that skips traps.
+h_cleanup() {
+  local rc=$?
+  h_stop_chaos
+  h_stop_relay
+  h_android_online_safe
+  return $rc
+}
 trap h_cleanup EXIT
