@@ -28,8 +28,9 @@
  *
  * `slug` MUST match the app's public repo slug (the last path segment of
  * REPO_URL) — that's how an app excludes itself from its own row. `webSlug` is
- * the app's page on the site, which differs for one app (workout-timer ships as
- * free-workout-timer on the web).
+ * the app's page on the site, which differs for two apps: workout-timer ships
+ * as free-workout-timer on the web, and tend ships everywhere public as
+ * relationships (the repo keeps the internal name it was born under).
  */
 
 export type JaCatalogEntry = {
@@ -85,9 +86,10 @@ export const JA_CATALOG: JaCatalogEntry[] = [
   },
   {
     slug: 'tend',
+    webSlug: 'relationships',
     name: 'Relationships',
     blurb: 'A quiet place to keep up with the people you care about.',
-    iosLive: false,
+    iosLive: true,
     androidLive: true,
   },
   {

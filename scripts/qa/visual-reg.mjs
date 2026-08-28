@@ -9,15 +9,20 @@
  * baseline; it writes a side-by-side crop + a triage proposal. Baselines update
  * ONLY via `--accept` (the triage-accept path) — exactly heal.mjs doctrine:
  * intended changes teach the net, regressions get caught. First full run, with
- * no baselines yet, is the baseline-LOCK.
+ * no baselines yet, is the baseline-LOCK — but ONLY when the whole app (or a
+ * device cell new to the matrix) is unlocked. A missing baseline inside an
+ * otherwise-populated cell is an incidental HOLE, not a first run, and is
+ * reported as a regression needing an explicit --accept rather than silently
+ * adopted from whatever capture is on disk (see missingBaselineVerdict).
  *
  * This is token-free: the agent never looks at these images in a loop. It reads
  * the compact proposals in qa/qa-triage.json (and, per release, the ONE bounded
  * contact-sheet review). Regressions are a structured list, not a screenshot dump.
  *
  * Modes:
- *   (default)        diff every current capture vs its baseline; lock any that
- *                    have no baseline yet (first run); regressions -> triage.
+ *   (default)        diff every current capture vs its baseline; lock the ones
+ *                    with no baseline yet ONLY on a genuine first run (whole app
+ *                    or whole cell unlocked); regressions + baseline holes -> triage.
  *   --lock           force-adopt every current capture as the baseline (re-lock).
  *   --accept <sel>   promote current -> baseline for a cell/screen ("cell/screen"),
  *                    a whole cell ("cell"), or "all". The self-learning accept.
@@ -113,6 +118,34 @@ export function acceptMatcher(sel) {
   return (c, s) => c === cell && (!screen || s === screen);
 }
 
+/**
+ * Decide what to do with a screen that has NO baseline yet. Pure.
+ *
+ * The header calls the no-baselines case "the baseline-LOCK", and that is the
+ * intended bootstrap. The defect was that an INCIDENTAL hole in an otherwise
+ * locked cell was indistinguishable from a genuine first run: the missing-file
+ * branch adopted whatever PNG happened to be sitting in the capture dir, called
+ * it `locked`, and exited 0 — which is the same class of bug the dimension
+ * guard below it was written to stop, except the guard can only fire when a
+ * baseline ALREADY exists. Caught live 2026-08-17 on workout-timer: two
+ * contaminated iphone-se-dark baselines were deleted, and a bare run re-locked
+ * both from the same stale pre-fix captures without a word.
+ *
+ * So a lock is only automatic when the whole APP or the whole CELL is
+ * unlocked — a real first run, or a device cell newly added to the matrix.
+ * A hole inside a populated cell becomes a proposal needing an explicit
+ * --accept, exactly like a dimension change.
+ *
+ * Counts are snapshotted BEFORE the run writes anything, so the verdict does
+ * not flip part-way through a cell as earlier screens lock.
+ */
+export function missingBaselineVerdict({ forceLock, cellBaselineCount, appBaselineCount }) {
+  if (forceLock) return 'lock';
+  if (appBaselineCount === 0) return 'lock';   // genuine first run for the app
+  if (cellBaselineCount === 0) return 'lock';  // a device cell new to the matrix
+  return 'propose';                             // an incidental hole — never adopt silently
+}
+
 // ---------- self-test ----------
 
 function selfTest() {
@@ -169,6 +202,18 @@ function selfTest() {
     excluded: new Set(), isUnverified: () => true,
   });
   ok(narrowed.skippedUnverified.length === 0, 'a cell the selector never targeted is not reported as refused');
+
+  // A missing baseline is only auto-locked on a GENUINE first run. An
+  // incidental hole in a populated cell must never adopt the capture on disk.
+  const mbv = missingBaselineVerdict;
+  ok(mbv({ forceLock: false, cellBaselineCount: 0, appBaselineCount: 0 }) === 'lock',
+    'first run for the whole app locks');
+  ok(mbv({ forceLock: false, cellBaselineCount: 0, appBaselineCount: 42 }) === 'lock',
+    'a device cell new to the matrix locks');
+  ok(mbv({ forceLock: false, cellBaselineCount: 13, appBaselineCount: 42 }) === 'propose',
+    'a hole in a populated cell is a proposal, not a silent lock (the 2026-08-17 workout-timer re-lock)');
+  ok(mbv({ forceLock: true, cellBaselineCount: 13, appBaselineCount: 42 }) === 'lock',
+    '--lock still force-adopts, on purpose');
 
   console.log(failures === 0 ? '\nself-test PASSED' : `\nself-test FAILED (${failures})`);
   process.exit(failures === 0 ? 0 : 1);
@@ -318,7 +363,14 @@ async function main() {
 
   const forceLock = flags.has('--lock');
   const proposals = [];
-  let locked = 0, compared = 0, regressions = 0, unverified = 0;
+  let locked = 0, compared = 0, regressions = 0, unverified = 0, holes = 0;
+
+  // Snapshot how much of the baseline set already exists BEFORE this run writes
+  // anything, so missingBaselineVerdict() can tell a genuine first run from an
+  // incidental hole and the answer can't drift as earlier screens lock.
+  const baselineCountOf = (cell) => listScreens(path.join(baselineRoot, cell)).length;
+  const cellBaselineCounts = new Map(cells.map((c) => [c, baselineCountOf(c)]));
+  const appBaselineCount = listCells(baselineRoot).reduce((n, c) => n + baselineCountOf(c), 0);
 
   for (const cell of cells) {
     // matrix.mjs drops this marker when a cell ran on a fallback emulator rather
@@ -340,8 +392,24 @@ async function main() {
       const curSmall = downscale2x(readPng(lib.PNG, curPath));
 
       if (forceLock || !fs.existsSync(basePath)) {
-        writePng(lib.PNG, basePath, curSmall);
-        locked++;
+        const verdict = missingBaselineVerdict({
+          forceLock,
+          cellBaselineCount: cellBaselineCounts.get(cell) ?? 0,
+          appBaselineCount,
+        });
+        if (verdict === 'lock') {
+          writePng(lib.PNG, basePath, curSmall);
+          locked++;
+          continue;
+        }
+        // A hole in an otherwise-populated cell. Do NOT adopt the capture on
+        // disk — it may be from the wrong device, the wrong appearance, or
+        // pre-date the fix that made the current capture correct.
+        holes++;
+        regressions++;
+        proposals.push({ kind: 'visual/missing-baseline', cell, screen, severity: 'major',
+          summary: `${cell}/${screen} has no baseline, but ${cellBaselineCounts.get(cell)} other screen(s) in that cell do — an incidental hole, not a first run; refusing to adopt the capture on disk`,
+          suggestedAction: `Confirm the capture is current and from this cell's device/appearance, then adopt it explicitly: node scripts/qa/visual-reg.mjs . --accept ${cell}/${screen}` });
         continue;
       }
 
@@ -393,16 +461,18 @@ async function main() {
   const triagePath = path.join(appDir, 'qa', 'qa-triage.json');
   let triage = {};
   try { triage = JSON.parse(fs.readFileSync(triagePath, 'utf8')); } catch {}
-  triage.visualReg = { profile: valueOf('--profile') || 'full', compared, regressions, locked, unverified, proposals, capBytes: bytes };
+  triage.visualReg = { profile: valueOf('--profile') || 'full', compared, regressions, locked, holes, unverified, proposals, capBytes: bytes };
   fs.mkdirSync(path.dirname(triagePath), { recursive: true });
   fs.writeFileSync(triagePath, JSON.stringify(triage, null, 2) + '\n');
   fs.writeFileSync(path.join(appDir, 'qa', 'visual-reg.json'),
-    JSON.stringify({ app: path.basename(appDir), status: 'ok', compared, regressions, locked, unverified, proposals, capBytes: bytes }, null, 2) + '\n');
+    JSON.stringify({ app: path.basename(appDir), status: 'ok', compared, regressions, locked, holes, unverified, proposals, capBytes: bytes }, null, 2) + '\n');
 
-  console.log(`visual-reg: ${locked} locked, ${compared} compared, ${regressions} regression(s)` + (unverified ? `, ${unverified} cell(s) skipped (unverified device).` : '.'));
+  console.log(`visual-reg: ${locked} locked, ${compared} compared, ${regressions} regression(s)`
+    + (holes ? ` (incl. ${holes} missing baseline(s))` : '')
+    + (unverified ? `, ${unverified} cell(s) skipped (unverified device).` : '.'));
   if (regressions > 0) {
     console.log(`  regressions (read qa/qa-triage.json → visualReg):`);
-    for (const p of proposals.filter((p) => p.kind === 'visual/regression')) console.log(`    · ${p.summary}`);
+    for (const p of proposals.filter((p) => p.kind === 'visual/regression' || p.kind === 'visual/missing-baseline')) console.log(`    · ${p.summary}`);
     console.log(`  Accept an intended change: node scripts/qa/visual-reg.mjs . --accept <cell>/<screen>`);
   }
 }
