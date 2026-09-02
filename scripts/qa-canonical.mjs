@@ -1581,6 +1581,90 @@ const ruleTrustCoreCovered = () => {
   return pass('test/trust-core-covered', `${files.length} test file(s) under src/`);
 };
 
+// ---------- rules: repo-copying tools must not leak into the test run ----------
+//
+// A tool that COPIES the repo to work on it (Stryker's sandbox today; any future
+// equivalent) leaves a full second copy of the app on disk. Two things must be
+// true of every such directory or the copy quietly becomes part of the product:
+//
+//   1. jest must not build its haste map over it. Measured on grocery-list
+//      2026-08-11: a crashed mutation run left .stryker-tmp/sandbox-* behind and
+//      `npm test` went from 48 real suites to 267 suites / 2061 tests / 78 MB,
+//      silently running a STALE copy of the app as extra tests. Worse, the
+//      defect-reporter is a jest reporter, so a failure inside the copy files as
+//      a real product defect against code that is not even the working tree.
+//   2. git must ignore it — via the TRACKED .gitignore, not .git/info/exclude.
+//      An exclude entry is local-only, so a fresh clone (the mini, CI, a new Mac)
+//      ignores nothing and a crashed sandbox is committable.
+//
+// Fixed by hand across 8 apps + the sync.mjs qa template (ticket
+// jest-ignore-stryker-tmp, 2026-08-17); this is the guard that stops an app
+// drifting back or a future repo-copying tool repeating it.
+const SANDBOX_COPY_DIRS = [
+  { dir: '.stryker-tmp/', jest: '<rootDir>/.stryker-tmp/', gitIgnored: true, why: 'a crashed mutation run leaves a full copy of the app here' },
+  { dir: 'qa/known-bad/', jest: '<rootDir>/qa/known-bad/', gitIgnored: false, why: 'deliberately-broken fixtures, scanned only by qa-canonical' },
+];
+
+// Pure core (self-tested): which sandbox dirs jest would still walk.
+export const missingJestSandboxIgnores = (patterns, dirs = SANDBOX_COPY_DIRS) => {
+  const have = new Set(Array.isArray(patterns) ? patterns : []);
+  return dirs.filter((d) => !have.has(d.jest));
+};
+
+// Pure core (self-tested): does a .gitignore body ignore this directory? Accepts
+// the shapes git treats as equivalent for a directory (`x`, `x/`, `/x`, `**/x/`)
+// and ignores comments, blanks, and negations (a `!x` line un-ignores it).
+export const gitignoreCoversDir = (text, dir) => {
+  const norm = (s) => s.replace(/^\*\*\//, '').replace(/^\//, '').replace(/\/$/, '');
+  const want = norm(dir);
+  let covered = false;
+  for (const raw of String(text ?? '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const negated = line.startsWith('!');
+    if (norm(negated ? line.slice(1) : line) !== want) continue;
+    covered = !negated; // last matching line wins, as git resolves it
+  }
+  return covered;
+};
+
+const ruleSandboxJestIgnored = () => {
+  const id = 'test/sandbox-copies-jest-ignored';
+  const pkg = readJson(join(appDir, 'package.json'));
+  if (!pkg) return skip(id, 'No package.json');
+  if (!pkg.jest) return skip(id, 'No jest config in package.json');
+  const missing = missingJestSandboxIgnores(pkg.jest.modulePathIgnorePatterns);
+  if (missing.length) {
+    return testWarn(id,
+      'A repo-copying tool\'s sandbox directory is not in jest.modulePathIgnorePatterns — jest will run a stale COPY of the app as extra suites, and the defect-reporter will file failures inside it as real product defects. Re-run `node scripts/sync.mjs qa <app>`',
+      missing.map((d) => `${d.dir} — ${d.why} (add "${d.jest}")`));
+  }
+  return pass(id, `jest ignores ${SANDBOX_COPY_DIRS.length} sandbox/copy dir(s)`);
+};
+
+const ruleSandboxGitignored = () => {
+  const id = 'repo/sandbox-copies-gitignored';
+  // Only meaningful where the copying tool can actually run. Stryker rides on the
+  // app's jest config, so no jest config = no sandbox to ignore (the two Chrome
+  // extensions), and warning there would be noise.
+  if (!readJson(join(appDir, 'package.json'))?.jest) return skip(id, 'No jest config — no repo-copying tool runs here');
+  const want = SANDBOX_COPY_DIRS.filter((d) => d.gitIgnored);
+  const tracked = readText(join(appDir, '.gitignore'));
+  if (tracked == null) return warn(id, '.gitignore missing at repo root — a repo-copying tool\'s sandbox has nothing stopping it from being committed');
+  const missing = want.filter((d) => !gitignoreCoversDir(tracked, d.dir));
+  if (!missing.length) return pass(id, `.gitignore covers ${want.length} sandbox/copy dir(s)`);
+  // .git/info/exclude may cover it on THIS machine, which is exactly the trap:
+  // the exclude file is local-only and does not survive a fresh clone.
+  const local = readText(join(appDir, '.git', 'info', 'exclude')) || '';
+  const localOnly = missing.filter((d) => gitignoreCoversDir(local, d.dir));
+  const nowhere = missing.filter((d) => !localOnly.includes(d));
+  const detail = [
+    ...localOnly.map((d) => `${d.dir} — ignored only by .git/info/exclude, which is local-only and does not survive a fresh clone`),
+    ...nowhere.map((d) => `${d.dir} — not ignored at all (${d.why})`),
+  ];
+  return warn(id, 'A repo-copying tool\'s sandbox directory is not in the tracked .gitignore, so a crashed run is committable from a fresh clone', detail);
+};
+
 // Tier 2 — does the traversal prove a RESULT, not just navigate? A journey that
 // only waitFor/tap/screenshot proves the app booted and anchors were tappable,
 // never that a flow produced the right outcome. Require >=1 assert/assertNot
@@ -3080,6 +3164,8 @@ const CANONICAL_RULES = [
   ruleManifestPermissionsTight,
   ruleTestScriptPresent,
   ruleTrustCoreCovered,
+  ruleSandboxJestIgnored,
+  ruleSandboxGitignored,
   ruleFlowHasAssertions,
   ruleFlowDrift,
   ruleActionsMapped,
@@ -3146,6 +3232,28 @@ function runSelfTest() {
     'build-output: the tracked QA sources and visual-reg baselines are not build output');
   assert(detectTrackedBuildOutput(['src/qa/captures.ts']).length === 0,
     'build-output: a same-named source path outside qa/captures/ passes');
+
+  // test/sandbox-copies-jest-ignored — the known-bad is grocery-list's real
+  // pre-fix package.json (2026-08-11): jest configured, .stryker-tmp/ not ignored,
+  // so a crashed mutation sandbox ran as 219 extra suites.
+  assert(missingJestSandboxIgnores(['<rootDir>/qa/known-bad/']).some((d) => d.dir === '.stryker-tmp/'),
+    'sandbox-jest: a config missing .stryker-tmp/ fires (the grocery-list shape)');
+  assert(missingJestSandboxIgnores(undefined).length === SANDBOX_COPY_DIRS.length,
+    'sandbox-jest: no modulePathIgnorePatterns at all fires for every sandbox dir');
+  assert(missingJestSandboxIgnores(['<rootDir>/qa/known-bad/', '<rootDir>/.stryker-tmp/']).length === 0,
+    'sandbox-jest: the canonical synced config passes');
+
+  // repo/sandbox-copies-gitignored
+  assert(gitignoreCoversDir('node_modules/\n.stryker-tmp/\n', '.stryker-tmp/'),
+    'sandbox-git: a trailing-slash .gitignore entry covers the dir');
+  assert(gitignoreCoversDir('/.stryker-tmp\n', '.stryker-tmp/') && gitignoreCoversDir('**/.stryker-tmp/\n', '.stryker-tmp/'),
+    'sandbox-git: the anchored and **/ shapes count too');
+  assert(!gitignoreCoversDir('node_modules/\nstryker-incremental.json\n', '.stryker-tmp/'),
+    'sandbox-git: ignoring the report file is not ignoring the sandbox dir (the real gap)');
+  assert(!gitignoreCoversDir('# .stryker-tmp/\n', '.stryker-tmp/'),
+    'sandbox-git: a commented-out entry does not count');
+  assert(!gitignoreCoversDir('.stryker-tmp/\n!.stryker-tmp/\n', '.stryker-tmp/'),
+    'sandbox-git: a later negation un-ignores it');
 
   // copy/retired-voice-phrases
   assert(detectRetiredVoicePhrases('On-device AI reads the receipt.').length === 1,
