@@ -107,8 +107,8 @@ export default function ListsHomeScreen({ navigation }: Props) {
             destructive: true,
             onPress: () =>
               confirm.open({
-                title: t('home.deleteList'),
-                message: t('home.deleteListConfirm'),
+                title: t('detail.deleteList'),
+                message: t('detail.deleteListConfirm'),
                 confirmLabel: t('common.delete'),
                 destructive: true,
                 onConfirm: () => deleteList(list.id),
