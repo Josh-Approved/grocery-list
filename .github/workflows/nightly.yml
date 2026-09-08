@@ -97,7 +97,20 @@ jobs:
     if: needs.detect.outputs.is-rn == 'true' && needs.detect.outputs.has-flow == 'true'
     # Image + Xcode are derived from the app's Expo SDK in `detect`.
     runs-on: ${{ needs.detect.outputs.macos-runner }}
-    timeout-minutes: 90
+    # THE DEVICE SUITE MUST ALWAYS GET ITS TIME. This job runs two unrelated
+    # things back to back: the platform-agnostic JS suites (deep jest, quarantine
+    # sweep, mutation) and then the iOS simulator suite — and the JS half grows
+    # with the app while the device half does not. On 2026-09-08 grocery-list's
+    # Stryker step ran 64 min of a 90 min job, so the EAS build was guillotined
+    # and the device suite never ran at all: 10 nights in a row with no iOS
+    # verdict (packing-list the same, 51 min of mutation). A job that dies has
+    # NO result, which reads as "absent", not "red" — worse than a failure.
+    # So the JS steps are individually capped below (20 + 10 + 30 = 60 max) and
+    # the job budget is set so the device half's ~50 min always fits underneath
+    # it. Actions minutes are free on these public repos, so the ceiling costs
+    # nothing on a normal ~50-75 min night. If you add a step here, give it a
+    # cap and re-do this arithmetic.
+    timeout-minutes: 120
     env:
       EXPO_PUBLIC_QA_MODE: '1'
       MAESTRO_DRIVER_STARTUP_TIMEOUT: '300000'
@@ -125,8 +138,12 @@ jobs:
       # ride jest) + the trust-core unit tests. Non-blocking: a counterexample is
       # crystallized into qa/regressions/ and filed to qa/defect-intake.jsonl by
       # the harness / defect-reporter — the digest ingests it; it never reds a ship.
+      # Capped so a slow suite yields to the device half rather than eating it
+      # (see the job-level note). continue-on-error means the cap ends the STEP,
+      # never the job.
       - name: Deep jest — intent-fuzz (nightly 2000) + regression replay + trust core
         continue-on-error: true
+        timeout-minutes: 20
         env:
           FUZZ_PROFILE: nightly
           JEST_JUNIT_OUTPUT_DIR: test-results
@@ -149,6 +166,7 @@ jobs:
       # when the quarantine list is empty.
       - name: Quarantined tests (non-blocking signal for T0)
         continue-on-error: true
+        timeout-minutes: 10
         env:
           QUARANTINE_MODE: run
         run: npx jest --ci --passWithNoTests || true
@@ -156,8 +174,13 @@ jobs:
       # Stryker incremental — "test the tests." Nightly-class by design (a full
       # run is unaffordable). Survivors are a work queue, never a gate; skipped
       # cleanly when the app hasn't adopted mutation testing.
+      # The 30 min cap is the one that matters: mutation cost grows with the app
+      # and it sits directly upstream of the device suite. A capped run still
+      # writes whatever incremental progress it made; a run that eats the job
+      # costs us the whole night's iOS verdict.
       - name: Stryker incremental (mutation)
         continue-on-error: true
+        timeout-minutes: 30
         run: |
           if [ -f stryker.config.json ]; then
             npx stryker run --incremental || true
