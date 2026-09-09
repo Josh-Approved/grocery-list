@@ -3217,7 +3217,58 @@ const ruleTipJarWired = () => {
   return pass(id, 'Tip jar is rendered and reachable (onSupport wired)');
 };
 
+/**
+ * Pure core (self-tested). Returns the nightly JS steps that inherit the
+ * device half's capture flag.
+ *
+ * The nightly's macOS job sets `EXPO_PUBLIC_QA_MODE: '1'` at JOB level so the
+ * simulator build boots deterministic fixtures — but job env is inherited by
+ * every step, and that job also runs the platform-agnostic JS suites. QA_MODE
+ * is a real branch in app code (src/qa/qaMode.ts; the shell, the stores and the
+ * reminder adapter all short-circuit under it), so the trust core ends up
+ * asserting against capture behaviour and the defect-reporter files the
+ * difference as a product defect every night. That is exactly what happened to
+ * home-maintenance's permission-ask contract (records 20260908-1 / -2): the
+ * tests were right, the code was right, only the environment was wrong, and it
+ * took a human reading the failure to notice — a phantom-defect generator is
+ * worse than no net, because it spends the queue on nothing.
+ *
+ * So: if a job pins the flag ON, every step in it that runs jest or stryker
+ * must pin it OFF for itself.
+ */
+function detectQaModeLeakIntoJsSteps(workflowText) {
+  const leaks = [];
+  // Job blocks start at 2-space indent; steps at 6. Split on the step marker so
+  // each block carries its own `env:` and `run:`.
+  for (const job of workflowText.split(/\n {2}(?=[a-zA-Z][\w-]*:\n)/)) {
+    if (!/^\s{4,6}EXPO_PUBLIC_QA_MODE:\s*['"]?1/m.test(job)) continue;
+    for (const step of job.split(/\n(?= {6}- name:)/).slice(1)) {
+      if (!/\b(?:npx |npm )?(?:jest|stryker)\b/.test(step)) continue;
+      if (/EXPO_PUBLIC_QA_MODE:\s*['"]?0/.test(step)) continue;
+      const name = (/- name:\s*(.+)/.exec(step)?.[1] || 'unnamed step').trim();
+      leaks.push(name);
+    }
+  }
+  return leaks;
+}
+
+const ruleNightlyQaModeNotLeaked = () => {
+  const id = 'test/nightly-qa-mode-not-leaked';
+  const wf = join(appDir, '.github', 'workflows', 'nightly.yml');
+  if (!exists(wf)) return skip(id, 'No .github/workflows/nightly.yml');
+  const leaks = detectQaModeLeakIntoJsSteps(readText(wf) || '');
+  if (leaks.length) {
+    return fail(
+      id,
+      'Nightly JS steps inherit the device half\'s EXPO_PUBLIC_QA_MODE=1, so the unit tests run in capture mode and file phantom defects',
+      leaks.map((n) => `${n}: add \`EXPO_PUBLIC_QA_MODE: '0'\` to this step's env`)
+    );
+  }
+  return pass(id, 'Nightly JS steps pin EXPO_PUBLIC_QA_MODE off (unit tests never run in capture mode)');
+};
+
 const CANONICAL_RULES = [
+  ruleNightlyQaModeNotLeaked,
   ruleLicense,
   rulePrivacy,
   ruleReadme,
@@ -3408,6 +3459,42 @@ export const es = {
     'retired-voice(i18n): the "Free …" locale title + "on-device" in a template fire, comments do not');
   assert(detectRetiredVoicePhrases(extractStringLiterals(i18nSrc).join('\n'), 'Free Workout Timer').length === 1,
     'retired-voice(i18n): before the rename the title was the app\'s own name and was exempt');
+
+  // test/nightly-qa-mode-not-leaked
+  const leakyWf = `jobs:
+  ios-nightly:
+    runs-on: macos-15
+    env:
+      EXPO_PUBLIC_QA_MODE: '1'
+    steps:
+      - name: npm ci
+        run: npm ci
+      - name: Deep jest
+        env:
+          FUZZ_PROFILE: nightly
+        run: npx jest --ci
+      - name: Stryker incremental (mutation)
+        run: npx stryker run --incremental
+      - name: EAS local build (iOS simulator)
+        run: eas build --platform ios --local
+`;
+  assert(detectQaModeLeakIntoJsSteps(leakyWf).length === 2,
+    'nightly-qa-mode: both JS steps under a QA_MODE=1 job are flagged (the home-maintenance phantom-defect shape)');
+  assert(detectQaModeLeakIntoJsSteps(leakyWf).every((n) => !/EAS local build/.test(n)),
+    'nightly-qa-mode: the device step is NOT flagged — it is the one that legitimately wants capture mode');
+  assert(detectQaModeLeakIntoJsSteps(
+    leakyWf.replace("          FUZZ_PROFILE: nightly", "          EXPO_PUBLIC_QA_MODE: '0'\n          FUZZ_PROFILE: nightly")
+  ).length === 1, 'nightly-qa-mode: a step that pins the flag off for itself passes');
+  assert(detectQaModeLeakIntoJsSteps(leakyWf.replace("EXPO_PUBLIC_QA_MODE: '1'", "EXPO_PUBLIC_QA_MODE: '0'")).length === 0,
+    'nightly-qa-mode: a job that never turns capture mode on has nothing to leak');
+  assert(detectQaModeLeakIntoJsSteps(`jobs:
+  android-nightly:
+    env:
+      EXPO_PUBLIC_QA_MODE: '1'
+    steps:
+      - name: EAS local build (Android APK)
+        run: eas build --platform android --local
+`).length === 0, 'nightly-qa-mode: a device-only job (no jest/stryker step) is clean');
 
   // ux/touch-target-min
   assert(detectSmallTouchTargets(`<Pressable style={{ height: 32, width: 32 }} onPress={x}/>`).length === 1,
