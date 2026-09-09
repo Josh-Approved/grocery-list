@@ -966,6 +966,157 @@ const ruleVoiceControlNameMatch = () => {
   );
 };
 
+/**
+ * Pure core (self-tested). Given a list of
+ * `{ component, label, line, tag }` call sites, returns the accessible names
+ * that more than one control in the SAME component answers to.
+ *
+ * Voice Control activates by name, so two controls sharing one is a coin flip
+ * for the user. tend's person picker shipped two buttons both named "Cancel" —
+ * the header X that throws the picker away and the little X that empties the
+ * search box, both reusing one string — so saying "Cancel" did either
+ * (tend-20260819-1). The fix was giving the clear control its own string, and
+ * this is the guard that generalizes it.
+ *
+ * Grouping is per COMPONENT, not per file: a Dialogs.tsx holding six dialogs
+ * that each have their own Cancel is correct — only one is ever on screen —
+ * and a per-file check would report all six and be switched off within a week.
+ */
+function detectDuplicateAccessibleNames(sites) {
+  const byComponent = new Map();
+  for (const s of sites) {
+    // A label can contain any separator we might pick, so key on a shape that
+    // cannot collide and never has to be split back apart.
+    const key = JSON.stringify([s.component, s.label]);
+    if (!byComponent.has(key)) byComponent.set(key, []);
+    byComponent.get(key).push(s);
+  }
+  const dups = [];
+  for (const [key, group] of byComponent) {
+    if (group.length < 2) continue;
+    const [component, label] = JSON.parse(key);
+    dups.push({
+      component,
+      label,
+      lines: group.map((g) => g.line),
+      tags: group.map((g) => g.tag),
+    });
+  }
+  return dups;
+}
+
+// Only STATIC labels are compared — a string literal, or a t('key') reference.
+// Two controls given the same key is the shape the real defect had, and it is
+// the one shape we can be certain about without resolving six dictionaries.
+// A composed label (`${person.name}, remove`) is skipped rather than guessed:
+// list rows legitimately share a template and differ at runtime, so treating
+// those as duplicates would report every list in the fleet.
+const staticLabelForm = (ts, node, sf) => {
+  if (!node) return null;
+  if (ts.isJsxExpression(node) || ts.isParenthesizedExpression(node)) {
+    return staticLabelForm(ts, node.expression, sf);
+  }
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    return `"${node.text}"`;
+  }
+  if (
+    ts.isCallExpression(node) &&
+    node.expression.getText(sf) === 't' &&
+    node.arguments.length &&
+    ts.isStringLiteral(node.arguments[0])
+  ) {
+    return `t('${node.arguments[0].text}')`;
+  }
+  return null;
+};
+
+const ruleDistinctAccessibleName = () => {
+  const id = 'a11y/distinct-accessible-name';
+  if (surface !== 'rn') return skip(id, 'Not an RN app');
+  if (ruleSkipsAll(id)) return skip(id, `Disabled via qa/baseline.json "${id}/skip"`);
+
+  let ts;
+  try {
+    ts = createRequire(join(appDir, 'package.json'))('typescript');
+  } catch {
+    return skip(id, 'typescript is not resolvable from this app — cannot parse JSX (run npm install)');
+  }
+
+  const files = srcSourceFiles().filter((f) => f.endsWith('.tsx'));
+  if (!files.length) return skip(id, 'No src/**/*.tsx files');
+
+  const findings = [];
+  let checked = 0;
+
+  for (const file of files) {
+    const src = readText(file);
+    if (!src || !src.includes('accessibilityLabel')) continue;
+    const sf = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const sites = [];
+
+    // Scope is the nearest NAMED function, whatever it is called. The obvious
+    // rule — "a name starting with a capital, the React convention" — is wrong
+    // here: the shell's Dialogs.tsx renders its three dialogs from the hooks
+    // useActionMenu / usePrompt / useConfirm, so a capitals-only test dropped
+    // all of them to module scope and reported one five-way Cancel collision in
+    // every app in the fleet. Any named function that renders is a rendering
+    // unit, and grouping by it is what keeps a multi-dialog file honest.
+    const visit = (node, component) => {
+      let scope = component;
+      const declName =
+        (ts.isFunctionDeclaration(node) && node.name?.getText(sf)) ||
+        (ts.isVariableDeclaration(node) &&
+          node.initializer &&
+          (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)) &&
+          node.name.getText(sf)) ||
+        null;
+      if (declName) scope = declName;
+
+      if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
+        const open = ts.isJsxElement(node) ? node.openingElement : node;
+        const tag = open.tagName.getText(sf);
+        let labelAttr = null;
+        let interactive = VC_PRESSABLE_TAGS.has(tag);
+        for (const a of open.attributes.properties) {
+          if (!ts.isJsxAttribute(a)) continue;
+          const name = a.name.getText(sf);
+          if (name === 'accessibilityLabel') labelAttr = a;
+          if (name === 'onPress') interactive = true;
+        }
+        if (labelAttr && interactive) {
+          const label = staticLabelForm(ts, labelAttr.initializer, sf);
+          if (label) {
+            checked++;
+            sites.push({
+              component: scope,
+              label,
+              line: sf.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+              tag,
+            });
+          }
+        }
+      }
+      ts.forEachChild(node, (child) => visit(child, scope));
+    };
+    visit(sf, '(module)');
+
+    for (const d of detectDuplicateAccessibleNames(sites)) {
+      findings.push(
+        `${relative(appDir, file)}: ${d.component} has ${d.lines.length} controls all named ${d.label} ` +
+        `(<${d.tags.join('>, <')}> at lines ${d.lines.join(', ')})`
+      );
+    }
+  }
+
+  if (findings.length) {
+    const enforce = baseline['a11y/enforce'] === true;
+    const msg =
+      'Two controls in one component answer to the same accessible name, so Voice Control cannot tell them apart (canon § Accessibility). Give the secondary control its own string.';
+    return enforce ? fail(id, msg, findings) : warn(id, msg, findings);
+  }
+  return pass(id, `All ${checked} statically-labelled control(s) have a distinct name within their component`);
+};
+
 // Early-return guards that gate WHETHER a feature exists, e.g.
 //   if (Platform.OS !== 'ios') return            (or === 'ios' / android, symmetric)
 //   if (Platform.OS === 'android') { return; }
@@ -3284,6 +3435,7 @@ const CANONICAL_RULES = [
   ruleNoAlertPrompt,
   rulePaneFocus,
   ruleVoiceControlNameMatch,
+  ruleDistinctAccessibleName,
   ruleNoPlatformEarlyReturn,
   ruleEasJsonShape,
   ruleAppearanceToggle,
@@ -3459,6 +3611,33 @@ export const es = {
     'retired-voice(i18n): the "Free …" locale title + "on-device" in a template fire, comments do not');
   assert(detectRetiredVoicePhrases(extractStringLiterals(i18nSrc).join('\n'), 'Free Workout Timer').length === 1,
     'retired-voice(i18n): before the rename the title was the app\'s own name and was exempt');
+
+  // a11y/distinct-accessible-name
+  const site = (component, label, line, tag = 'Pressable') => ({ component, label, line, tag });
+  assert(detectDuplicateAccessibleNames([
+    site('PersonPicker', "t('common.cancel')", 40),
+    site('PersonPicker', "t('common.cancel')", 71),
+  ]).length === 1, 'distinct-name: two controls in one component sharing a key fire (the tend picker defect)');
+  assert(detectDuplicateAccessibleNames([
+    site('PersonPicker', "t('common.cancel')", 40),
+    site('PersonPicker', "t('home.searchClear')", 71),
+  ]).length === 0, 'distinct-name: giving the clear control its own string is the fix, and passes');
+  assert(detectDuplicateAccessibleNames([
+    site('DeleteDialog', "t('common.cancel')", 40),
+    site('RenameDialog', "t('common.cancel')", 90),
+  ]).length === 0, 'distinct-name: one Cancel per dialog in a multi-dialog file is correct — only one is ever on screen');
+  assert(detectDuplicateAccessibleNames([
+    site('Row', '"Close"', 12), site('Row', '"Close"', 30), site('Row', '"Close"', 44),
+  ])[0].lines.join() === '12,30,44',
+    'distinct-name: every colliding line is reported, not just the second');
+  assert(detectDuplicateAccessibleNames([
+    site('Bar', '"Close menu"', 1), site('Bar', '"Close"', 2), site('Bar', '"menu"', 3),
+  ]).length === 0, 'distinct-name: labels containing spaces are not confused for one another');
+  assert(detectDuplicateAccessibleNames([
+    site('usePrompt', "t('common.cancel')", 212),
+    site('useConfirm', "t('common.cancel')", 311),
+  ]).length === 0,
+    'distinct-name: a hook that renders is its own scope — the capitals-only React convention dropped the shell\'s three dialog hooks to module scope and reported one fleet-wide phantom');
 
   // test/nightly-qa-mode-not-leaked
   const leakyWf = `jobs:
