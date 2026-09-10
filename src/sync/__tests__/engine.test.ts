@@ -67,7 +67,8 @@ class FakeTransport implements EngineTransport {
     public channel: string,
     public onMessage: (ct: string) => void,
     public onReconnect: () => void,
-    public onStatus: (openRelays: number) => void
+    public onStatus: (openRelays: number) => void,
+    public onPublishResult?: (delivered: boolean, reason: string) => void
   ) {}
   start() {
     this.started = true;
@@ -136,11 +137,13 @@ function sampleKit(): Kit {
 
 beforeEach(() => {
   created = [];
-  restore = __setTransportFactory((channel, onMessage, onReconnect, onStatus) => {
-    const t = new FakeTransport(channel, onMessage, onReconnect, onStatus);
-    created.push(t);
-    return t;
-  });
+  restore = __setTransportFactory(
+    (channel, onMessage, onReconnect, onStatus, onPublishResult) => {
+      const t = new FakeTransport(channel, onMessage, onReconnect, onStatus, onPublishResult);
+      created.push(t);
+      return t;
+    }
+  );
   useListsStore.setState({ lists: [], hydrated: true });
   useKitsStore.setState({ kits: [], hydrated: true });
   useSyncStatusStore.setState({ bySecret: {} });
@@ -606,6 +609,37 @@ describe('the diagnostic log a bug report carries', () => {
     expect(warned).toBeDefined();
     expect(warned).toContain('WARN');
     expect(warned).toContain(`ch=${CH_TAG}`);
+  });
+
+  test('a send no relay accepted is recorded, without the relay\'s free-text reason', () => {
+    useListsStore.setState({ lists: [sharedList([item('rice')])], hydrated: true });
+    startSyncEngine();
+
+    // Every recipient rejected the publish (NIP-20 OK-false): the socket is up
+    // but our change never left the device — "I ticked it and the other phone
+    // never saw it", which left no trace in the report at all.
+    created[0].onPublishResult!(false, 'rate-limited: slow down, npub…');
+
+    const warned = logLine('sync: publish was not delivered');
+    expect(warned).toBeDefined();
+    expect(warned).toContain('WARN');
+    expect(warned).toContain(`ch=${CH_TAG}`);
+    expect(warned).toContain('delivered=false');
+
+    // The reason is free text from a third-party relay — the one field in this
+    // log we would not control. It never lands here.
+    expect(serializeCurrent()).not.toContain('rate-limited');
+    expect(serializeCurrent()).not.toContain('slow down');
+    expect(serializeCurrent()).not.toContain(SECRET);
+  });
+
+  test('a delivered send is not warned about — only the failures leave a breadcrumb', () => {
+    useListsStore.setState({ lists: [sharedList([item('rice')])], hydrated: true });
+    startSyncEngine();
+
+    created[0].onPublishResult!(true, '');
+
+    expect(logLine('sync: publish was not delivered')).toBeUndefined();
   });
 
   test('a peer copy is recorded with how much of the list arrived', () => {

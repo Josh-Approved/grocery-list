@@ -140,7 +140,18 @@ function ensureChannel(secret: string): Channel {
       });
       markConnected(secret, openRelays > 0);
     },
-    (delivered) => markDelivered(secret, delivered)
+    (delivered) => {
+      // A send nobody accepted: the socket is up, but what we just published
+      // never left the device — the exact shape of "I ticked it and the other
+      // phone never saw it", and until now the one sync outcome that left no
+      // trace at all. The relay's `reason` is deliberately NOT logged: it is
+      // free text from a third party, and every field in this log is a scalar
+      // we control.
+      if (!delivered) {
+        logWarn('sync', 'publish was not delivered', { ch: chTag(secret), delivered: false });
+      }
+      markDelivered(secret, delivered);
+    }
   );
   // Stryker disable next-line StringLiteral: equivalent mutant, lastSent exists only to be compared against a serialized list payload, which can never equal the sentinel
   ch = { transport, lastSent: '', timer: null, lastHelloAt: 0 };
