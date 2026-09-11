@@ -98,6 +98,36 @@ function escapeRegex(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Does this element's text satisfy an anchor's text pattern, THE WAY MAESTRO
+ * DECIDES IT?
+ *
+ * Maestro FULL-matches a text selector regex — that is why anchors that target a
+ * card whose children collapse into one merged a11y label carry a trailing `.*`
+ * (factory CLAUDE.md § Hard-won gotchas; grocery-list's `weekly-list` note says
+ * it in the app's own words). heal used a bare `RegExp.test`, which matches a
+ * SUBSTRING, so it judged anchors by looser rules than the runner it exists to
+ * serve: an element Maestro would never pick still counted as "this anchor
+ * resolves here".
+ *
+ * That divergence is how grocery-list's `weekly-list` anchor ("Weekly shop.*",
+ * the home list card) learned the SHARE screen's sentence — "Anyone with this
+ * can see and edit Weekly shop. No account needed…" contains "Weekly shop", so
+ * the substring test matched a screen the anchor does not belong to. Under
+ * Maestro's own rule it does not match, and the mis-heal cannot happen.
+ *
+ * An unparseable pattern falls back to exact equality rather than `includes` —
+ * a looser fallback is the same bug in miniature.
+ */
+export function textMatches(pattern, text) {
+  const t = String(text ?? '');
+  const p = String(pattern ?? '');
+  let re;
+  // `s` so a `.` in an anchor spans a newline inside a merged label.
+  try { re = new RegExp(`^(?:${p})$`, 's'); } catch { return t === p; }
+  return re.test(t);
+}
+
 // ---------- resolution ----------
 
 /**
@@ -111,12 +141,18 @@ function escapeRegex(s) {
  */
 export function anchorResolves(anchor, nodes) {
   if (anchor.testID && nodes.some((n) => n.id === anchor.testID)) return true;
-  if (anchor.text) {
-    let re;
-    try { re = new RegExp(anchor.text); } catch { re = null; }
-    return nodes.some((n) => (re ? re.test(n.text) : n.text.includes(anchor.text)));
-  }
+  if (anchor.text) return nodes.some((n) => textMatches(anchor.text, n.text));
   return false;
+}
+
+/** The element an anchor currently points at on this screen, or null. */
+export function resolveNode(anchor, nodes) {
+  if (anchor.testID) {
+    const byId = nodes.find((n) => n.id === anchor.testID);
+    if (byId) return byId;
+  }
+  if (anchor.text) return nodes.find((n) => textMatches(anchor.text, n.text)) || null;
+  return null;
 }
 
 const CONFIDENT = 0.6;   // absolute score to auto-apply
@@ -283,17 +319,19 @@ function main() {
     for (const key of referenced) {
       const a = anchors[key];
       if (!a) continue;
-      // Record the element this anchor currently matches (text + any id).
-      let node = null;
-      if (a.testID) node = nodes.find((n) => n.id === a.testID);
-      if (!node && a.text) {
-        let re; try { re = new RegExp(a.text); } catch { re = null; }
-        node = nodes.find((n) => (re ? re.test(n.text) : n.text.includes(a.text)));
-      }
+      // Record the element this anchor currently matches (text + any id), using
+      // MAESTRO's matching rule — see textMatches. A --record pass reads ONE
+      // screen (whatever the green traverse ended on), so anchors belonging to
+      // earlier screens legitimately match nothing here and keep their learned
+      // value; under the old substring rule they matched whatever sentence
+      // happened to contain their words, and the learned state silently jumped
+      // screens.
+      const node = resolveNode(a, nodes);
       if (node) { baseline.anchors[key] = { text: node.text, id: node.id || null }; learned++; }
     }
     writeJson(baselinePath, baseline);
-    console.log(`Recorded baseline for ${learned}/${referenced.size} anchors → ${path.relative(appDir, baselinePath)}`);
+    console.log(`Recorded baseline for ${learned}/${referenced.size} anchors → ${path.relative(appDir, baselinePath)}` +
+      ` (anchors that belong to earlier screens keep their previous learned value)`);
     return;
   }
 
@@ -423,6 +461,37 @@ function selfTest() {
   check('display name falls back to expo.name',
     readAppDisplayName({ expo: { name: 'Workout Timer' } }) === 'Workout Timer');
   check('a missing app.json yields no display name', readAppDisplayName(null) === '');
+
+  // Guard 3 — heal matches the way MAESTRO matches (full match, not substring).
+  // The real grocery-list shape (ticket grocery-journey-baseline-misheal): the
+  // green traverse ends on the SHARE screen, and --record then walked every
+  // anchor the journey references against that one screen. The home card anchor
+  // "Weekly shop.*" substring-matched the share sentence and its learned value
+  // was overwritten with a string from a screen it does not belong to.
+  const shareScreen = [
+    { text: 'Anyone with this can see and edit Weekly shop. No account needed. You only do this once.', id: '' },
+    { text: 'Copy link', id: 'copy-link' },
+  ];
+  const homeScreen = [{ text: 'Weekly shop, 2 of 12 checked', id: '' }];
+  const weeklyList = { text: 'Weekly shop.*' };
+  const shareLead = { text: 'Anyone with this can see and edit.*' };
+
+  check('a home anchor does NOT resolve against a later screen that merely contains its words',
+    !anchorResolves(weeklyList, shareScreen));
+  check('the same anchor still resolves on its own screen',
+    anchorResolves(weeklyList, homeScreen));
+  check('the share screen\'s own anchor still resolves there', anchorResolves(shareLead, shareScreen));
+  check('--record finds no node for an off-screen anchor, so its learned value is kept',
+    resolveNode(weeklyList, shareScreen) === null);
+  check('--record records the right element when the anchor IS on screen',
+    (resolveNode(weeklyList, homeScreen) || {}).text === 'Weekly shop, 2 of 12 checked');
+  check('resolveNode prefers a matching testID', (resolveNode({ testID: 'copy-link' }, shareScreen) || {}).id === 'copy-link');
+  check('textMatches is a FULL match, not a substring',
+    textMatches('Weekly shop.*', 'Weekly shop, rename') && !textMatches('Weekly shop.*', 'edit Weekly shop now'));
+  check('textMatches spans a newline inside a merged label',
+    textMatches('Weekly shop.*', 'Weekly shop\n2 of 12 checked'));
+  check('an unparseable pattern falls back to exact equality, never substring',
+    textMatches('Save(', 'Save(') && !textMatches('Save(', 'Please Save( now'));
 
   check('flattenHierarchy walks nested children',
     flattenHierarchy({ attributes: { text: 'a' }, children: [{ attributes: { text: 'b' } }] }).length === 2);

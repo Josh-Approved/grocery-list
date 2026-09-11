@@ -14,8 +14,11 @@
  *   3. install — install the built artifact.
  *   4. compile — journey.json + selectors.json → qa/flows/mobile.yaml.
  *   5. traverse— maestro test, writing qa/captures/<store>/*.png at waypoints.
- *   6. heal    — on failure, if --heal: dump the live hierarchy, auto-repair
- *                confident anchors (heal.mjs --apply), recompile, retry once.
+ *   6. heal    — on failure, if --heal: read Maestro's command log to name the
+ *                anchor that actually failed, dump the live hierarchy, repair
+ *                THAT anchor (heal.mjs --anchor … --apply), recompile, retry
+ *                once. When the failing anchor can't be named, heal runs
+ *                propose-only — never an untargeted --apply.
  *   7. frame   — render-screenshots.mjs --store <store> → store-assets/.
  *   8. sheet   — optional --contact-sheet montage for a one-glance check.
  *   9. learn   — on green, record the resolved hierarchy as the healer baseline.
@@ -37,6 +40,7 @@
  *   --heal                   auto-repair confident anchor drift and retry once
  *   --contact-sheet          also emit the downscaled montage
  *   --dry-run                print every command without executing
+ *   --self-test              check the pure failure→anchor mapping; no device
  *
  * Heavy, environment-coupled steps (eas build, simctl, adb, maestro) are kept in
  * small labelled helpers running the SAME commands the CI template proves, so
@@ -73,6 +77,10 @@ const valueOf = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i
 const VALUE_FLAGS = new Set(['--platform', '--store', '--device', '--appearance', '--font-scale', '--orientation', '--cell']);
 const positional = args.filter((a, i) => !a.startsWith('--') && !VALUE_FLAGS.has(args[i - 1]));
 const appDir = path.resolve(positional[0] || process.cwd());
+
+// --self-test covers the pure failure→anchor mapping (no device, no build, no
+// store). It runs BEFORE the --store check so it needs no arguments at all.
+if (flags.has('--self-test')) process.exit(selfTest() ? 0 : 1);
 
 const storeKey = valueOf('--store');
 if (!storeKey || !STORES[storeKey]) {
@@ -334,21 +342,181 @@ function traverse() {
   const capturesDir = path.join(appDir, 'qa', 'captures', ...captureKey.split('/'));
   if (!dry) fs.mkdirSync(capturesDir, { recursive: true });
   const debugDir = path.join('qa', 'maestro-debug', tag);
+  // Remembered so the heal step only ever reads THIS run's command log — a log
+  // left by a previous capture names an anchor that is not the one that broke.
+  // The margin absorbs clock/mtime granularity, not another capture (a capture
+  // is minutes of build + boot, never seconds apart).
+  const startedAt = Date.now() - 5000;
   const r = run('traverse — maestro test', 'maestro', [
     ...deviceArg(), 'test', path.join('qa', 'flows', 'mobile.yaml'),
     `--env=STORE=${captureKey}`, '--debug-output', debugDir,
   ], { allowFail: true });
-  return r.status === 0;
+  return { ok: r.status === 0, startedAt };
 }
 
-function healAndRetry() {
+// --- which anchor actually broke? -------------------------------------------
+//
+// heal was invoked with no --anchor, so it weighed EVERY anchor the journey
+// references against the single screen the failed traverse left up. An anchor
+// that belongs to a later screen is not broken, it is OFF-SCREEN — and heal
+// cannot tell the difference, so it hunted the whole tree for a replacement and
+// could auto-apply one. The 2026-08-13 workout-timer corruption came in through
+// exactly this door.
+//
+// Maestro already knows which step failed, and writes it machine-readably to
+// --debug-output: <debugDir>/.maestro/tests/<stamp>/commands-(<flow>.yaml).json,
+// an array of { command, metadata: { status } }. Each command carries the
+// RESOLVED selector (textRegex / idRegex) — which is what compile-flow wrote
+// from an anchor — so a reverse lookup over qa/selectors.json names the anchor
+// that broke. When it can't be named, heal runs PROPOSE-ONLY: an unattended
+// capture must never write a selectors.json change nobody asked for.
+
+/** Every {textRegex|idRegex} selector inside the commands Maestro marked FAILED. */
+export function failedSelectors(commands) {
+  const out = [];
+  const collect = (v) => {
+    if (!v || typeof v !== 'object') return;
+    if (Array.isArray(v)) { v.forEach(collect); return; }
+    if (typeof v.textRegex === 'string' || typeof v.idRegex === 'string') {
+      out.push({ textRegex: v.textRegex ?? null, idRegex: v.idRegex ?? null });
+    }
+    Object.values(v).forEach(collect);
+  };
+  for (const entry of Array.isArray(commands) ? commands : []) {
+    if (String(entry?.metadata?.status).toUpperCase() !== 'FAILED') continue;
+    collect(entry.command);
+  }
+  return out;
+}
+
+/** Anchor keys whose resolved selector is one of these — compile-flow's inverse. */
+export function anchorsForSelectors(anchors, selectors) {
+  const keys = [];
+  for (const sel of selectors || []) {
+    for (const [key, a] of Object.entries(anchors || {})) {
+      if (!a) continue;
+      const hit = (sel.idRegex && a.testID === sel.idRegex) || (sel.textRegex && a.text === sel.textRegex);
+      if (hit && !keys.includes(key)) keys.push(key);
+    }
+  }
+  return keys;
+}
+
+/** Newest commands-*.json under a Maestro --debug-output dir, ignoring old runs. */
+export function newestCommandsLog(debugDirAbs, notBefore = 0, io = fs) {
+  const testsDir = path.join(debugDirAbs, '.maestro', 'tests');
+  let best = null;
+  let stamps = [];
+  try { stamps = io.readdirSync(testsDir); } catch { return null; }
+  for (const stamp of stamps) {
+    let files = [];
+    try { files = io.readdirSync(path.join(testsDir, stamp)); } catch { continue; }
+    for (const f of files) {
+      if (!/^commands-.*\.json$/.test(f)) continue;
+      const p = path.join(testsDir, stamp, f);
+      let mtime = 0;
+      try { mtime = io.statSync(p).mtimeMs; } catch { continue; }
+      // A stale log from a previous capture would name the WRONG anchor, which
+      // is worse than naming none — so anything older than this run is ignored.
+      if (mtime < notBefore) continue;
+      if (!best || mtime > best.mtime) best = { path: p, mtime };
+    }
+  }
+  return best ? best.path : null;
+}
+
+/** The anchor keys this run's traverse actually failed on ([] = could not tell). */
+function failedAnchors(notBefore) {
+  if (dry) return [];
+  const log = newestCommandsLog(path.join(appDir, 'qa', 'maestro-debug', tag), notBefore);
+  if (!log) return [];
+  let commands, selectors;
+  try { commands = JSON.parse(fs.readFileSync(log, 'utf8')); } catch { return []; }
+  try { selectors = JSON.parse(fs.readFileSync(path.join(appDir, 'qa', 'selectors.json'), 'utf8')); } catch { return []; }
+  return anchorsForSelectors(selectors.anchors || {}, failedSelectors(commands));
+}
+
+function selfTest() {
+  let pass = 0;
+  const fails = [];
+  const check = (name, cond) => { if (cond) pass++; else fails.push(name); };
+
+  // The real shape of a Maestro command log: one FAILED command among greens.
+  const commands = [
+    { command: { launchAppCommand: { appId: 'com.x' } }, metadata: { status: 'COMPLETED' } },
+    { command: { tapOnElement: { selector: { textRegex: 'Weekly shop.*' } } }, metadata: { status: 'COMPLETED' } },
+    { command: { assertConditionCommand: { condition: { visible: { textRegex: 'Send feedback' } } } }, metadata: { status: 'FAILED' } },
+    { command: { tapOnElement: { selector: { idRegex: 'addSheetDone' } } }, metadata: { status: 'PENDING' } },
+  ];
+  const anchors = {
+    'weekly-list': { text: 'Weekly shop.*' },
+    'feedback-row': { text: 'Send feedback' },
+    'add-done': { testID: 'addSheetDone' },
+  };
+
+  let sels = failedSelectors(commands);
+  check('only the FAILED command yields a selector', sels.length === 1);
+  check('the failed selector is read out of a nested condition', sels[0].textRegex === 'Send feedback');
+  check('a COMPLETED command contributes nothing', !sels.some((s) => s.textRegex === 'Weekly shop.*'));
+  check('a PENDING command contributes nothing', !sels.some((s) => s.idRegex === 'addSheetDone'));
+
+  let keys = anchorsForSelectors(anchors, sels);
+  check('the failed selector maps back to exactly its anchor', keys.length === 1 && keys[0] === 'feedback-row');
+  // The whole point: a targeted heal must NOT carry the anchors that merely
+  // belong to other screens (that is what made an off-screen anchor "broken").
+  check('anchors that did not fail are not targeted', !keys.includes('weekly-list'));
+
+  check('an id selector maps through testID',
+    anchorsForSelectors(anchors, [{ idRegex: 'addSheetDone', textRegex: null }])[0] === 'add-done');
+  check('an unknown selector names no anchor — the propose-only fallback',
+    anchorsForSelectors(anchors, [{ textRegex: 'Nothing here', idRegex: null }]).length === 0);
+  check('no FAILED command means no target', failedSelectors(
+    [{ command: { tapOnElement: { selector: { textRegex: 'a' } } }, metadata: { status: 'COMPLETED' } }]).length === 0);
+  check('a malformed log is survivable', failedSelectors(null).length === 0 && failedSelectors([{}]).length === 0);
+  check('two failed commands both map', anchorsForSelectors(anchors, failedSelectors([
+    { command: { tapOnElement: { selector: { textRegex: 'Weekly shop.*' } } }, metadata: { status: 'FAILED' } },
+    { command: { tapOnElement: { selector: { idRegex: 'addSheetDone' } } }, metadata: { status: 'FAILED' } },
+  ])).sort().join(',') === 'add-done,weekly-list');
+
+  // A stale log from a PREVIOUS capture must never be read — it would name the
+  // wrong anchor, which is worse than naming none.
+  const io = {
+    readdirSync: (p) => (p.endsWith(path.join('.maestro', 'tests')) ? ['2026-01-01_000000', '2026-02-02_000000'] : ['commands-(mobile.yaml).json']),
+    statSync: (p) => ({ mtimeMs: p.includes('2026-02-02_000000') ? 2000 : 1000 }),
+  };
+  check('the newest command log wins',
+    (newestCommandsLog('/d', 0, io) || '').includes('2026-02-02_000000'));
+  check('a log older than this run is ignored', newestCommandsLog('/d', 1500, io).includes('2026-02-02_000000'));
+  check('every log older than this run means no target', newestCommandsLog('/d', 5000, io) === null);
+  check('a missing debug dir means no target',
+    newestCommandsLog('/d', 0, { readdirSync: () => { throw new Error('ENOENT'); }, statSync: () => ({ mtimeMs: 0 }) }) === null);
+
+  console.log(fails.length
+    ? `capture --self-test: ${pass} passed, ${fails.length} FAILED\n` + fails.map((f) => `  ✗ ${f}`).join('\n')
+    : `capture --self-test: ${pass} checks passed`);
+  return fails.length === 0;
+}
+
+function healAndRetry(traverseStartedAt) {
   if (!flags.has('--heal')) return false;
-  console.log('\n› heal — traverse failed; reading live screen and repairing confident anchors');
-  run('heal — repair from device', 'node', [
-    path.join('scripts', 'qa', 'heal.mjs'), '--from-device', ...deviceArg(), '--apply',
-  ], { allowFail: true });
-  compileFlow();
-  return traverse();
+  const targeted = failedAnchors(traverseStartedAt);
+  const argv = [path.join('scripts', 'qa', 'heal.mjs'), '--from-device', ...deviceArg()];
+
+  if (targeted.length) {
+    console.log(`\n› heal — traverse failed at @${targeted.join(', @')}; reading live screen and repairing that anchor`);
+    argv.push('--anchor', targeted.join(','), '--apply');
+    run('heal — repair the anchor that broke', 'node', argv, { allowFail: true });
+    compileFlow();
+    return traverse().ok;
+  }
+
+  // No nameable failing anchor: propose, never write. Retrying would re-run the
+  // identical flow against an identical app, so it is skipped on purpose.
+  console.log('\n› heal — traverse failed, but Maestro\'s command log did not name a known anchor. ' +
+    'Running PROPOSE-ONLY (no --apply): an untargeted sweep can rewrite an anchor that is merely off-screen.');
+  run('heal — propose only (untargeted)', 'node', argv, { allowFail: true });
+  console.log('  Review qa/heal-report.json, then re-run heal with --anchor <key> --apply if a proposal is right.');
+  return false;
 }
 
 // ---------- 7/8/9. frame, sheet, learn ----------
@@ -388,8 +556,9 @@ if (flags.has('--build-only')) {
 if (platform === 'ios') iosPrepare(artifact); else androidPrepare(artifact);
 compileFlow();
 
-let ok = traverse();
-if (!ok) ok = healAndRetry();
+const first = traverse();
+let ok = first.ok;
+if (!ok) ok = healAndRetry(first.startedAt);
 
 if (!ok) {
   console.error(`\n✗ capture: traverse failed${flags.has('--heal') ? ' even after heal' : ''}. ` +
