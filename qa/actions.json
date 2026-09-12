@@ -2,7 +2,7 @@
   "$comment": "Action-coverage registry (Uplevel-3 T3). Every user-facing action mapped to its proof: tier2-assert (a qa/journey.json waypoint) | rntl (a component test) | unit (a trust-core test) | none (a gap to backfill). Maintained by scripts/qa/action-coverage.mjs — it appends new-in-code actions + flags stale ones, never rewrites a proof by hand.",
   "actions": [
     {
-      "id": "components/AboutRow#pressable-56",
+      "id": "components/AboutRow#pressable-onpress",
       "label": "Pressable (dynamic label)",
       "where": "src/components/AboutRow.tsx:56",
       "proof": {
@@ -20,7 +20,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/AddItemsSheet#pressable-88",
+      "id": "components/AddItemsSheet#pressable-settab",
       "label": "Pressable (dynamic label)",
       "where": "src/components/AddItemsSheet.tsx:88",
       "proof": {
@@ -47,7 +47,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/Credits#pressable-66",
+      "id": "components/Credits#pressable-linking.openurl",
       "label": "Pressable (dynamic label)",
       "where": "src/components/Credits.tsx:66",
       "proof": {
@@ -110,7 +110,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/ItemEditor#pressable-177",
+      "id": "components/ItemEditor#pressable-e.stoppropagation",
       "label": "Pressable (dynamic label)",
       "where": "src/components/ItemEditor.tsx:177",
       "proof": {
@@ -128,7 +128,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/ItemEditor#pressable-240",
+      "id": "components/ItemEditor#pressable-recategorize",
       "label": "Pressable (dynamic label)",
       "where": "src/components/ItemEditor.tsx:240",
       "proof": {
@@ -209,7 +209,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/LanguageSetting#pressable-95",
+      "id": "components/LanguageSetting#pressable-setopen",
       "label": "Pressable (dynamic label)",
       "where": "src/components/LanguageSetting.tsx:95",
       "proof": {
@@ -227,7 +227,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/LanguageSetting#pressable-114",
+      "id": "components/LanguageSetting#pressable-languagesetting-1",
       "label": "Pressable (dynamic label)",
       "where": "src/components/LanguageSetting.tsx:114",
       "proof": {
@@ -245,7 +245,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/LanguageSetting#pressable-135",
+      "id": "components/LanguageSetting#pressable-choose",
       "label": "Pressable (dynamic label)",
       "where": "src/components/LanguageSetting.tsx:135",
       "proof": {
@@ -254,9 +254,9 @@
       "note": "Pressable · onPress · dynamic/child-text label"
     },
     {
-      "id": "components/MoreFromJA#pressable-58",
+      "id": "components/MoreFromJA#pressable-linking.openurl",
       "label": "Pressable (dynamic label)",
-      "where": "src/components/MoreFromJA.tsx:58",
+      "where": "src/components/MoreFromJA.tsx:61",
       "proof": {
         "kind": "none"
       },
@@ -269,12 +269,13 @@
       "proof": {
         "kind": "none"
       },
-      "note": "Pressable · onPress"
+      "note": "Pressable · onPress",
+      "stale": true
     },
     {
       "id": "components/ReviewModal#common.notnow",
       "label": "common.notNow",
-      "where": "src/components/ReviewModal.tsx:145",
+      "where": "src/components/ReviewModal.tsx:162",
       "proof": {
         "kind": "none"
       },
@@ -290,7 +291,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/Snackbar#pressable-69",
+      "id": "components/Snackbar#pressable-onaction",
       "label": "Pressable (dynamic label)",
       "where": "src/components/Snackbar.tsx:69",
       "proof": {
@@ -308,7 +309,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/SwipeRow#pressable-130",
+      "id": "components/SwipeRow#pressable-handledelete",
       "label": "Pressable (dynamic label)",
       "where": "src/components/SwipeRow.tsx:130",
       "proof": {
@@ -326,8 +327,8 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/TipJarSheet#tip.tiera11y",
-      "label": "tip.tierA11y",
+      "id": "components/TipJarSheet#pressable-ontip",
+      "label": "Pressable (dynamic label)",
       "where": "src/components/TipJarSheet.tsx:166",
       "proof": {
         "kind": "none"
@@ -337,14 +338,14 @@
     {
       "id": "components/TipJarSheet#common.maybelater",
       "label": "common.maybeLater",
-      "where": "src/components/TipJarSheet.tsx:194",
+      "where": "src/components/TipJarSheet.tsx:198",
       "proof": {
         "kind": "none"
       },
       "note": "Pressable · onPress"
     },
     {
-      "id": "screens/KitDetailScreen#pressable-154",
+      "id": "screens/KitDetailScreen#pressable-prompt.open",
       "label": "Pressable (dynamic label)",
       "where": "src/screens/KitDetailScreen.tsx:154",
       "proof": {
@@ -587,7 +588,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/SiriSetting#pressable-104",
+      "id": "components/SiriSetting#pressable-setopen",
       "label": "Pressable (dynamic label)",
       "where": "src/components/SiriSetting.tsx:104",
       "proof": {
@@ -605,7 +606,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/SiriSetting#pressable-123",
+      "id": "components/SiriSetting#pressable-sirisetting-1",
       "label": "Pressable (dynamic label)",
       "where": "src/components/SiriSetting.tsx:123",
       "proof": {
@@ -623,7 +624,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/SiriSetting#pressable-144",
+      "id": "components/SiriSetting#pressable-choose",
       "label": "Pressable (dynamic label)",
       "where": "src/components/SiriSetting.tsx:144",
       "proof": {
@@ -641,7 +642,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/Dialogs#pressable-116",
+      "id": "components/Dialogs#pressable-e.stoppropagation",
       "label": "Pressable (dynamic label)",
       "where": "src/components/Dialogs.tsx:116",
       "proof": {
@@ -650,7 +651,7 @@
       "note": "Pressable · onPress · dynamic/child-text label"
     },
     {
-      "id": "components/Dialogs#pressable-123",
+      "id": "components/Dialogs#pressable-choose",
       "label": "Pressable (dynamic label)",
       "where": "src/components/Dialogs.tsx:123",
       "proof": {
@@ -659,7 +660,7 @@
       "note": "Pressable · onPress · dynamic/child-text label"
     },
     {
-      "id": "components/Dialogs#pressable-218",
+      "id": "components/Dialogs#pressable-e.stoppropagation-2",
       "label": "Pressable (dynamic label)",
       "where": "src/components/Dialogs.tsx:218",
       "proof": {
@@ -668,7 +669,7 @@
       "note": "Pressable · onPress · dynamic/child-text label"
     },
     {
-      "id": "components/Dialogs#textinput-223",
+      "id": "components/Dialogs#textinput-submit",
       "label": "TextInput (dynamic label)",
       "where": "src/components/Dialogs.tsx:223",
       "proof": {
@@ -677,7 +678,7 @@
       "note": "TextInput · onSubmitEditing · dynamic/child-text label"
     },
     {
-      "id": "components/Dialogs#pressable-246",
+      "id": "components/Dialogs#pressable-submit",
       "label": "Pressable (dynamic label)",
       "where": "src/components/Dialogs.tsx:246",
       "proof": {
@@ -686,7 +687,7 @@
       "note": "Pressable · onPress · dynamic/child-text label"
     },
     {
-      "id": "components/Dialogs#pressable-317",
+      "id": "components/Dialogs#pressable-e.stoppropagation-3",
       "label": "Pressable (dynamic label)",
       "where": "src/components/Dialogs.tsx:317",
       "proof": {
@@ -695,7 +696,7 @@
       "note": "Pressable · onPress · dynamic/child-text label"
     },
     {
-      "id": "components/Dialogs#pressable-331",
+      "id": "components/Dialogs#pressable-confirm",
       "label": "Pressable (dynamic label)",
       "where": "src/components/Dialogs.tsx:331",
       "proof": {
@@ -722,7 +723,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/ItemPicker#pressable-360",
+      "id": "components/ItemPicker#pressable-setshowallusuals",
       "label": "Pressable (dynamic label)",
       "where": "src/components/ItemPicker.tsx:360",
       "proof": {
@@ -731,7 +732,7 @@
       "note": "Pressable · onPress · dynamic/child-text label"
     },
     {
-      "id": "components/ItemPicker#pressable-383",
+      "id": "components/ItemPicker#pressable-add",
       "label": "Pressable (dynamic label)",
       "where": "src/components/ItemPicker.tsx:383",
       "proof": {
@@ -740,7 +741,7 @@
       "note": "Pressable · onPress · dynamic/child-text label"
     },
     {
-      "id": "components/ItemPicker#pressable-400",
+      "id": "components/ItemPicker#pressable-toggleusual",
       "label": "Pressable (dynamic label)",
       "where": "src/components/ItemPicker.tsx:400",
       "proof": {
@@ -758,7 +759,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "components/Stepper#pressable-88",
+      "id": "components/Stepper#pressable-handleminus",
       "label": "Pressable (dynamic label)",
       "where": "src/components/Stepper.tsx:88",
       "proof": {
@@ -767,7 +768,7 @@
       "note": "Pressable · onPress · dynamic/child-text label"
     },
     {
-      "id": "components/SyncStatusBar#pressable-61",
+      "id": "components/SyncStatusBar#pressable-onpress",
       "label": "Pressable (dynamic label)",
       "where": "src/components/SyncStatusBar.tsx:61",
       "proof": {
@@ -794,7 +795,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "screens/ListDetailScreen#pressable-362",
+      "id": "screens/ListDetailScreen#pressable-togglechecked",
       "label": "Pressable (dynamic label)",
       "where": "src/screens/ListDetailScreen.tsx:362",
       "proof": {
@@ -803,7 +804,7 @@
       "note": "Pressable · onPress · dynamic/child-text label"
     },
     {
-      "id": "screens/ListDetailScreen#pressable-427",
+      "id": "screens/ListDetailScreen#pressable-prompt.open",
       "label": "Pressable (dynamic label)",
       "where": "src/screens/ListDetailScreen.tsx:427",
       "proof": {
@@ -812,7 +813,7 @@
       "note": "Pressable · onPress · dynamic/child-text label"
     },
     {
-      "id": "screens/ListDetailScreen#pressable-467",
+      "id": "screens/ListDetailScreen#pressable-navigation.navigate",
       "label": "Pressable (dynamic label)",
       "where": "src/screens/ListDetailScreen.tsx:467",
       "proof": {
@@ -830,7 +831,7 @@
       "note": "Pressable · onPress"
     },
     {
-      "id": "screens/ListsHomeScreen#pressable-129",
+      "id": "screens/ListsHomeScreen#pressable-navigation.navigate",
       "label": "Pressable (dynamic label)",
       "where": "src/screens/ListsHomeScreen.tsx:129",
       "proof": {
@@ -860,6 +861,24 @@
       "id": "screens/ShareScreen#share.scaninstead",
       "label": "share.scanInstead",
       "where": "src/screens/ShareScreen.tsx:128",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/LaunchNoticeModal#common.gotit",
+      "label": "common.gotIt",
+      "where": "src/components/LaunchNoticeModal.tsx:90",
+      "proof": {
+        "kind": "none"
+      },
+      "note": "Pressable · onPress"
+    },
+    {
+      "id": "components/ReviewModal#about.review",
+      "label": "about.review",
+      "where": "src/components/ReviewModal.tsx:150",
       "proof": {
         "kind": "none"
       },
