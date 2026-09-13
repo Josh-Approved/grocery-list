@@ -12,25 +12,8 @@
 // `displayPrice` — we never hardcode or guess a price.
 
 import React, { useEffect, useState } from 'react';
-import {
-  Modal,
-  View,
-  Text,
-  Pressable,
-  ScrollView,
-  ActivityIndicator,
-  StyleSheet,
-  AccessibilityInfo,
-} from 'react-native';
-import {
-  useTheme,
-  fontFamily,
-  space,
-  radius,
-  type as ty,
-  hairline,
-  Colors,
-} from '../theme';
+import { Modal, View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet, AccessibilityInfo } from 'react-native';
+import { useTheme, fontFamily, space, radius, type as ty, hairline, Colors } from '../theme';
 import { t } from '../i18n';
 import { useTipJar, isStoreKnownUnavailable, type TipStatus } from '../lib/tipJar';
 import type { Product } from 'expo-iap';
@@ -105,10 +88,7 @@ function SheetShell({
 
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-    const sub = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      setReduceMotion
-    );
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
     return () => sub.remove();
   }, []);
 

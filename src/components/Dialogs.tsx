@@ -12,65 +12,36 @@
  * dialog reads as a sibling. Reduced motion collapses the present animation to
  * none (canon § Accessibility, WCAG 2.2 AA).
  *
+ * Shared styles, config types and the reduced-motion hook live in
+ * `dialogShared.ts` (split out
+ * to keep this file under the component size ceiling); the pressables stay
+ * here so their action-coverage ids don't move.
+ *
  * Each hook returns `{ open, element }`: call `open(config)` from a handler,
  * render `element` once in the screen tree.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
-import {
-  Modal,
-  View,
-  Text,
-  Pressable,
-  TextInput,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  AccessibilityInfo,
-} from 'react-native';
-import {
-  useTheme,
-  fontFamily,
-  space,
-  radius,
-  target,
-  type as ty,
-  hairline,
-  type Colors,
-} from '../theme';
+import React, { useCallback, useState } from 'react';
+import { Modal, View, Text, Pressable, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { useTheme } from '../theme';
 import { t } from '../i18n';
+import {
+  makeDialogStyles as makeStyles,
+  useReducedMotion,
+  type ActionOption,
+  type MenuState,
+  type PromptConfig,
+  type PromptState,
+  type ConfirmConfig,
+  type ConfirmState,
+} from './dialogShared';
 
-export function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    AccessibilityInfo.isReduceMotionEnabled().then((v) => {
-      if (alive) setReduced(v);
-    });
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduced);
-    return () => {
-      alive = false;
-      sub.remove();
-    };
-  }, []);
-  return reduced;
-}
+// Re-exported: app screens import these from here.
+export { useReducedMotion, type ActionOption };
 
 // ---------------------------------------------------------------------------
 // Action menu
 // ---------------------------------------------------------------------------
-
-export interface ActionOption {
-  label: string;
-  onPress: () => void;
-  destructive?: boolean;
-}
-
-interface MenuState {
-  visible: boolean;
-  title?: string;
-  options: ActionOption[];
-}
 
 export function useActionMenu(): {
   open: (cfg: { title?: string; options: ActionOption[] }) => void;
@@ -151,26 +122,6 @@ export function useActionMenu(): {
 // ---------------------------------------------------------------------------
 // Text-input prompt
 // ---------------------------------------------------------------------------
-
-interface PromptConfig {
-  title: string;
-  message?: string;
-  placeholder?: string;
-  initialValue?: string;
-  confirmLabel?: string;
-  keyboardType?: 'default' | 'numeric' | 'decimal-pad' | 'email-address';
-  autoCapitalize?: 'none' | 'sentences' | 'words';
-  /** Select the initial value on focus (rename flows). */
-  selectAll?: boolean;
-  /** Allow submitting an empty value (e.g. clearing an optional field). */
-  allowEmpty?: boolean;
-  onSubmit: (text: string) => void;
-}
-
-interface PromptState extends PromptConfig {
-  visible: boolean;
-  value: string;
-}
 
 export function usePrompt(): {
   open: (cfg: PromptConfig) => void;
@@ -272,18 +223,6 @@ export function usePrompt(): {
 // and a mis-tap on the original control costs one extra deliberate tap, not
 // the data.
 
-interface ConfirmConfig {
-  title: string;
-  message?: string;
-  confirmLabel?: string;
-  destructive?: boolean;
-  onConfirm: () => void;
-}
-
-interface ConfirmState extends ConfirmConfig {
-  visible: boolean;
-}
-
 export function useConfirm(): {
   open: (cfg: ConfirmConfig) => void;
   element: React.ReactElement;
@@ -345,71 +284,4 @@ export function useConfirm(): {
   );
 
   return { open, element };
-}
-
-// ---------------------------------------------------------------------------
-
-function makeStyles(c: Colors) {
-  return StyleSheet.create({
-    flex: { flex: 1 },
-    pressed: { opacity: 0.6 },
-
-    sheetOverlay: { flex: 1, backgroundColor: c.bgScrim, justifyContent: 'flex-end' },
-    sheet: {
-      backgroundColor: c.bgElevated,
-      borderTopLeftRadius: radius.lg,
-      borderTopRightRadius: radius.lg,
-      borderWidth: hairline,
-      borderColor: c.hairline,
-      paddingVertical: space.s4,
-      paddingBottom: space.s7,
-    },
-    sheetTitle: { ...ty.sm, fontFamily: fontFamily.sans, color: c.fgMuted, textAlign: 'center', paddingVertical: space.s4 },
-    sheetRow: { minHeight: target.min, justifyContent: 'center', paddingHorizontal: space.s7, paddingVertical: space.s4 },
-    sheetRowText: { ...ty.base, fontFamily: fontFamily.sans, color: c.fg, textAlign: 'center' },
-    sheetRowDanger: { color: c.danger },
-    sheetCancel: {
-      minHeight: target.min,
-      justifyContent: 'center',
-      marginTop: space.s3,
-      marginHorizontal: space.s5,
-      borderTopWidth: hairline,
-      borderTopColor: c.hairline,
-      paddingTop: space.s4,
-    },
-    sheetCancelText: { ...ty.base, fontFamily: fontFamily.sansSemibold, color: c.fgMuted, textAlign: 'center' },
-
-    centerOverlay: { flex: 1, backgroundColor: c.bgScrim, justifyContent: 'center', alignItems: 'center', padding: space.s7 },
-    card: {
-      width: '100%',
-      maxWidth: 420,
-      backgroundColor: c.bgElevated,
-      borderRadius: radius.lg,
-      borderWidth: hairline,
-      borderColor: c.hairline,
-      padding: space.s7,
-    },
-    cardTitle: { ...ty.md, fontFamily: fontFamily.sansSemibold, color: c.fg, marginBottom: space.s3 },
-    cardMessage: { ...ty.sm, fontFamily: fontFamily.sans, color: c.fgMuted, marginBottom: space.s4 },
-    input: {
-      ...ty.base,
-      fontFamily: fontFamily.sans,
-      color: c.fg,
-      borderWidth: hairline,
-      borderColor: c.hairlineStrong,
-      borderRadius: radius.md,
-      paddingHorizontal: space.s5,
-      paddingVertical: space.s4,
-      minHeight: target.min,
-      marginBottom: space.s6,
-    },
-    cardActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' },
-    btnGhost: { minHeight: target.min, justifyContent: 'center', paddingHorizontal: space.s5, marginRight: space.s3 },
-    btnGhostText: { ...ty.base, fontFamily: fontFamily.sans, color: c.fgMuted },
-    btnPrimary: { minHeight: target.min, justifyContent: 'center', backgroundColor: c.inkButton, borderRadius: radius.md, paddingHorizontal: space.s7 },
-    btnPrimaryText: { ...ty.base, fontFamily: fontFamily.sansSemibold, color: c.inkButtonText },
-    btnDanger: { backgroundColor: c.dangerBg },
-    btnDangerText: { color: c.danger },
-    btnDisabled: { opacity: 0.4 },
-  });
 }
