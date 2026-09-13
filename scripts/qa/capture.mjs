@@ -56,6 +56,10 @@ import { withHeavyLock, concurrency } from '../lib/heavy.mjs';
 // cached build current?" (the ship path's upgrade-harness slot drop) agrees
 // with us instead of guessing — scripts/qa/source-hash.mjs.
 import { sourceHash } from './source-hash.mjs';
+// ONE adb parser for the whole QA net (upgrade-test.mjs owns it and self-tests
+// it) — a second hand-rolled `adb devices` reader is how the two halves of this
+// net came to disagree about which device a run was even talking to.
+import { parseAttachedAndroidSerials } from './upgrade-test.mjs';
 
 // store → how to build, what device, how to normalize.
 // NOTE: iOS device names are Xcode-version-specific — the boot step greps
@@ -268,8 +272,115 @@ function resolveAndroidApk(artifact) {
   return apk;
 }
 
+// ---------- 2a. Android: resolve ONE device, or refuse ----------
+//
+// capture used to pass no `-s`/`--device` on Android at all (STORES.android sets
+// device:null), so adb and Maestro each picked whatever was first in the list.
+// That is not a warning-level problem — it silently produces a WRONG ANSWER:
+//
+//   · 2026-08-19, workout-timer's SDK-57 stage — capture latched onto a
+//     Pixel_Tablet emulator (2560x1600 landscape) abandoned by a dead session.
+//     The app rendered letterboxed, Maestro's swipe landed outside the window,
+//     and the run read as an SDK-57 layout regression. The identical unmodified
+//     journey passed on the phone AVD.
+//   · the same night, grocery-list — "adb: no devices/emulators found" mid-flow,
+//     because nothing checks for a booted device up front.
+//   · the same night, tend — the `learn` step ran heal.mjs with no --device and
+//     got "Multiple devices connected"; it runs under allowFail, so the capture
+//     exited 0 and reported success while silently skipping the healer baseline.
+//     The self-learning half of the pipeline stops learning and nothing says so.
+//
+// The failure that matters is not the loud timeout — it is the near miss: a
+// traverse that PASSES on the wrong emulator yields store screenshots of the
+// wrong form factor, and nothing flags it. So: resolve a concrete serial, pin it
+// into EVERY adb/maestro/heal call, and make an ambiguous or mismatched device a
+// hard error rather than an implicit pick.
+let androidSerial = null;
+
+/** Which device should this run use? Pure: takes what was asked for + what adb
+ *  reports, returns a device or a reason to stop. Never guesses. */
+export function androidDeviceVerdict({ requested, attached }) {
+  const list = Array.isArray(attached) ? attached : [];
+  const shown = list.length ? list.join(', ') : '(none)';
+  if (requested) {
+    if (list.includes(requested)) return { ok: true, device: requested };
+    return { ok: false, reason: `--device ${requested} is not attached. adb reports: ${shown}. ` +
+      `Boot it (emulator -avd <name>) or pass one of the attached serials.` };
+  }
+  if (list.length === 0) {
+    return { ok: false, reason: 'no Android device or emulator is booted. Boot one first ' +
+      '(emulator -list-avds, then emulator -avd <name>) — capture will not build a store asset against nothing.' };
+  }
+  if (list.length > 1) {
+    return { ok: false, reason: `${list.length} Android devices are attached (${shown}) and capture will not guess ` +
+      `which one you meant — a stray emulator left booted by a dead session captures the wrong form factor and ` +
+      `nothing flags it. Pass --device <serial>, or shut the others down (adb -s <serial> emu kill).` };
+  }
+  return { ok: true, device: list[0] };
+}
+
+/** `wm size` → the physical pixel size. An `Override size:` line wins: that is
+ *  what the device is actually rendering at. */
+export function parseWmSize(stdout) {
+  const all = [...String(stdout || '').matchAll(/(?:Physical|Override)\s+size:\s*(\d+)x(\d+)/g)];
+  if (!all.length) return null;
+  const m = all[all.length - 1];
+  return { w: Number(m[1]), h: Number(m[2]) };
+}
+
+/** `wm density` → dpi, override winning for the same reason. */
+export function parseWmDensity(stdout) {
+  const all = [...String(stdout || '').matchAll(/(?:Physical|Override)\s+density:\s*(\d+)/g)];
+  return all.length ? Number(all[all.length - 1][1]) : null;
+}
+
+/** Android's own tablet line: smallest width in dp, ≥600 = tablet. */
+export function smallestWidthDp({ size, density }) {
+  if (!size || !density) return null;
+  return Math.round((Math.min(size.w, size.h) * 160) / density);
+}
+
+/** Does the attached device match the form factor this store asked for? An
+ *  unreadable device is NOT a failure (an odd emulator shouldn't block a
+ *  capture) — only a definite mismatch is. */
+export function formFactorVerdict({ kind, swDp }) {
+  if (!Number.isFinite(swDp) || swDp <= 0) return { ok: true, note: 'form factor unreadable — not checked' };
+  const isTablet = swDp >= 600;
+  if (kind === 'tablet' && !isTablet) {
+    return { ok: false, reason: `this store wants a TABLET but the attached device is a phone (${swDp}dp smallest width). ` +
+      `Store screenshots captured here would be the wrong form factor.` };
+  }
+  if (kind === 'phone' && isTablet) {
+    return { ok: false, reason: `this store wants a PHONE but the attached device is a tablet (${swDp}dp smallest width). ` +
+      `This is the exact 2026-08-19 trap: a leftover Pixel_Tablet emulator letterboxes the app and the run reads as an app defect.` };
+  }
+  return { ok: true };
+}
+
+function resolveAndroidDevice() {
+  if (dry) { androidSerial = device || '<device>'; return; }
+  const listed = spawnSync('adb', ['devices', '-l'], { encoding: 'utf8' });
+  const attached = listed.status === 0 ? parseAttachedAndroidSerials(listed.stdout) : [];
+  const v = androidDeviceVerdict({ requested: device, attached });
+  if (!v.ok) { console.error(`\n✗ capture: ${v.reason}`); process.exit(1); }
+  androidSerial = v.device;
+
+  // Form factor: the near miss this guard exists for.
+  const size = parseWmSize(spawnSync('adb', ['-s', androidSerial, 'shell', 'wm', 'size'], { encoding: 'utf8' }).stdout);
+  const density = parseWmDensity(spawnSync('adb', ['-s', androidSerial, 'shell', 'wm', 'density'], { encoding: 'utf8' }).stdout);
+  const swDp = smallestWidthDp({ size, density });
+  const ff = formFactorVerdict({ kind: store.kind, swDp });
+  if (!ff.ok) {
+    console.error(`\n✗ capture: device ${androidSerial} — ${ff.reason}`);
+    console.error(`  Boot the right AVD and re-run, or pass --device <serial> for the one you meant.`);
+    process.exit(1);
+  }
+  console.log(`\n› device — pinned ${androidSerial}` +
+    (swDp ? ` (${size.w}x${size.h} @${density}dpi = ${swDp}dp smallest width, ${store.kind})` : ` (${ff.note})`));
+}
+
 function androidPrepare(artifact) {
-  const dev = device ? ['-s', device] : [];
+  const dev = ['-s', androidSerial];
   const adb = (sub) => ['bash', ['-lc', `adb ${dev.join(' ')} ${sub}`]];
   // Uninstall any prior build first. `install -r` fails with
   // INSTALL_FAILED_UPDATE_INCOMPATIBLE when a previously-installed build (a prior
@@ -333,7 +444,10 @@ function deviceArg() {
     if (!dry && fs.existsSync(f)) return ['--device', fs.readFileSync(f, 'utf8').trim()];
     return [];
   }
-  return device ? ['--device', device] : [];
+  // Android: ALWAYS pinned. resolveAndroidDevice() has already refused to start
+  // if it couldn't name exactly one device, so there is nothing to fall back to —
+  // an empty arg here is what let Maestro (and heal.mjs) pick their own device.
+  return androidSerial ? ['--device', androidSerial] : [];
 }
 
 function traverse() {
@@ -491,6 +605,39 @@ function selfTest() {
   check('a missing debug dir means no target',
     newestCommandsLog('/d', 0, { readdirSync: () => { throw new Error('ENOENT'); }, statSync: () => ({ mtimeMs: 0 }) }) === null);
 
+  // --- Android device resolution: refuse to guess (ticket capture-first-booted-device-guard)
+  const dv = (requested, attached) => androidDeviceVerdict({ requested, attached });
+  check('exactly one attached device is pinned', dv(null, ['emulator-5554']).device === 'emulator-5554');
+  check('two attached devices is a refusal, not a pick', dv(null, ['emulator-5554', 'emulator-5556']).ok === false);
+  check('the refusal names every device it found',
+    dv(null, ['emulator-5554', 'emulator-5556']).reason.includes('emulator-5556'));
+  check('nothing booted is a hard error up front', dv(null, []).ok === false);
+  check('an explicit --device that IS attached wins outright',
+    dv('emulator-5556', ['emulator-5554', 'emulator-5556']).device === 'emulator-5556');
+  check('an explicit --device that is NOT attached is refused',
+    dv('emulator-9999', ['emulator-5554']).ok === false);
+  check('no verdict ever returns a device it was not given',
+    [dv(null, []), dv(null, ['a', 'b']), dv('c', ['a'])].every((r) => !r.device));
+
+  // --- form factor: the near miss (a PASS on the wrong device)
+  check('wm size parses physical', parseWmSize('Physical size: 1080x2400').w === 1080);
+  check('an override size wins over physical',
+    parseWmSize('Physical size: 1080x2400\nOverride size: 1440x3120').w === 1440);
+  check('unreadable wm size is null', parseWmSize('') === null);
+  check('wm density parses, override winning',
+    parseWmDensity('Physical density: 420\nOverride density: 560') === 560);
+  check('smallest width dp is computed off the short side',
+    smallestWidthDp({ size: { w: 1080, h: 2400 }, density: 420 }) === 411);
+  check('a Pixel tablet reads as a tablet',
+    smallestWidthDp({ size: { w: 2560, h: 1600 }, density: 320 }) >= 600);
+  check('a tablet attached to a phone store is refused',
+    formFactorVerdict({ kind: 'phone', swDp: 800 }).ok === false);
+  check('a phone attached to a tablet store is refused',
+    formFactorVerdict({ kind: 'tablet', swDp: 411 }).ok === false);
+  check('a matching form factor passes', formFactorVerdict({ kind: 'phone', swDp: 411 }).ok === true);
+  check('an unreadable form factor never blocks a capture',
+    formFactorVerdict({ kind: 'phone', swDp: null }).ok === true);
+
   console.log(fails.length
     ? `capture --self-test: ${pass} passed, ${fails.length} FAILED\n` + fails.map((f) => `  ✗ ${f}`).join('\n')
     : `capture --self-test: ${pass} checks passed`);
@@ -536,7 +683,7 @@ function learn() {
 
 // ---------- orchestrate ----------
 
-console.log(`capture: app=${path.basename(appDir)} platform=${platform} store=${storeKey} device=${device || '(first booted)'}${dry ? '  [DRY RUN]' : ''}`);
+console.log(`capture: app=${path.basename(appDir)} platform=${platform} store=${storeKey} device=${device || (platform === 'android' ? '(resolved from adb)' : '(first booted)')}${dry ? '  [DRY RUN]' : ''}`);
 
 // --build-only never traverses, so it doesn't need a journey — it exists so the
 // ship path can refresh the QA build cache (and with it the upgrade harness's
@@ -553,7 +700,8 @@ if (flags.has('--build-only')) {
   process.exit(0);
 }
 
-if (platform === 'ios') iosPrepare(artifact); else androidPrepare(artifact);
+if (platform === 'ios') iosPrepare(artifact);
+else { resolveAndroidDevice(); androidPrepare(artifact); }
 compileFlow();
 
 const first = traverse();
