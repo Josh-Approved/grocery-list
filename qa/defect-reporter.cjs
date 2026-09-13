@@ -39,6 +39,16 @@
  *   - any `__STRYKER*` / `STRYKER*` env var is present (mutation workers);
  *   - the Jest rootDir or cwd is inside a `.stryker-tmp` sandbox.
  *
+ * AUTHORING-STATE TAG (2026-09-12, ticket proof-run-flag-not-enforced): the
+ * flag above holds only while a worker remembers to type it, and three times
+ * one didn't. So the reporter no longer relies on it alone: every failure line
+ * carries `testFileState` — `untracked` / `modified` / `clean` / `unknown` —
+ * read from git AT RUN TIME. A failure in a test file that is untracked or has
+ * uncommitted edits is a test being authored (the failing-first proof step),
+ * never a regression of committed code, and `defects.mjs ingest` drops it. The
+ * tag is taken when the test runs because by the nightly ingest the worker may
+ * already have committed the file, which would make the proof look real.
+ *
  * Zero deps, zero network, zero agent tokens. Synced into apps via `sync.mjs qa`.
  * Register it in an app's jest config:  "reporters": ["default", "<path>"].
  * Self-test: `node qa/defect-reporter.cjs --self-test`.
@@ -107,6 +117,23 @@ function isSuppressedRun(rootDir, env = process.env, cwd = process.cwd()) {
   return '';
 }
 
+/**
+ * Git state of a test file at the moment it ran: 'untracked' | 'modified' |
+ * 'clean' | 'unknown' (no git, not a repo, probe failed). `exec` is injectable
+ * for the self-test.
+ */
+function testFileState(absFile, exec) {
+  const run = exec || ((args, cwd) => require('node:child_process')
+    .execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString());
+  const cwd = path.dirname(String(absFile || ''));
+  const base = path.basename(String(absFile || ''));
+  try { run(['rev-parse', '--is-inside-work-tree'], cwd); } catch { return 'unknown'; }
+  try { run(['ls-files', '--error-unmatch', '--', base], cwd); } catch { return 'untracked'; }
+  try {
+    return run(['status', '--porcelain', '--', base], cwd).trim() ? 'modified' : 'clean';
+  } catch { return 'unknown'; }
+}
+
 class DefectReporter {
   constructor(globalConfig = {}, options = {}) {
     this._rootDir = (globalConfig && globalConfig.rootDir) || process.cwd();
@@ -115,6 +142,17 @@ class DefectReporter {
     this._lines = [];
     this._tests = {}; // testId -> { status, invocations, flaky }
     this._suppressed = isSuppressedRun(this._rootDir);
+    this._fileState = (options && options.fileState) || testFileState;
+    this._stateMemo = new Map();
+  }
+
+  _stateOf(absFile) {
+    if (!this._stateMemo.has(absFile)) {
+      let st = 'unknown';
+      try { st = this._fileState(absFile); } catch { st = 'unknown'; }
+      this._stateMemo.set(absFile, st);
+    }
+    return this._stateMemo.get(absFile);
   }
 
   onTestResult(_test, testResult) {
@@ -131,6 +169,7 @@ class DefectReporter {
       this._lines.push({
         kind: 'test-failure', file, fullName: `${file} (suite failed to load)`,
         assertion: msg, class: 'build', date,
+        testFileState: this._suppressed ? 'unknown' : this._stateOf(testResult.testFilePath),
         signature: advisorySignature(file, `${file} (suite failed to load)`, msg),
       });
       return;
@@ -154,6 +193,7 @@ class DefectReporter {
       this._lines.push({
         kind: 'test-failure', file, fullName,
         assertion, class: 'correctness', date,
+        testFileState: this._suppressed ? 'unknown' : this._stateOf(testResult.testFilePath),
         signature: advisorySignature(file, fullName, assertion),
       });
     }
@@ -196,6 +236,7 @@ class DefectReporter {
 
 module.exports = DefectReporter;
 module.exports.isSuppressedRun = isSuppressedRun;
+module.exports.testFileState = testFileState;
 
 // --self-test: node qa/defect-reporter.cjs --self-test  (zero deps, tmp-dir only)
 if (require.main === module && process.argv.includes('--self-test')) {
@@ -246,5 +287,21 @@ if (require.main === module && process.argv.includes('--self-test')) {
   assert.equal(isSuppressedRun('/x', {}, '/x'), '');
   assert.ok(isSuppressedRun('/x', { JA_PROOF_RUN: 'true' }, '/x'));
   assert.ok(isSuppressedRun('/x', {}, '/y/.stryker-tmp/sandbox-2'));
-  console.log('defect-reporter self-test: 6/6 OK');
+  // 7. failure lines carry the run-time git state of their test file
+  const tagRoot = fresh();
+  const r7 = new DefectReporter({ rootDir: tagRoot }, { fileState: () => 'untracked' });
+  r7.onTestResult(null, failedResult(tagRoot));
+  r7.onRunComplete();
+  const tagged = fs.readFileSync(path.join(tagRoot, 'qa', 'defect-intake.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.ok(tagged.length === 1 && tagged[0].testFileState === 'untracked', 'failure line must carry testFileState');
+  // 8. testFileState maps git answers (injected) → state
+  const fake = (answers) => (args) => { const a = answers[args[0]]; if (a instanceof Error) throw a; return a || ''; };
+  const no = new Error('no');
+  assert.equal(testFileState('/r/a.test.ts', fake({ 'rev-parse': no })), 'unknown');
+  assert.equal(testFileState('/r/a.test.ts', fake({ 'rev-parse': 'true', 'ls-files': no })), 'untracked');
+  assert.equal(testFileState('/r/a.test.ts', fake({ 'rev-parse': 'true', 'ls-files': 'a', status: ' M a.test.ts' })), 'modified');
+  assert.equal(testFileState('/r/a.test.ts', fake({ 'rev-parse': 'true', 'ls-files': 'a', status: '' })), 'clean');
+  // 9. real git: this file's own repo answers without throwing
+  assert.ok(['untracked', 'modified', 'clean', 'unknown'].includes(testFileState(__filename)));
+  console.log('defect-reporter self-test: 9/9 OK');
 }

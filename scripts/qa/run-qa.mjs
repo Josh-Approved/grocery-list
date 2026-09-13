@@ -296,14 +296,33 @@ function runUpgrade(profile) {
 
   const baseline = readJson(path.join(appDir, 'qa', 'baseline.json')) || {};
   const enforce = baseline['upgrade/enforce'] === true;
-  const report = readJson(path.join(appDir, 'qa', 'upgrade-report.json'));
+  return upgradeTierVerdict(readJson(path.join(appDir, 'qa', 'upgrade-report.json')), enforce);
+}
+
+// Pure core (self-tested). The report keeps one entry per platform under
+// `platforms` (an old flat report reads as its own platform's entry). Parity is
+// canon, so the tier is green only when BOTH platforms recorded a pass — one
+// platform's pass used to satisfy it, and because the second run overwrote the
+// first, an iOS FAIL then Android PASS read green (ticket
+// upgrade-report-overwrites-platform). A recorded loss on either platform wins.
+function upgradeTierVerdict(report, enforce) {
+  const UPGRADE_PLATFORMS = ['ios', 'android']; // inside: --self-test runs before module-level consts initialize
   if (!report) {
     return { status: enforce ? 'fail' : 'skip',
       reason: enforce ? 'upgrade enforced but no run recorded (run scripts/qa/upgrade-test.mjs on a Mac with a released binary)' : 'upgrade harness wired; no device run recorded yet (rolling out / no local released binary)' };
   }
-  if (report.ok === true) return { status: 'pass', platform: report.platform, oldSource: report.oldSource };
+  const entries = report.platforms && typeof report.platforms === 'object'
+    ? report.platforms
+    : (report.platform ? { [report.platform]: report } : {});
+  const lost = UPGRADE_PLATFORMS.find((p) => entries[p] && entries[p].ok !== true);
   // A recorded loss blocks production when enforced; otherwise it's still surfaced.
-  return { status: enforce ? 'fail' : 'skip', reason: report.verdict || 'upgrade lost data', platform: report.platform };
+  if (lost) return { status: enforce ? 'fail' : 'skip', reason: entries[lost].verdict || 'upgrade lost data', platform: lost };
+  const missing = UPGRADE_PLATFORMS.filter((p) => !entries[p]);
+  if (missing.length) {
+    return { status: enforce ? 'fail' : 'skip',
+      reason: `upgrade pass recorded on ${UPGRADE_PLATFORMS.filter((p) => entries[p]).join(', ') || 'no platform'} only; ${missing.join(', ')} not run yet (both platforms must pass)` };
+  }
+  return { status: 'pass', platforms: UPGRADE_PLATFORMS, oldSource: entries.ios.oldSource || entries.android.oldSource };
 }
 
 // ---------- Defect loop: no unproven fix at release (T0 stage 2) ----------
@@ -574,5 +593,18 @@ function selfTest() {
     'engagement: a non-ship profile is not gated');
   assert(engagementGateBlocked('production', null) === false,
     'engagement: a missing baseline is not a blocked ship');
-  console.log('run-qa self-test (matrix freshness + engagement ship gate): 16/16 OK');
+  // upgradeTierVerdict — both platforms must pass; a loss anywhere wins
+  const up = (platform, ok) => ({ platform, ok, verdict: ok ? 'data survived' : 'data lost' });
+  assert(upgradeTierVerdict({ platforms: { ios: up('ios', false), android: up('android', true) } }, true).status === 'fail',
+    'upgrade: iOS FAIL + Android PASS -> fail (the overwrite bug)');
+  assert(upgradeTierVerdict({ platforms: { ios: up('ios', true), android: up('android', true) } }, true).status === 'pass',
+    'upgrade: both platforms pass -> pass');
+  assert(upgradeTierVerdict({ platforms: { android: up('android', true) } }, true).status === 'fail',
+    'upgrade: enforced + one platform only -> fail');
+  assert(upgradeTierVerdict({ platforms: { android: up('android', true) } }, false).status === 'skip',
+    'upgrade: not enforced + one platform only -> skip, never pass');
+  assert(upgradeTierVerdict(up('ios', true), true).status === 'fail' && upgradeTierVerdict(up('ios', true), false).status === 'skip',
+    'upgrade: an old flat one-platform report parses and is not green');
+  assert(upgradeTierVerdict(null, false).status === 'skip', 'upgrade: no report + not enforced -> skip');
+  console.log('run-qa self-test (matrix freshness + engagement ship gate + upgrade parity): 22/22 OK');
 }
