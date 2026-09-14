@@ -12,11 +12,20 @@
 // `displayPrice` — we never hardcode or guess a price.
 
 import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet, AccessibilityInfo } from 'react-native';
-import { useTheme, fontFamily, space, radius, type as ty, hairline, Colors } from '../theme';
+import {
+  Modal,
+  View,
+  Text,
+  Pressable,
+  ScrollView,
+  ActivityIndicator,
+  AccessibilityInfo,
+} from 'react-native';
+import { useTheme } from '../theme';
 import { t } from '../i18n';
 import { useTipJar, isStoreKnownUnavailable, type TipStatus } from '../lib/tipJar';
 import type { Product } from 'expo-iap';
+import { makeStyles } from './tipJarStyles';
 
 interface Props {
   visible: boolean;
@@ -88,7 +97,10 @@ function SheetShell({
 
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    const sub = AccessibilityInfo.addEventListener(
+      'reduceMotionChanged',
+      setReduceMotion
+    );
     return () => sub.remove();
   }, []);
 
@@ -190,95 +202,4 @@ function SheetShell({
       </View>
     </Modal>
   );
-}
-
-function makeStyles(c: Colors) {
-  return StyleSheet.create({
-    overlay: {
-      flex: 1,
-      backgroundColor: c.bgScrim,
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: space.s7,
-    },
-    card: {
-      width: '100%',
-      maxWidth: 420,
-      backgroundColor: c.bgElevated,
-      borderRadius: radius.lg,
-      borderWidth: hairline,
-      borderColor: c.hairline,
-      padding: space.s7,
-      alignItems: 'center',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.18,
-      shadowRadius: 16,
-      elevation: 10,
-    },
-    title: {
-      ...ty.md,
-      fontFamily: fontFamily.sansSemibold,
-      color: c.fg,
-      textAlign: 'center',
-      marginBottom: space.s3,
-    },
-    body: {
-      ...ty.sm,
-      fontFamily: fontFamily.sans,
-      color: c.fg,
-      textAlign: 'center',
-      marginBottom: space.s6,
-    },
-    statusBlock: {
-      paddingVertical: space.s6,
-      alignItems: 'center',
-      width: '100%',
-    },
-    unavailable: {
-      ...ty.sm,
-      fontFamily: fontFamily.sans,
-      color: c.fgMuted,
-      textAlign: 'center',
-    },
-    tierList: { width: '100%', maxHeight: 320 },
-    tierListContent: { gap: space.s3 },
-    tierBtn: {
-      backgroundColor: c.inkButton,
-      borderRadius: radius.md,
-      paddingVertical: space.s4,
-      paddingHorizontal: space.s7,
-      width: '100%',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: 48,
-    },
-    tierBtnDimmed: { opacity: 0.4 },
-    tierBtnText: {
-      ...ty.base,
-      fontFamily: fontFamily.sansSemibold,
-      color: c.inkButtonText,
-    },
-    primaryBtn: {
-      backgroundColor: c.inkButton,
-      borderRadius: radius.md,
-      paddingVertical: space.s4,
-      paddingHorizontal: space.s7,
-      width: '100%',
-      alignItems: 'center',
-      marginTop: space.s4,
-    },
-    primaryBtnText: {
-      ...ty.base,
-      fontFamily: fontFamily.sansSemibold,
-      color: c.inkButtonText,
-    },
-    secondaryBtn: { paddingVertical: space.s2, marginTop: space.s4 },
-    secondaryBtnText: {
-      ...ty.sm,
-      fontFamily: fontFamily.sans,
-      color: c.fgMuted,
-    },
-    pressed: { opacity: 0.7 },
-  });
 }
