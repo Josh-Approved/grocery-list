@@ -25,10 +25,11 @@
  * dead sensor or the registry is malformed.
  */
 
-import { readFileSync, existsSync, statSync } from 'node:fs';
-import { dirname, join, resolve, isAbsolute } from 'node:path';
+import { readFileSync, existsSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { resolveAppDir } from './app-dir.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -104,19 +105,6 @@ export function summarizeVerdicts(verdicts) {
 // ── I/O shell ────────────────────────────────────────────────────────────────
 
 function die(msg) { console.error(msg); process.exit(2); }
-
-/** Resolve the target app dir from a positional arg (path, or sibling name, or cwd). */
-function resolveAppDir(arg) {
-  if (!arg) return process.cwd();
-  const asPath = isAbsolute(arg) ? arg : resolve(process.cwd(), arg);
-  if (existsSync(asPath) && statSync(asPath).isDirectory()) return asPath;
-  // Sibling of the workspace root. From <root>/josh-approved-factory/scripts/qa
-  // (or a synced <root>/<app>/scripts/qa) this "../../.." lands on the workspace
-  // root either way, so `prove-gates.mjs grocery-list` works from both homes.
-  const sibling = resolve(__dirname, '..', '..', '..', arg);
-  if (existsSync(sibling) && statSync(sibling).isDirectory()) return sibling;
-  die(`prove-gates: app dir not found: ${arg}`);
-}
 
 function readJson(p) {
   try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; }
@@ -195,7 +183,7 @@ function runGate(entry, appDir, knownBadDir) {
 function main(argv) {
   const flags = new Set(argv.filter((a) => a.startsWith('--')));
   const positional = argv.filter((a) => !a.startsWith('--'));
-  const appDir = resolveAppDir(positional[0]);
+  const appDir = resolveAppDir(positional[0], 'prove-gates');
   const asJson = flags.has('--json');
   const knownBadDir = join(appDir, 'qa', 'known-bad');
 

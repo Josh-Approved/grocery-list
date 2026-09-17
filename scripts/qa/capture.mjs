@@ -60,6 +60,7 @@ import { sourceHash } from './source-hash.mjs';
 // it) — a second hand-rolled `adb devices` reader is how the two halves of this
 // net came to disagree about which device a run was even talking to.
 import { parseAttachedAndroidSerials } from './upgrade-test.mjs';
+import { resolveAppDir } from './app-dir.mjs';
 
 // store → how to build, what device, how to normalize.
 // NOTE: iOS device names are Xcode-version-specific — the boot step greps
@@ -80,11 +81,12 @@ const flags = new Set(args.filter((a) => a.startsWith('--')));
 const valueOf = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
 const VALUE_FLAGS = new Set(['--platform', '--store', '--device', '--appearance', '--font-scale', '--orientation', '--cell']);
 const positional = args.filter((a, i) => !a.startsWith('--') && !VALUE_FLAGS.has(args[i - 1]));
-const appDir = path.resolve(positional[0] || process.cwd());
 
 // --self-test covers the pure failure→anchor mapping (no device, no build, no
 // store). It runs BEFORE the --store check so it needs no arguments at all.
 if (flags.has('--self-test')) process.exit(selfTest() ? 0 : 1);
+// A misresolved app path must never read as "not adopted" + exit 0 (app-dir.mjs).
+const appDir = resolveAppDir(positional[0], 'capture');
 
 const storeKey = valueOf('--store');
 if (!storeKey || !STORES[storeKey]) {

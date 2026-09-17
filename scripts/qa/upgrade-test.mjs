@@ -80,6 +80,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { withHeavyLock } from '../lib/heavy.mjs';
+import { resolveAppDir } from './app-dir.mjs';
 
 const FACTORY_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');
 const HERE = path.dirname(new URL(import.meta.url).pathname);
@@ -840,7 +841,7 @@ async function main() {
   const flags = new Set(args.filter((a) => a.startsWith('--')));
   const valueOf = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
   const VALUE_FLAGS = new Set(['--platform', '--old', '--head', '--device', '--inject-fault']);
-  const appDir = path.resolve(pickAppArg(args, VALUE_FLAGS) || process.cwd());
+  const appDir = resolveAppDir(pickAppArg(args, VALUE_FLAGS), 'upgrade-test');
   const app = path.basename(appDir);
   const platform = valueOf('--platform') || 'android';
   const dry = flags.has('--dry-run');

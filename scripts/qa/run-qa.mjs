@@ -35,6 +35,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execSync, execFileSync } from 'node:child_process';
 import { pathToFileURL, fileURLToPath } from 'node:url';
+import { resolveAppDir } from './app-dir.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -47,7 +48,6 @@ const FLAGS_WITH_VALUES = new Set(['--profile', '--out']);
 const positional = args.filter(
   (a, i) => !a.startsWith('--') && !(i > 0 && FLAGS_WITH_VALUES.has(args[i - 1]))
 );
-const appDir = path.resolve(positional[0] || process.cwd());
 const profile = (() => {
   const i = args.indexOf('--profile');
   return i >= 0 && args[i + 1] ? args[i + 1] : 'production';
@@ -57,6 +57,8 @@ if (args.includes('--self-test')) {
   selfTest();
   process.exit(0);
 }
+
+const appDir = resolveAppDir(positional[0], 'run-qa');
 
 // Fail loudly rather than emitting a green gate for a directory that is not an app.
 if (!fs.existsSync(path.join(appDir, 'app.json'))) {

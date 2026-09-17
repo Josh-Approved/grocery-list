@@ -40,6 +40,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { resolveAppDir } from './app-dir.mjs';
 
 // ---------- hierarchy parsing ----------
 
@@ -289,9 +290,7 @@ function main() {
   // The optional positional is the app dir. Skip the VALUES of value-taking
   // flags so e.g. `--device <udid>` doesn't get mistaken for the app dir.
   const VALUE_FLAGS = new Set(['--device', '--anchor', '--hierarchy']);
-  const appDir = path.resolve(
-    args.find((a, i) => !a.startsWith('--') && !VALUE_FLAGS.has(args[i - 1])) || process.cwd()
-  );
+  const appDir = resolveAppDir(args.find((a, i) => !a.startsWith('--') && !VALUE_FLAGS.has(args[i - 1])), 'heal');
 
   const selectorsPath = path.join(appDir, 'qa', 'selectors.json');
   const journeyPath = path.join(appDir, 'qa', 'journey.json');

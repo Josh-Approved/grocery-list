@@ -26,6 +26,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { findChrome } from '../lib/find-chrome.mjs';
+import { resolveAppDir } from './app-dir.mjs';
 
 function pngSize(file) {
   const fd = fs.openSync(file, 'r');
@@ -39,7 +40,7 @@ function pngSize(file) {
 
 const args = process.argv.slice(2);
 const valueOf = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : null; };
-const appDir = path.resolve(args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--profile') || process.cwd());
+const appDir = resolveAppDir(args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--profile'), 'matrix-review');
 const profile = valueOf('--profile') || 'full';
 
 // Source resolution: prefer the fresh full-res captures, but fall back to the

@@ -36,7 +36,18 @@ import { createRequire } from 'node:module';
 const args = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith('--')));
 const positional = args.filter((a) => !a.startsWith('--'));
-const appDir = resolve(positional[0] || process.cwd());
+// --self-test needs no app; everything else must name a real one (app-dir.mjs).
+// This file lives at scripts/qa/ in the factory but is synced to scripts/ in an
+// app, while app-dir.mjs sits in scripts/qa/ in both homes — so try each.
+async function loadResolveAppDir() {
+  for (const rel of ['./app-dir.mjs', './qa/app-dir.mjs']) {
+    const url = new URL(rel, import.meta.url);
+    if (existsSync(url)) return (await import(url.href)).resolveAppDir;
+  }
+  console.error('qa-canonical: app-dir.mjs not found next to this script — re-run: node scripts/sync.mjs qa <app>');
+  process.exit(2);
+}
+const appDir = flags.has('--self-test') ? process.cwd() : (await loadResolveAppDir())(positional[0], 'qa-canonical');
 const json = flags.has('--json');
 const quiet = flags.has('--quiet');
 

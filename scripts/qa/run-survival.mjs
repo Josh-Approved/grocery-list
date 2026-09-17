@@ -26,6 +26,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { resolveAppDir } from './app-dir.mjs';
 
 const SURVIVAL_FLOW = path.join('qa', 'flows', 'state-survival.yaml');
 const SURVIVAL_REPORT = path.join('qa', 'survival-report.json');
@@ -94,7 +95,7 @@ function main() {
   const flags = new Set(args.filter((a) => a.startsWith('--')));
   const valueOf = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
   const VALUE_FLAGS = new Set(['--platform', '--device']);
-  const appDir = path.resolve(args.find((a, i) => !a.startsWith('--') && !VALUE_FLAGS.has(args[i - 1])) || process.cwd());
+  const appDir = resolveAppDir(args.find((a, i) => !a.startsWith('--') && !VALUE_FLAGS.has(args[i - 1])), 'run-survival');
   const platform = valueOf('--platform');
   const device = valueOf('--device');
   const dry = flags.has('--dry-run');

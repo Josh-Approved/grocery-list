@@ -27,11 +27,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
+import { resolveAppDir } from './app-dir.mjs';
 
 const args = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith('--')));
 const positional = args.filter((a) => !a.startsWith('--'));
-const appDir = path.resolve(positional[0] || process.cwd());
+const appDir = resolveAppDir(positional[0], 'triage');
 const apply = flags.has('--apply');
 const profile = (() => { const i = args.indexOf('--profile'); return i >= 0 && args[i + 1] ? args[i + 1] : 'production'; })();
 

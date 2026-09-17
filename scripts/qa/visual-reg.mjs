@@ -47,6 +47,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
+import { resolveAppDir } from './app-dir.mjs';
 
 const DEFAULT_THRESHOLD = 0.01;     // fraction of pixels that may differ before it's a regression
 const PER_PIXEL_THRESHOLD = 0.1;    // pixelmatch per-pixel sensitivity (0..1)
@@ -296,7 +297,7 @@ async function main() {
   const valueOf = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
   const VALUE_FLAGS = new Set(['--profile', '--threshold', '--accept']);
   const positional = args.filter((a, i) => !a.startsWith('--') && !VALUE_FLAGS.has(args[i - 1]));
-  const appDir = path.resolve(positional[0] || process.cwd());
+  const appDir = resolveAppDir(positional[0], 'visual-reg');
   const threshold = valueOf('--threshold') ? Number(valueOf('--threshold')) : DEFAULT_THRESHOLD;
   const dry = flags.has('--dry-run');
 

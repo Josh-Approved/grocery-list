@@ -41,6 +41,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { resolveAppDir } from './app-dir.mjs';
 
 // ---------- pure planner (exercised by --self-test) ----------
 
@@ -76,6 +77,18 @@ export function avdSerial(avdName, serialToAvd) {
  * profile/axis by name). A whole-map device merge would drop `store` and abort
  * capture.mjs — the bug that silently killed the Android matrix half (2026-06-11).
  */
+/**
+ * What to do with a cell's `.unverified-device` marker after its capture ran:
+ * 'write' when it ran on a fallback emulator, 'clear' when it PASSED on its own
+ * device (the screens on disk are now this cell's), else 'keep'. A failed run on
+ * the right device keeps any existing mark — it may have left the fallback run's
+ * screens half-replaced.
+ */
+export function unverifiedMarkerAction(cell, status) {
+  if (cell.deviceClassVerified === false) return 'write';
+  return status === 'pass' ? 'clear' : 'keep';
+}
+
 export function mergeConfig(base, override) {
   if (!override) return base;
   const mergedDevices = { ...(base.devices || {}) };
@@ -195,6 +208,14 @@ function selfTest() {
     'every overridden-device cell carries a valid store');
   ok(mergeConfig(cfg, null) === cfg, 'null override is a no-op');
 
+  // The unverified-device mark must come OFF once the cell captures cleanly on
+  // its own device (ticket matrix-unverified-marker-never-cleared, 2026-08-23).
+  ok(unverifiedMarkerAction({ deviceClassVerified: false }, 'pass') === 'write', 'a fallback-device capture writes the mark');
+  ok(unverifiedMarkerAction({ deviceClassVerified: false }, 'fail') === 'write', 'a failed fallback-device capture still writes the mark');
+  ok(unverifiedMarkerAction({}, 'pass') === 'clear', 'a passing capture on the cell\'s own device clears the mark');
+  ok(unverifiedMarkerAction({ deviceClassVerified: true }, 'pass') === 'clear', 'an explicitly verified passing capture clears the mark');
+  ok(unverifiedMarkerAction({}, 'fail') === 'keep', 'a failed capture on the right device keeps any existing mark');
+
   let threw = false;
   try { expandMatrix(cfg, 'nope'); } catch { threw = true; }
   ok(threw, 'unknown profile throws');
@@ -235,7 +256,7 @@ function main() {
   const valueOf = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
   const VALUE_FLAGS = new Set(['--profile']);
   const positional = args.filter((a, i) => !a.startsWith('--') && !VALUE_FLAGS.has(args[i - 1]));
-  const appDir = path.resolve(positional[0] || process.cwd());
+  const appDir = resolveAppDir(positional[0], 'matrix');
   const profileName = valueOf('--profile') || 'smoke';
   const dry = flags.has('--dry-run');
   const heal = flags.has('--heal');
@@ -315,13 +336,20 @@ function main() {
 
     // A cell captured on an unverified device class holds screens of SOME OTHER
     // device. Mark it so visual-reg neither diffs nor locks it — otherwise the
-    // cell's baseline silently becomes another device's screens (L23).
-    if (!dry && c.deviceClassVerified === false) {
-      const cellDir = path.join(appDir, 'qa', 'captures', 'matrix', c.cell);
+    // cell's baseline silently becomes another device's screens (L23). A later
+    // clean capture on the cell's OWN device clears the mark again, or one
+    // fallback run would poison the cell forever.
+    if (!dry) {
+      const marker = path.join(appDir, 'qa', 'captures', 'matrix', c.cell, '.unverified-device');
+      const action = unverifiedMarkerAction(c, results[results.length - 1].status);
       try {
-        fs.mkdirSync(cellDir, { recursive: true });
-        fs.writeFileSync(path.join(cellDir, '.unverified-device'),
-          `captured on a fallback emulator, not this cell's AVD (${c.avd})\n`);
+        if (action === 'write') {
+          fs.mkdirSync(path.dirname(marker), { recursive: true });
+          fs.writeFileSync(marker, `captured on a fallback emulator, not this cell's AVD (${c.avd})\n`);
+        } else if (action === 'clear' && fs.existsSync(marker)) {
+          fs.unlinkSync(marker);
+          console.log(`  ✓ cell ${c.cell}: captured on its own device — cleared the stale .unverified-device mark`);
+        }
       } catch {}
     }
   }
@@ -349,7 +377,15 @@ function main() {
   console.log(`\nmatrix: ${passed} pass, ${failed} fail, ${skipped} skipped of ${cells.length} cells.`);
   if (!dry) {
     const reportPath = path.join(appDir, 'qa', 'matrix-report.json');
-    fs.writeFileSync(reportPath, JSON.stringify({ app: path.basename(appDir), profile: profileName, cells: results }, null, 2) + '\n');
+    // Per-pass on purpose: each run overwrites it. After staged passes (e.g. an
+    // aosp-only top-up) it holds only the LAST pass — the union across passes
+    // lives in qa/visual-reg.json. Say so in the file so nobody reads a 1-cell
+    // report as the whole matrix.
+    fs.writeFileSync(reportPath, JSON.stringify({
+      app: path.basename(appDir), profile: profileName, scope: 'this-pass-only',
+      note: 'Cells from this run only; earlier passes are overwritten. The union across passes is in qa/visual-reg.json.',
+      cells: results,
+    }, null, 2) + '\n');
     console.log(`  wrote ${path.relative(appDir, reportPath)}`);
   }
   process.exit(failed > 0 ? 1 : 0);
