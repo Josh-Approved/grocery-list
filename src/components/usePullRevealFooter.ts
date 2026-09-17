@@ -64,9 +64,13 @@
  *   </GestureDetector>
  *   // Any floating action button lifts to sit just above the footer:
  *   <Pressable style={[s.fab, { bottom: footerHeight + space.s4 }]} ... />
+ *
+ * A list with its own `Gesture.Native()` (ReorderableList) takes `listPanGesture`
+ * as its `panGesture`, NEVER a `gesture` wrap: two native handlers on one Android
+ * ScrollView cancel each other and kill the scroll (workout-timer-20260912-1).
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Platform,
   type LayoutChangeEvent,
@@ -76,6 +80,7 @@ import {
 import {
   Gesture,
   type ComposedGesture,
+  type PanGesture,
 } from 'react-native-gesture-handler';
 import {
   Easing,
@@ -112,6 +117,8 @@ export type PullRevealFooter = {
    *  over-pull. Inert on iOS / under reduced-motion (the pan is disabled), so
    *  the GestureDetector can wrap unconditionally. */
   gesture: ComposedGesture;
+  /** The same over-pull as a Pan a list adopts as its own (ReorderableList). */
+  listPanGesture: PanGesture;
   /** UI-thread scroll handler — attach to an Animated.* scroll component
    *  (Animated.FlatList / Animated.ScrollView) or a SortableList. Drives the
    *  reveal from bottom-overscroll on iOS; feeds at-bottom detection on both. */
@@ -192,6 +199,35 @@ export function usePullRevealFooter(): PullRevealFooter {
     [contentH]
   );
 
+  // Feed a finger's vertical travel (down = positive) into the reveal. At-bottom
+  // is decided live on the UI thread: a short (non-scrollable) list always is;
+  // a scrollable one only when the last scroll-over reached the edge.
+  const pullTo = (translationY: number) => {
+    'worklet';
+    const scrollable = contentH.value > viewportH.value + BOTTOM_EPS;
+    const atBottom = !scrollable || scrollOver.value >= -BOTTOM_EPS;
+    if (!atBottom) {
+      anchorY.value = -1;
+      reveal.value = 0;
+      return;
+    }
+    if (anchorY.value < 0) anchorY.value = translationY;
+    const d = anchorY.value - translationY - PULL_SLOP;
+    if (d <= 0) {
+      reveal.value = 0;
+      return;
+    }
+    // Rubber-band: ~linear for a small pull, resisting more as it grows (iOS feel).
+    const resisted = d / (1 + d / (REVEAL_DISTANCE * RESIST_SCALE));
+    const p = resisted / REVEAL_DISTANCE;
+    reveal.value = p > 1 ? 1 : p;
+  };
+  const releasePull = () => {
+    'worklet';
+    anchorY.value = -1;
+    reveal.value = withTiming(0, RELEASE);
+  };
+
   // The pan recognises simultaneously with the scroll view's own gesture, so
   // normal scrolling is untouched; the pan only feeds `reveal` while at bottom.
   const gesture = Gesture.Simultaneous(
@@ -201,33 +237,41 @@ export function usePullRevealFooter(): PullRevealFooter {
       .onBegin(() => {
         anchorY.value = -1;
       })
-      .onUpdate((e) => {
-        // Decide at-bottom live on the UI thread from raw metrics: a short
-        // (non-scrollable) list is always at the bottom; a scrollable one is at
-        // the bottom only when the last scroll-over reached the edge.
-        const scrollable = contentH.value > viewportH.value + BOTTOM_EPS;
-        const atBottom = !scrollable || scrollOver.value >= -BOTTOM_EPS;
-        if (!atBottom) {
+      .onUpdate((e) => pullTo(e.translationY))
+      .onFinalize(() => releasePull())
+  );
+
+  // For a list that owns its scroll gesture: a Pan it adopts as its own (touch
+  // callbacks fire whether or not it activates; the list never replaces them).
+  // `startY` is null between touches — an ending pan can emit a stray move and
+  // an up with numberOfTouches < 0 after cancelling its pointers.
+  const startY = useSharedValue<number | null>(null);
+  const listPanGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .onTouchesDown((e) => {
+          const touch = e.allTouches[0];
+          if (!androidPull || e.numberOfTouches !== 1 || !touch) return;
+          startY.value = touch.absoluteY;
           anchorY.value = -1;
-          reveal.value = 0;
-          return;
-        }
-        if (anchorY.value < 0) anchorY.value = e.translationY;
-        const d = anchorY.value - e.translationY - PULL_SLOP;
-        if (d <= 0) {
-          reveal.value = 0;
-          return;
-        }
-        // Rubber-band: ~linear for a small pull, compressing as it grows, so the
-        // mark tracks the finger but resists like the iOS bounce.
-        const resisted = d / (1 + d / (REVEAL_DISTANCE * RESIST_SCALE));
-        const p = resisted / REVEAL_DISTANCE;
-        reveal.value = p > 1 ? 1 : p;
-      })
-      .onFinalize(() => {
-        anchorY.value = -1;
-        reveal.value = withTiming(0, RELEASE);
-      })
+        })
+        .onTouchesMove((e) => {
+          const touch = e.allTouches[0];
+          if (!androidPull || !touch || startY.value === null) return;
+          pullTo(touch.absoluteY - startY.value);
+        })
+        .onTouchesUp((e) => {
+          if (!androidPull || e.numberOfTouches > 0) return;
+          startY.value = null;
+          releasePull();
+        })
+        .onTouchesCancelled(() => {
+          if (!androidPull) return;
+          startY.value = null;
+          releasePull();
+        }),
+    // Shared values are stable; recreate only when the gate flips.
+    [androidPull]
   );
 
   const [footerHeight, setFooterHeight] = useState(96);
@@ -241,6 +285,7 @@ export function usePullRevealFooter(): PullRevealFooter {
     pullToReveal,
     reveal,
     gesture,
+    listPanGesture,
     onScroll,
     onScrollJS,
     onScrollViewLayout,

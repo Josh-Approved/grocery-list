@@ -684,6 +684,73 @@ const rulePaneFocus = () => {
   return pass('a11y/pane-focus', 'Every accessibilityViewIsModal surface manages screen-reader focus');
 };
 
+// One native gesture handler per scroll view. A scrolling list that brings its
+// own `Gesture.Native()` — ReorderableList does, and SortableList wraps it —
+// must never be wrapped in a GestureDetector, because a GestureDetector attaches
+// to the first native view beneath it, which is that same scroll view. Two
+// native-view handlers on one Android ScrollView are NOT simultaneous with each
+// other: when the second activates, gesture-handler cancels the first, and a
+// cancelled native handler sends ACTION_CANCEL into the ScrollView, which drops
+// the drag and ignores the rest of the swipe — the list simply stops scrolling.
+// iOS scrolls from UIScrollView's own recognizer, so it hides there completely.
+//
+// Cost of learning this the hard way: defect workout-timer-20260912-1 — the
+// timer list was unscrollable on every phone-sized Android screen for months,
+// and the nightly state-survival flow read the off-screen row as LOST STATE
+// (defect workout-timer-20260719-1), so it was chased as a persistence bug.
+// The fix is to hand the extra gesture to the list's OWN pan (`panGesture`),
+// never to wrap the list.
+const ruleOneNativeHandler = () => {
+  if (surface !== 'rn') return skip('gesture/one-native-handler', 'Not an RN app');
+  const files = srcSourceFiles();
+  if (!files.length) return skip('gesture/one-native-handler', 'No src/ source files');
+  // Scrolling containers that already bring their own Gesture.Native().
+  const OWNS_NATIVE = ['ReorderableList', 'NestedReorderableList', 'SortableList', 'ScrollViewContainer'];
+  const hits = [];
+  for (const f of files) {
+    const raw = readText(f);
+    if (!raw) continue;
+    const code = stripComments(raw);
+    const where = relative(appDir, f);
+
+    // (a) The call site: the retired SortableList `gesture` prop, which existed
+    //     only to be wrapped. Brace-aware, because the opening tag spans lines
+    //     and its attribute expressions contain `>` (arrow functions).
+    for (let i = code.indexOf('<SortableList'); i >= 0; i = code.indexOf('<SortableList', i + 1)) {
+      if (/\bgesture\s*=/.test(openingTag(code, i))) {
+        hits.push(`${where}: <SortableList gesture={…}> — retired prop; hand it to the list as panGesture instead`);
+        break;
+      }
+    }
+
+    // (b) The component: a GestureDetector whose CHILD is one of those lists,
+    //     named either directly or through a single {identifier} child (the
+    //     shape the defect actually shipped in). A GestureDetector elsewhere in
+    //     the file — over a row, a card, a sheet — is left alone: it attaches to
+    //     that view, not to the scroll view.
+    for (let i = code.indexOf('<GestureDetector'); i >= 0; i = code.indexOf('<GestureDetector', i + 1)) {
+      const rest = code.slice(i + openingTag(code, i).length);
+      const child = rest.match(/^\s*(?:<([A-Za-z_$][\w$]*)|\{\s*([A-Za-z_$][\w$]*)\s*\})/);
+      if (!child) continue;
+      let tag = child[1];
+      if (!tag && child[2]) {
+        // {list} — resolve the binding to the root tag of the element it holds.
+        const decl = code.match(new RegExp(`\\b(?:const|let|var)\\s+${child[2]}\\b[^;]*?<([A-Za-z_$][\\w$]*)`, 's'));
+        tag = decl && decl[1];
+      }
+      if (tag && OWNS_NATIVE.includes(tag)) {
+        hits.push(`${where}: <GestureDetector> wraps <${tag}>, which owns its own Gesture.Native()`);
+        break;
+      }
+    }
+  }
+  if (hits.length) {
+    return fail('gesture/one-native-handler',
+      'A scrolling list that owns its own native gesture handler is wrapped in a GestureDetector — the second native handler cancels the first and Android stops scrolling. Pass the gesture as the list\'s own panGesture (reference: workout-timer TimerListScreen + usePullRevealFooter listPanGesture)', hits);
+  }
+  return pass('gesture/one-native-handler', 'No scrolling list carries two native gesture handlers');
+};
+
 // Voice Control users speak what they SEE: "tap Save". iOS matches the spoken
 // phrase against the accessibility label, so a label that does not begin with
 // the control's visible text makes that control unspeakable — the user reads
@@ -3434,6 +3501,7 @@ const CANONICAL_RULES = [
   ruleNoIosOnlyImports,
   ruleNoAlertPrompt,
   rulePaneFocus,
+  ruleOneNativeHandler,
   ruleVoiceControlNameMatch,
   ruleDistinctAccessibleName,
   ruleNoPlatformEarlyReturn,
