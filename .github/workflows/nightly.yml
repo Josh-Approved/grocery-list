@@ -105,12 +105,26 @@ jobs:
     # and the device suite never ran at all: 10 nights in a row with no iOS
     # verdict (packing-list the same, 51 min of mutation). A job that dies has
     # NO result, which reads as "absent", not "red" — worse than a failure.
-    # So the JS steps are individually capped below (20 + 10 + 30 = 60 max) and
-    # the job budget is set so the device half's ~50 min always fits underneath
-    # it. Actions minutes are free on these public repos, so the ceiling costs
-    # nothing on a normal ~50-75 min night. If you add a step here, give it a
-    # cap and re-do this arithmetic.
-    timeout-minutes: 120
+    #
+    # THE ARITHMETIC, done honestly (corrected 2026-09-18). The 90 -> 120 raise
+    # assumed a "~50 min" device half; it is not. Measured on grocery-list's
+    # 2026-09-18 green run: setup ~5, deep jest 4, quarantine 1, Stryker 30 (it
+    # hits its own cap every night), EAS build 49, sim boot 5, install/compile 2,
+    # Maestro 4, state-survival 17, upload 1 — 1h54m against a 120 min ceiling.
+    # Six minutes of headroom is not headroom, and grocery-list duly lost 2 of
+    # its last 10 nights to the job timeout (cancelled at 2h0m, no iOS verdict).
+    # So: JS half capped at 20 + 10 + 30 = 60, device half's two long poles
+    # capped below (build 65 + survival 25), job budget 150. Actions minutes are
+    # free on these public repos, so the ceiling costs nothing on a normal
+    # ~50-115 min night. The step caps matter more than the job cap: a step that
+    # times out names ITSELF and lets the rest of the suite run, where a job
+    # that times out silently deletes the whole night. If you add a step here,
+    # give it a cap and re-do this arithmetic.
+    #
+    # The structural fix — move the JS suites off the macOS job entirely so
+    # mutation stops competing with the device suite — is factory ticket
+    # nightly-split-js-suites-off-macos. This is the headroom until then.
+    timeout-minutes: 150
     env:
       EXPO_PUBLIC_QA_MODE: '1'
       MAESTRO_DRIVER_STARTUP_TIMEOUT: '300000'
@@ -212,6 +226,11 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
       - name: EAS local build (iOS simulator)
+        # Capped so a hung or pathologically slow build fails as ITSELF rather
+        # than eating the job's remaining budget and deleting the night's iOS
+        # verdict. Deliberately NOT continue-on-error: without a .app there is
+        # nothing for the device suite to test, so red is the honest result.
+        timeout-minutes: 65
         run: |
           set -o pipefail
           eas build \
@@ -297,7 +316,10 @@ jobs:
         # T4 chaos net — deliberately separate from mobile.yaml (it kills the app),
         # so it belongs in nightly, never the per-PR gate. Clean SKIP if the app
         # declares no `survival` block. Non-blocking; a real loss is filed locally.
+        # Capped: it kills and relaunches the app repeatedly, so a wedged
+        # relaunch would otherwise sit here until the job budget runs out.
         continue-on-error: true
+        timeout-minutes: 25
         run: node scripts/qa/run-survival.mjs . --platform ios || true
       - name: Show Maestro debug on failure
         if: failure()
