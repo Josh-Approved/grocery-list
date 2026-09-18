@@ -25,6 +25,18 @@
 #     defect. Confirm inlining before running: fetch the bundle and grep for
 #     the share secret, the relay URL and QA_MODE. (Cost a wasted run 2026-08-25.)
 #   - Debug app installed on both: npx expo run:ios / run:android --no-bundler
+#     `run:android --device` wants the AVD NAME (e.g. aosp_nogms), NOT the adb
+#     serial (emulator-5554) — it rejects the serial outright. The serial is what
+#     THIS script takes as arg 2; they are different identifiers for the same
+#     emulator and swapping them is a silent time sink. `emulator -list-avds`
+#     gives the names, `adb devices` gives the serials.
+#   - The emulator's radios must actually be UP. A run that dies inside an
+#     offline window leaves wlan0/eth0 DOWN and poisons the NEXT run, which then
+#     fails at phase 1's "Connected" and reads exactly like a sync bug. The
+#     harness repairs and then ASSERTS this (h_assert_android_online), so a dead
+#     radio now names itself instead of costing a run — but if you are driving
+#     the emulator by hand, restore it yourself:
+#       adb -s <serial> shell svc wifi enable && adb -s <serial> shell svc data enable
 #
 # Usage: scripts/e2e/run-two-device.sh <ios-sim-udid> [android-serial]
 # Maestro drives ONE device at a time (two concurrent drivers destabilise RN).

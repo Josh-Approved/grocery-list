@@ -42,6 +42,7 @@ h_reset_android() {
   # happened on 2026-08-28: the 2026-08-25 run died at phase 4, immediately
   # after h_android_offline, and every run after it was doomed before it began.
   h_android_online_safe
+  h_assert_android_online
   adb -s "$ANDROID_SERIAL" uninstall "$APP_ID" >/dev/null 2>&1 || true
   adb -s "$ANDROID_SERIAL" install -r "$ANDROID_APK" >/dev/null
   adb -s "$ANDROID_SERIAL" shell am start -n "$APP_ID/.MainActivity" >/dev/null
@@ -71,6 +72,35 @@ h_android_online_safe() {
   adb -s "$ANDROID_SERIAL" shell svc wifi enable >/dev/null 2>&1 || true
   adb -s "$ANDROID_SERIAL" shell svc data enable >/dev/null 2>&1 || true
   return 0
+}
+
+# The ASSERTION half of the restore above, and the assertion is the whole point:
+# a repair that quietly fails still hands the next run a dead emulator, and that
+# run fails four phases later at "Connected" — which reads as a sync defect and
+# sends the reader into the relay code for nothing. It cost a whole run on
+# 2026-08-25. Naming the real cause here costs seconds.
+# Only an EXPLICIT 0 fails: some google_apis images report nothing for a radio
+# they do not have, and an absent radio must not fail a run that never uses it.
+h_assert_android_online() {
+  [ -n "${ANDROID_SERIAL:-}" ] || return 0
+  local tries=0 wifi="" data=""
+  while [ "$tries" -lt 10 ]; do
+    wifi=$(adb -s "$ANDROID_SERIAL" shell settings get global wifi_on 2>/dev/null | tr -d '\r')
+    data=$(adb -s "$ANDROID_SERIAL" shell settings get global mobile_data 2>/dev/null | tr -d '\r')
+    if [ "$wifi" != "0" ] && [ "$data" != "0" ]; then return 0; fi
+    tries=$((tries + 1))
+    sleep 1
+  done
+  {
+    echo ""
+    echo "PRECONDITION FAILED: $ANDROID_SERIAL still has a radio DOWN after 10s"
+    echo "  (wifi_on=${wifi:-?} mobile_data=${data:-?})."
+    echo "  A previous run almost certainly died inside an offline window. This is"
+    echo "  leftover DEVICE state, NOT a sync bug — do not go reading the relay code."
+    echo "  Fix: adb -s $ANDROID_SERIAL shell svc wifi enable"
+    echo "       adb -s $ANDROID_SERIAL shell svc data enable"
+  } >&2
+  return 1
 }
 
 # --- relay lifecycle ---------------------------------------------------------
