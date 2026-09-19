@@ -1997,6 +1997,101 @@ const ruleSandboxGitignored = () => {
   return warn(id, 'A repo-copying tool\'s sandbox directory is not in the tracked .gitignore, so a crashed run is committable from a fresh clone', detail);
 };
 
+// ---------- deps/override-esm-vs-jest ----------
+//
+// THE PAIRING THAT IS SILENTLY FATAL, and why neither half looks wrong alone
+// (ticket dep-uuid-override-breaks-config-plugin-tests, proven both ways on
+// home-maintenance 2026-08-25):
+//
+//   xcode@3.0.1 declares uuid ^7.0.3, so every RN app resolves uuid@7 through
+//   expo-sharing -> @expo/config-plugins -> xcode. uuid <11.1.1 is in range for
+//   GHSA-w5hq-g745-h8pq, so three apps clear the advisory with a scoped
+//   override, "xcode": { "uuid": "^11.1.1" }, and have shipped production builds
+//   with it. Perfectly fine — because none of them has a test that loads
+//   expo/config-plugins. home-maintenance does (plugins/__tests__ guards the
+//   withAndroidLocaleConfig plugin the factory syncs to EVERY app), and with the
+//   same override its suite dies at load: uuid@11 ships an exports map whose
+//   `browser` condition points at an ESM build, jest-expo resolves that
+//   condition, and uuid is not in transformIgnorePatterns.
+//
+// A suite that fails to LOAD reports 0 failed tests, so the cause reads as "the
+// test" rather than a months-old override in a different file. And the drift-guard
+// test is exactly the kind of thing that gets ported to the other apps, which
+// would red them the same day. So the guard checks the PAIRING, not either half.
+const OVERRIDE_ESM_TRAPS = [
+  {
+    pkg: 'uuid',
+    esmFromMajor: 11,
+    loaders: ['expo/config-plugins', '@expo/config-plugins'],
+    chain: 'expo/config-plugins → xcode → uuid',
+    why: 'uuid@11+ ships an exports map whose `browser` condition points at an ESM build; jest-expo resolves that condition, so the suite dies with "SyntaxError: Unexpected token export" at node_modules/uuid/dist/esm-browser/index.js. uuid@7 is CJS-only, which is why an un-overridden repo is green.',
+  },
+];
+
+/** Lowest major a semver range can resolve to (`^11.1.1` → 11). null if unparseable. */
+export const rangeMinMajor = (range) => {
+  const m = String(range ?? '').match(/(\d+)\s*\./);
+  return m ? Number(m[1]) : null;
+};
+
+/** Every version this package is pinned to anywhere in an `overrides` tree (scoped or flat). */
+export const overrideVersionsFor = (overrides, pkg, depth = 0) => {
+  if (!overrides || typeof overrides !== 'object' || depth > 6) return [];
+  const out = [];
+  for (const [key, val] of Object.entries(overrides)) {
+    if (key === pkg && typeof val === 'string') out.push(val);
+    else if (val && typeof val === 'object') out.push(...overrideVersionsFor(val, pkg, depth + 1));
+  }
+  return out;
+};
+
+/**
+ * Pure core (self-tested). `testSources` = [{ file, code }] for the repo's test
+ * files. Returns one problem per live trap: an override lifting a transitive dep
+ * past the major where it starts shipping ESM, a test that drags it into jest,
+ * and no transform/mapper escape for it.
+ */
+export function overrideEsmTrapProblems({ pkg, testSources = [], traps = OVERRIDE_ESM_TRAPS }) {
+  if (!pkg) return [];
+  const jest = pkg.jest || {};
+  const escapes = [
+    ...(Array.isArray(jest.transformIgnorePatterns) ? jest.transformIgnorePatterns : []),
+    ...Object.keys(jest.moduleNameMapper || {}),
+  ].join(' ');
+  const problems = [];
+  for (const trap of traps) {
+    const pinned = overrideVersionsFor(pkg.overrides, trap.pkg)
+      .filter((v) => { const maj = rangeMinMajor(v); return maj != null && maj >= trap.esmFromMajor; });
+    if (!pinned.length) continue;
+    if (escapes.includes(trap.pkg)) continue; // deliberately allowlisted — remedy 2 in the ticket
+    const loading = testSources
+      .filter(({ code }) => trap.loaders.some((spec) => String(code || '').includes(spec)))
+      .map(({ file }) => file);
+    if (!loading.length) continue;
+    problems.push({ pkg: trap.pkg, version: pinned[0], files: loading, chain: trap.chain, why: trap.why });
+  }
+  return problems;
+}
+
+const ruleOverrideEsmVsJest = () => {
+  const id = 'deps/override-esm-vs-jest';
+  const pkg = readJson(join(appDir, 'package.json'));
+  if (!pkg) return skip(id, 'No package.json');
+  if (!pkg.jest) return skip(id, 'No jest config in package.json — nothing loads the chain inside jest here');
+  if (!pkg.overrides) return pass(id, 'No dependency overrides — the ESM-in-jest pairing cannot arise');
+  if (!gitTrackedFiles) return skip(id, 'Not a git checkout — cannot enumerate test files');
+
+  const testSources = [...gitTrackedFiles]
+    .filter((f) => TEST_FILE_RE.test(f))
+    .map((f) => ({ file: f, code: readText(join(appDir, f)) || '' }));
+
+  const problems = overrideEsmTrapProblems({ pkg, testSources });
+  if (!problems.length) return pass(id, `${Object.keys(pkg.overrides).length} override(s), none of them ESM-fatal to a test in this repo`);
+  return fail(id,
+    'A dependency override lifts a transitive package to a major that ships ESM, AND a test in this repo loads the chain that requires it — the suite will fail to LOAD, which reports 0 failed tests and reads as the test\'s fault. Remedy: drop the override (and accept the advisory, if it is build-time only), or add the package to jest.transformIgnorePatterns / moduleNameMapper and prove it by running THAT suite, not the whole one.',
+    problems.map((p) => `${p.pkg}@${p.version} via ${p.chain} — loaded by ${p.files.join(', ')}. ${p.why}`));
+};
+
 // Tier 2 — does the traversal prove a RESULT, not just navigate? A journey that
 // only waitFor/tap/screenshot proves the app booted and anchors were tappable,
 // never that a flow produced the right outcome. Require >=1 assert/assertNot
@@ -3551,6 +3646,7 @@ const CANONICAL_RULES = [
   ruleTrustCoreCovered,
   ruleSandboxJestIgnored,
   ruleSandboxGitignored,
+  ruleOverrideEsmVsJest,
   ruleFlowHasAssertions,
   ruleFlowDrift,
   ruleActionsMapped,
@@ -3639,6 +3735,39 @@ function runSelfTest() {
     'sandbox-git: a commented-out entry does not count');
   assert(!gitignoreCoversDir('.stryker-tmp/\n!.stryker-tmp/\n', '.stryker-tmp/'),
     'sandbox-git: a later negation un-ignores it');
+
+  // deps/override-esm-vs-jest — the known-bad is home-maintenance's PROVEN
+  // 2026-08-25 pairing: the scoped xcode/uuid override that three other apps ship
+  // happily, plus the one repo that has a test loading expo/config-plugins.
+  const pluginTest = [{ file: 'plugins/__tests__/localeConfig.test.ts', code: "const { withStringsXml } = require('expo/config-plugins');" }];
+  const overridden = { jest: {}, overrides: { xcode: { uuid: '^11.1.1' } } };
+  assert(overrideEsmTrapProblems({ pkg: overridden, testSources: pluginTest }).length === 1,
+    'override-esm: the scoped xcode/uuid override + a config-plugins test fires (the home-maintenance shape)');
+  // NB: this fixture carries no import statement on purpose — a literal relative
+  // specifier in this file reads as a real import to the module-closure check
+  // (scripts/lib/module-closure.mjs) and refuses the whole `qa` sync.
+  assert(overrideEsmTrapProblems({ pkg: overridden, testSources: [{ file: 'src/__tests__/trip.test.ts', code: "it('merges a trip', () => expect(mergeTrip([])).toEqual([]));" }] }).length === 0,
+    'override-esm: the SAME override with no test loading the chain passes (grocery/packing/workout-timer ship it)');
+  assert(overrideEsmTrapProblems({ pkg: { jest: {}, overrides: {} }, testSources: pluginTest }).length === 0,
+    'override-esm: the config-plugins test alone passes (home-maintenance today, on uuid@7)');
+  assert(overrideEsmTrapProblems({ pkg: { jest: {}, overrides: { uuid: '^11.1.1' } }, testSources: pluginTest }).length === 1,
+    'override-esm: a FLAT override is caught too, not just the scoped shape');
+  assert(overrideEsmTrapProblems({ pkg: { jest: {}, overrides: { xcode: { uuid: '^7.0.3' } } }, testSources: pluginTest }).length === 0,
+    'override-esm: pinning below the ESM major is not a trap');
+  assert(overrideEsmTrapProblems({
+    pkg: { jest: { transformIgnorePatterns: ['node_modules/(?!((jest-)?react-native|uuid)/)'] }, overrides: { xcode: { uuid: '^11.1.1' } } },
+    testSources: pluginTest,
+  }).length === 0, 'override-esm: a transformIgnorePatterns allowlist is the deliberate escape (ticket remedy 2)');
+  assert(overrideEsmTrapProblems({
+    pkg: { jest: { moduleNameMapper: { '^uuid$': 'uuid/dist/index.js' } }, overrides: { xcode: { uuid: '^11.1.1' } } },
+    testSources: pluginTest,
+  }).length === 0, 'override-esm: a moduleNameMapper pin to the CJS entry escapes too');
+  assert(overrideVersionsFor({ a: { b: { xcode: { uuid: '^11.1.1' } } } }, 'uuid').length === 1,
+    'override-esm: a nested overrides tree is walked');
+  assert(rangeMinMajor('^11.1.1') === 11 && rangeMinMajor('~7.0.3') === 7 && rangeMinMajor('11.1.1') === 11,
+    'override-esm: the range major parses for the shapes npm writes');
+  assert(rangeMinMajor('*') === null && rangeMinMajor(undefined) === null,
+    'override-esm: an unparseable range fails closed (no false fire)');
 
   // copy/retired-voice-phrases
   assert(detectRetiredVoicePhrases('On-device AI reads the receipt.').length === 1,
