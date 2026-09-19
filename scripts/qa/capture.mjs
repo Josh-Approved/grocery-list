@@ -52,6 +52,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { withHeavyLock, concurrency } from '../lib/heavy.mjs';
+import { checkPrebuildPosture } from '../lib/cng-prebuild-preflight.mjs';
 // The build cache key lives in one place so anything else that asks "is this
 // cached build current?" (the ship path's upgrade-harness slot drop) agrees
 // with us instead of guessing — scripts/qa/source-hash.mjs.
@@ -139,6 +140,19 @@ async function buildArtifact() {
   if (flags.has('--no-build') || (hit && !flags.has('--rebuild'))) {
     console.log(`\n› build — cache ${hit ? 'HIT' : '(forced reuse)'} (${path.relative(appDir, outPath)}); skipping eas build.`);
     return outPath;
+  }
+
+  // Leftover-prebuild preflight (ticket e2e-prebuild-bricks-eas-build). An
+  // untracked ios/ or android/ dir makes EAS switch to the BARE workflow, which
+  // on a runtimeVersion policy is a hard failure whose message never mentions a
+  // directory — a capture run would burn the whole build for a baffling error.
+  // Checked here rather than at startup so a cache HIT (no build) never trips it.
+  if (!dry) {
+    const posture = checkPrebuildPosture(appDir);
+    if (!posture.ok) {
+      console.error(`\n  ✗ ${posture.message}`);
+      process.exit(1);
+    }
   }
 
   // EAS_LOCAL_BUILD_WORKINGDIR avoids the /tmp symlink Metro-entry bug (factory
