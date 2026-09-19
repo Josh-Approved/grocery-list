@@ -48,6 +48,23 @@ export function extendPaper(img, dockFrac) {
   return { width, height, data: out };
 }
 
+/**
+ * Decide whether an input path is usable, without touching the disk.
+ * `probe(p)` → { exists:boolean, isFile:boolean }.
+ * Returns null when fine, or an error string naming the path it tried.
+ *
+ * Sibling of app-dir.mjs's resolveAppDir: this tool takes a PNG, not an app
+ * directory, so it can't use that resolver — but it shared the same silent-green
+ * shape (ticket qa-tools-exit0-on-bad-app-path). A misresolved or missing source
+ * used to fall through to the pngjs check and exit 0 with "skipped", so a
+ * recomposite that never happened read exactly like a clean one. Pure.
+ */
+export function checkInputFile(label, p, probe) {
+  const r = probe(p);
+  if (r.isFile) return null;
+  return `${label} "${p}" ${r.exists ? 'is not a file' : 'does not exist'}.`;
+}
+
 /** Paste a smaller RGBA `fab` into `img` at pixel (x0,y0). Pure. Clipped to bounds. */
 export function pasteAt(img, fab, x0, y0) {
   const out = new Uint8Array(img.data);
@@ -90,6 +107,13 @@ function selfTest() {
   const pasted2 = pasteAt(ext, transparent, 0, 0);
   ok(pasted2.data[0] === 255, 'pasteAt skips fully-transparent fab pixels');
 
+  // Input validation — the silent-green hole (ticket qa-tools-exit0-on-bad-app-path).
+  const probe = (p) => ({ exists: p !== '/nope.png', isFile: p === '/real.png' });
+  ok(checkInputFile('capture', '/real.png', probe) === null, 'checkInputFile accepts a real file');
+  ok(/does not exist/.test(checkInputFile('capture', '/nope.png', probe) || ''), 'checkInputFile rejects a missing path');
+  ok(/is not a file/.test(checkInputFile('capture', '/a-dir', probe) || ''), 'checkInputFile rejects a directory');
+  ok((checkInputFile('--fab', '/nope.png', probe) || '').includes('--fab'), 'checkInputFile names which argument was bad');
+
   console.log(failures === 0 ? '\nself-test PASSED' : `\nself-test FAILED (${failures})`);
   process.exit(failures === 0 ? 0 : 1);
 }
@@ -107,6 +131,21 @@ async function main() {
   if (!src) { console.error('Usage: recomposite-tablet.mjs <capture.png> [--dock-frac 0.10] [--fab f.png --fab-corner br] [--out p]'); process.exit(1); }
   const dockFrac = valueOf('--dock-frac') ? Number(valueOf('--dock-frac')) : 0.10;
   const out = valueOf('--out') || src;
+
+  // Validate inputs BEFORE the pngjs probe — a bad path must never reach the
+  // "skipped" exit-0 path and read as a clean recomposite.
+  const probeFile = (p) => {
+    try { return { exists: true, isFile: fs.statSync(p).isFile() }; }
+    catch { return { exists: false, isFile: false }; }
+  };
+  const bad = [
+    checkInputFile('capture', src, probeFile),
+    valueOf('--fab') ? checkInputFile('--fab', valueOf('--fab'), probeFile) : null,
+  ].filter(Boolean);
+  if (bad.length) {
+    for (const b of bad) console.error(`✗ recomposite-tablet: ${b}`);
+    process.exit(2);
+  }
 
   let PNG;
   try { ({ PNG } = await import('pngjs')); }
