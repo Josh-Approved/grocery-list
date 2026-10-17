@@ -1,12 +1,22 @@
-// Canonical Josh Approved review modal.
+// Canonical Josh Approved review surface.
 // Source: josh-approved-factory/templates/review-prompt/ReviewModal.tsx
 // Pairs with reviewPrompt.ts. See README.md for rules and wiring.
 //
+// Since 2026-10-17 the surface is the OS-native in-app rating sheet —
+// SKStoreReviewController on iOS, the Google Play In-App Review flow on Android,
+// both via expo-store-review. The user rates in place, in one tap, without
+// leaving the app; that is what the store leaders in every category do and it is
+// why their rating counts dwarf ours. The custom modal below survives only as
+// the FALLBACK, shown when the native sheet is unavailable on this device
+// (`isAvailableAsync()` false — no Play Store, an unsupported OS — or the
+// request itself fails). The file keeps its name so every mount site, the sync
+// manifest and the `review-prompt/wired` QA rule stay valid.
+//
 // Imports from '../theme' — every Josh Approved app has the design-system
-// tokens synced into src/theme/. Don't reimplement styling here; the modal
+// tokens synced into src/theme/. Don't reimplement styling here; the fallback
 // inherits from the design system so all apps look like siblings.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Modal,
   View,
@@ -17,7 +27,9 @@ import {
   Platform,
   AccessibilityInfo,
 } from 'react-native';
+import * as StoreReview from 'expo-store-review';
 import { markReviewOpened, markReviewPromptShown } from '../storage/reviewPrompt';
+import { logEvent } from '../feedback/log';
 import {
   useTheme,
   fontFamily,
@@ -29,7 +41,31 @@ import {
 } from '../theme';
 import { t } from '../i18n';
 
+/**
+ * Ask the OS for its rating sheet. Resolves true when the request was made —
+ * NOT when a sheet was seen: both platforms decide for themselves whether to
+ * show anything (Apple caps at 3 per 365 days and suppresses in TestFlight;
+ * Google applies an undocumented quota and shows nothing for a build that did
+ * not come from Play) and neither reports back. False means the native path is
+ * unavailable here and the caller should fall back to the custom modal.
+ */
+async function requestNativeReview(): Promise<boolean> {
+  try {
+    if (!(await StoreReview.isAvailableAsync())) return false;
+    await StoreReview.requestReview();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 interface Props {
+  /**
+   * The shell flips this true when the prompt is due. The component then
+   * presents — native sheet first — and calls `onDismiss` itself when the
+   * native request has been made, so the shell needs no knowledge of which
+   * surface was used.
+   */
   visible: boolean;
   onDismiss: () => void;
   /** App name as shown in the title — sentence case, no trademark. */
@@ -75,13 +111,41 @@ export default function ReviewModal({
     };
   }, []);
 
-  // Count this prompt as *shown* the moment it becomes visible — so the
-  // maxPrompts ceiling holds even if the user back-dismisses or kills the app
-  // without tapping "Not now".
+  // Which surface this presentation is using. 'pending' while the native
+  // request is in flight (nothing rendered); 'fallback' renders the modal.
+  const [surface, setSurface] = useState<'pending' | 'fallback'>('pending');
+  // Latest onDismiss without re-running the effect: the shell passes an inline
+  // arrow, so its identity changes every render.
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+
   useEffect(() => {
-    if (visible) {
-      markReviewPromptShown(storageKey);
+    if (!visible) {
+      setSurface('pending');
+      return;
     }
+    let cancelled = false;
+    (async () => {
+      // Count this prompt as *shown* FIRST — before the native request, before
+      // the fallback renders — so the 3-per-install ceiling holds whatever
+      // happens next: a sheet the OS chose not to show, a back-dismiss, an app
+      // kill. None of those paths reach a dismiss handler.
+      await markReviewPromptShown(storageKey);
+      const native = await requestNativeReview();
+      if (cancelled) return;
+      if (native) {
+        // The OS owns the sheet from here. Nothing of ours to render, nothing
+        // to mark: we cannot know whether the user rated.
+        logEvent('review', 'native sheet requested');
+        onDismissRef.current();
+        return;
+      }
+      logEvent('review', 'fallback modal shown');
+      setSurface('fallback');
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [visible, storageKey]);
 
   const handleReview = async () => {
@@ -138,7 +202,7 @@ export default function ReviewModal({
 
   return (
     <Modal
-      visible={visible}
+      visible={visible && surface === 'fallback'}
       transparent
       animationType={reduceMotion ? 'none' : 'fade'}
       statusBarTranslucent

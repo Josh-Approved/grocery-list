@@ -1,6 +1,7 @@
 // Canonical Josh Approved review-prompt storage + trigger logic.
 // Source: josh-approved-factory/templates/review-prompt/reviewPrompt.ts
-// Pairs with ReviewModal.tsx in this folder.
+// Pairs with ReviewModal.tsx (the surface: the OS-native rating sheet, with
+// the custom modal as the fallback) in this folder.
 // See README.md for canonical rules and wiring.
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -30,9 +31,16 @@ export const REVIEW_CONFIG = {
 interface State {
   /** App cold starts counted so far (QA-mode boots are never counted). */
   sessionCount: number;
-  /** Prompts *displayed* — advanced on show, not on dismissal. */
+  /**
+   * Prompts *presented* — advanced the moment the native sheet is requested or
+   * the fallback modal becomes visible, never on dismissal.
+   */
   promptsShown: number;
-  /** The user opened the store's write-review page. Retires this install. */
+  /**
+   * The user opened the store's write-review page from the fallback modal.
+   * Retires this install. The native sheet never sets this: the OS does not
+   * say whether the user rated, so a native request only counts as shown.
+   */
   reviewOpened: boolean;
 }
 
@@ -104,11 +112,17 @@ export async function recordSessionStart(
 }
 
 /**
- * Called by the modal when it becomes visible. Counts the prompt as *shown* so
- * the 3-prompt ceiling holds even if the user back-dismisses or kills the app
- * without tapping "Not now" — those paths never reach a dismiss handler, so the
- * counter must advance on show. It also advances the positional threshold: the
- * next eligible session is `promptAtSessions[promptsShown]`.
+ * Called by ReviewModal the moment it presents — before the native sheet is
+ * requested, or as the fallback modal becomes visible. Counts the prompt as
+ * *shown* so the 3-prompt ceiling holds even if the user back-dismisses or
+ * kills the app without tapping "Not now" — those paths never reach a dismiss
+ * handler, so the counter must advance on show. It also advances the positional
+ * threshold: the next eligible session is `promptAtSessions[promptsShown]`.
+ *
+ * Counting a native *request* (not a confirmed display) is deliberate: the OS
+ * decides whether the sheet actually appears and never tells us, so the request
+ * is the only event we can count. It also keeps us under Apple's own quota —
+ * 3 requests per install ever is inside SKStoreReviewController's 3 per 365 days.
  */
 export async function markReviewPromptShown(storageKey?: string): Promise<void> {
   const state = await load(storageKey);
@@ -117,8 +131,8 @@ export async function markReviewPromptShown(storageKey?: string): Promise<void> 
 }
 
 /**
- * Called by the modal when the user taps "Leave a review." Stops all future
- * prompts. Pair with deep-linking to the store's write-review URL.
+ * Called by the fallback modal when the user taps "Leave a review." Stops all
+ * future prompts. Pair with deep-linking to the store's write-review URL.
  */
 export async function markReviewOpened(storageKey?: string): Promise<void> {
   const state = await load(storageKey);
@@ -133,4 +147,45 @@ export async function resetReviewPrompt(storageKey?: string): Promise<void> {
   } catch {
     // Best-effort.
   }
+}
+
+// ---- Success moments -------------------------------------------------------
+//
+// The session count decides WHETHER an install is asked this boot; a success
+// moment decides WHEN in the boot. Both stores say the same thing — ask right
+// after the user has just got something done, not while they are on their way
+// to doing it — and a launch-time ask is the opposite of that. An app that has
+// a clear "done" state (a finished workout, a saved list, an export that landed)
+// opts in with `review={{ …, waitForSuccessMoment: true }}` on <AppShell>, and
+// calls `onSuccessMoment()` from that state. When the session is eligible, the
+// shell holds the prompt until the first such call; if the app never reaches a
+// success moment this boot, the prompt rolls to the next eligible session
+// (eligibility is a `>=` check, so nothing is lost). An app that does not opt
+// in keeps the post-splash timing.
+//
+// This is a plain module-level channel rather than React context so a hook deep
+// in a screen (e.g. a playback hook) can call it without plumbing. One
+// subscriber — the shell — ever listens.
+
+type SuccessMomentListener = () => void;
+let successMomentListener: SuccessMomentListener | null = null;
+
+/**
+ * App-facing. Call it at a natural success moment. Safe to call freely and
+ * often: it does nothing unless the shell is holding an eligible prompt for
+ * this session, and only the first call in an eligible session presents.
+ */
+export function onSuccessMoment(): void {
+  successMomentListener?.();
+}
+
+/**
+ * Shell-facing. Registers the single listener; returns the unsubscribe. Apps
+ * never call this — `AppShell` does, when given a `review` prop.
+ */
+export function subscribeSuccessMoments(listener: SuccessMomentListener): () => void {
+  successMomentListener = listener;
+  return () => {
+    if (successMomentListener === listener) successMomentListener = null;
+  };
 }

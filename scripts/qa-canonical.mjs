@@ -3483,6 +3483,22 @@ const sessionStartWired = (shellTexts) =>
 const reviewModalMounted = (otherTexts) =>
   otherTexts.some((t) => typeof t === 'string' && /<\s*ReviewModal\b/.test(t));
 
+// Pure core (self-tested): did the app opt into success-moment presentation?
+// `review={{ …, waitForSuccessMoment: true }}` on <AppShell> tells the shell to
+// HOLD an eligible prompt until the app calls onSuccessMoment() (2026-10-17).
+// Read from App.tsx as a whole, not just the tag: apps commonly hoist the prop
+// into a `const REVIEW = {…}` above the component (workout-timer does).
+const successMomentDeclared = (appTexts) =>
+  appTexts.some((t) => typeof t === 'string' && /\bwaitForSuccessMoment\s*:\s*true\b/.test(t));
+
+// Pure core (self-tested): does anything in the app actually CALL
+// onSuccessMoment()? An app that declares waitForSuccessMoment and never calls
+// the hook has re-created the pre-2026-07-27 dead prompt — the shell arms every
+// eligible session and nothing ever fires it. The module's own definition and
+// the shell's subscription are not calls.
+const successMomentCalled = (otherTexts) =>
+  otherTexts.some((t) => typeof t === 'string' && /(?<!function\s)\bonSuccessMoment\s*\(\s*\)/.test(t));
+
 // PROMOTED WARN→FAIL fleet-wide (2026-07-27). A synced-but-dead engagement
 // module (review prompt / tip jar) is a shipped module the user can never see —
 // the same defect class as a feature that only works on one platform, and it
@@ -3505,6 +3521,7 @@ const ruleReviewPromptWired = () => {
   const appEntry = [join(appDir, 'App.tsx'), join(appDir, 'App.js')].map((f) => readText(f) || '');
   const shellTexts = [readText(join(appDir, 'src', 'shell', 'AppShell.tsx')) || '', ...appEntry];
   const modal = join(appDir, 'src', 'components', 'ReviewModal.tsx');
+  const shellFile = join(appDir, 'src', 'shell', 'AppShell.tsx');
   const others = srcSourceFiles().filter((f) => f !== modal).map((f) => readText(f) || '');
   const missing = [];
   if (!reviewPropPassed(appEntry)) {
@@ -3516,12 +3533,25 @@ const ruleReviewPromptWired = () => {
   if (!reviewModalMounted(others)) {
     missing.push('<ReviewModal …/> is never rendered outside its own file — even a firing trigger shows the user nothing');
   }
+  const atSuccessMoment = successMomentDeclared(appEntry);
+  if (atSuccessMoment) {
+    // Opted into success-moment presentation: the shell now HOLDS every
+    // eligible prompt for a hook call, so the call site must exist.
+    const callers = srcSourceFiles()
+      .filter((f) => f !== mod && f !== shellFile)
+      .map((f) => readText(f) || '');
+    if (!successMomentCalled(callers)) {
+      missing.push('waitForSuccessMoment: true is set in App.tsx but nothing in src/** calls onSuccessMoment() — the shell arms every eligible session and nothing ever presents the prompt (the dead-prompt shape, back again). Call it at the app\'s real "done" state, or drop the flag');
+    }
+  }
   if (missing.length) {
     return engagementSev(id,
       'Review prompt is dead: src/storage/reviewPrompt.ts exists but the module is not wired end to end. Wiring is one prop — pass review={{ appName, iosAppStoreId, androidPackageName }} to <AppShell> (and re-sync app-shell so the shell runs the session trigger and mounts <ReviewModal>), or delete the module',
       missing);
   }
-  return pass(id, 'Review prompt is wired end to end (review= prop on <AppShell> + shell calls recordSessionStart + <ReviewModal> mounted)');
+  return pass(id, atSuccessMoment
+    ? 'Review prompt is wired end to end (review= prop on <AppShell> + shell calls recordSessionStart + <ReviewModal> mounted) and presents at a success moment (onSuccessMoment() is called)'
+    : 'Review prompt is wired end to end (review= prop on <AppShell> + shell calls recordSessionStart + <ReviewModal> mounted)');
 };
 
 const ruleTipJarWired = () => {
@@ -4031,6 +4061,22 @@ export const es = {
     'review-prompt/wired: a trigger call with no mount is still dead (the known-bad tend shape)');
   assert(reviewModalMounted([`<ReviewModalRow/>`]) === false,
     'review-prompt/wired: a same-prefix component (<ReviewModalRow>) is not a mount');
+  // The success-moment half (2026-10-17) — declared in App.tsx, it must be
+  // called somewhere, or the shell holds every eligible prompt forever.
+  assert(successMomentDeclared([`<AppShell ready={r} review={{ appName: 'W', iosAppStoreId: '1', androidPackageName: 'x', waitForSuccessMoment: true }}>`]) === true,
+    'review-prompt/wired: waitForSuccessMoment: true inside the review prop is detected → success-moment presentation');
+  assert(successMomentDeclared([`const REVIEW = {\n  appName: 'W',\n  waitForSuccessMoment: true,\n};\n<AppShell ready={r} review={REVIEW}>`]) === true,
+    'review-prompt/wired: the flag is found on a hoisted review constant too (the workout-timer shape)');
+  assert(successMomentDeclared([`<AppShell ready={r} review={{ appName: 'W', iosAppStoreId: '1', androidPackageName: 'x' }}>`]) === false,
+    'review-prompt/wired: a review prop without the flag → post-splash presentation (no call site required)');
+  assert(successMomentDeclared([`// waitForSuccessMoment: false — this app has no done state`]) === false,
+    'review-prompt/wired: an explicit false is not a declaration');
+  assert(successMomentCalled([`const done = () => { playComplete(); onSuccessMoment(); };`]) === true,
+    'review-prompt/wired: a bare onSuccessMoment() call is a call site');
+  assert(successMomentCalled([`import { onSuccessMoment } from '../storage/reviewPrompt';`]) === false,
+    'review-prompt/wired: an import alone is not a call site');
+  assert(successMomentCalled([`export function onSuccessMoment(): void { listener?.(); }`]) === false,
+    'review-prompt/wired: the module\'s own definition is not a call site');
 
   // theme/appearance-not-pinned — the known-bad is workout-timer's real pre-fix
   // app.json: a perfect JS appearance chain under a native pin that overrode it.

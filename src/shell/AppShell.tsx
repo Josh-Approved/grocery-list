@@ -15,6 +15,7 @@
  *       appName: 'Grocery list',
  *       iosAppStoreId: '6779417031',
  *       androidPackageName: 'com.joshapproved.grocerylist',
+ *       waitForSuccessMoment: true, // optional — see the `review` prop below
  *     }}
  *     launchedAt="2026-08-09"
  *   >
@@ -47,13 +48,14 @@ import { FeedbackProvider } from '../feedback/FeedbackProvider';
 import { buildNavTheme } from './navTheme';
 import { useApplyThemePreference } from '../theme';
 import { useApplyLocalePreference, useLocaleVersion } from '../i18n/localePreference';
-import { recordSessionStart } from '../storage/reviewPrompt';
+import { recordSessionStart, subscribeSuccessMoments } from '../storage/reviewPrompt';
 import { shouldShowLaunchNotice } from '../storage/launchNotice';
 import { logEvent, logNav } from '../feedback/log';
 import { QA_MODE } from '../qa/qaMode';
 
-/** Beat between the splash finishing and the review prompt appearing, so the
- *  card fades in on a settled screen instead of racing the splash out. */
+/** Beat between the trigger (splash finishing, or a success moment) and the
+ *  review prompt appearing, so the sheet lands on a settled screen instead of
+ *  racing the splash out or a completion cue. */
 const REVIEW_PROMPT_DELAY_MS = 800;
 
 /**
@@ -100,6 +102,17 @@ type Props = {
     iosAppStoreId: string;
     /** Android applicationId (e.g. "com.joshapproved.grocerylist"). */
     androidPackageName: string;
+    /**
+     * Present at the app's first success moment of the session instead of
+     * right after the splash. Opt in ONLY if the app also calls
+     * `onSuccessMoment()` (from `src/storage/reviewPrompt`) at a real "done"
+     * state — a finished workout, a saved list, an export that landed. The
+     * session gate is unchanged either way; this only moves WHEN in an
+     * eligible boot the ask happens. If no success moment occurs in an
+     * eligible boot, the prompt rolls to the next eligible session. Declared
+     * but never called is the dead-prompt defect `review-prompt/wired` fails.
+     */
+    waitForSuccessMoment?: boolean;
   };
   /**
    * The app's public launch date as an ISO date string ("2026-08-09"). Pass it
@@ -157,13 +170,24 @@ export function AppShell({ ready, children, navigationRef, review, launchedAt }:
   //      yielding — the session is still counted, and eligibility is a `>=`
   //      check on that count, so the review prompt simply re-fires the next
   //      session.
+  //   4. WHEN, not whether: with `review.waitForSuccessMoment`, an eligible
+  //      boot does not present after the splash. It ARMS, and the first
+  //      `onSuccessMoment()` the app fires this session presents (after the
+  //      same short beat). Both stores ask for exactly this — a request right
+  //      after the user got something done — and a launch-time ask is the
+  //      opposite of it. The session is already counted, so a boot with no
+  //      success moment simply rolls the ask to the next eligible session.
   const [showReview, setShowReview] = useState(false);
   const [showLaunchNotice, setShowLaunchNotice] = useState(false);
   const sessionCounted = useRef(false);
-  // Depend on the BOOLEAN, never the `review` object: apps pass it as an inline
+  // Set when this boot is eligible AND the app asked to wait for a success
+  // moment. Consumed by the first success moment; never re-armed this boot.
+  const reviewArmed = useRef(false);
+  // Depend on the BOOLEANS, never the `review` object: apps pass it as an inline
   // literal, so its identity changes on every render — depending on it would
   // re-run the effect, and the cleanup would cancel the pending prompt forever.
   const hasReview = !!review;
+  const waitForSuccessMoment = !!review?.waitForSuccessMoment;
   useEffect(() => {
     if (QA_MODE) return;
     if (!hasReview && !launchedAt) return;
@@ -187,6 +211,11 @@ export function AppShell({ ready, children, navigationRef, review, launchedAt }:
         return;
       }
       if (!reviewDue) return;
+      if (waitForSuccessMoment) {
+        reviewArmed.current = true;
+        logEvent('review', 'eligible, waiting for a success moment');
+        return;
+      }
       timer = setTimeout(() => {
         if (cancelled) return;
         logEvent('review', 'prompt shown');
@@ -198,7 +227,27 @@ export function AppShell({ ready, children, navigationRef, review, launchedAt }:
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [hasReview, launchedAt, ready, splashDone]);
+  }, [hasReview, waitForSuccessMoment, launchedAt, ready, splashDone]);
+
+  // The success-moment channel (reviewPrompt.ts § Success moments). Subscribed
+  // for the shell's whole life; the arm flag decides whether a call does
+  // anything, so an app can fire `onSuccessMoment()` as often as it likes.
+  useEffect(() => {
+    if (!hasReview) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = subscribeSuccessMoments(() => {
+      if (!reviewArmed.current) return;
+      reviewArmed.current = false;
+      timer = setTimeout(() => {
+        logEvent('review', 'prompt shown', { at: 'success moment' });
+        setShowReview(true);
+      }, REVIEW_PROMPT_DELAY_MS);
+    });
+    return () => {
+      unsubscribe();
+      if (timer) clearTimeout(timer);
+    };
+  }, [hasReview]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

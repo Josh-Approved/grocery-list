@@ -22,8 +22,10 @@ import {
   REVIEW_CONFIG,
   markReviewOpened,
   markReviewPromptShown,
+  onSuccessMoment,
   recordSessionStart,
   resetReviewPrompt,
+  subscribeSuccessMoments,
 } from '../reviewPrompt';
 
 const STORE_KEY = '@josh-approved/review';
@@ -143,5 +145,52 @@ describe('corrupt storage', () => {
   it('falls back to a clean state rather than crashing a cold start', async () => {
     await AsyncStorage.setItem(STORE_KEY, '{not json');
     expect(await runSessions(3)).toEqual([3]);
+  });
+});
+
+describe('success-moment channel (WHEN in an eligible session, never WHETHER)', () => {
+  it('is a no-op with nobody listening — apps can call it freely', () => {
+    expect(() => onSuccessMoment()).not.toThrow();
+  });
+
+  it('delivers each call to the subscribed shell listener', () => {
+    const listener = jest.fn();
+    const unsubscribe = subscribeSuccessMoments(listener);
+    onSuccessMoment();
+    onSuccessMoment();
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
+
+  it('stops delivering after unsubscribe', () => {
+    const listener = jest.fn();
+    const unsubscribe = subscribeSuccessMoments(listener);
+    unsubscribe();
+    onSuccessMoment();
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('a stale unsubscribe cannot knock out a newer subscriber', () => {
+    const first = jest.fn();
+    const second = jest.fn();
+    const unsubscribeFirst = subscribeSuccessMoments(first);
+    subscribeSuccessMoments(second);
+    unsubscribeFirst();
+    onSuccessMoment();
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(first).not.toHaveBeenCalled();
+  });
+
+  it('does not touch the session gate — a success moment never counts or spends a prompt', async () => {
+    subscribeSuccessMoments(() => {});
+    onSuccessMoment();
+    onSuccessMoment();
+    // Two sessions in, still not eligible; the third is — exactly as without
+    // any success moments.
+    expect(await recordSessionStart()).toBe(false);
+    expect(await recordSessionStart()).toBe(false);
+    expect(await recordSessionStart()).toBe(true);
+    const raw = await AsyncStorage.getItem(STORE_KEY);
+    expect(JSON.parse(raw as string).promptsShown).toBe(0);
   });
 });
