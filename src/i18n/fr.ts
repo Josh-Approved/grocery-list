@@ -113,7 +113,7 @@ const fr = {
     forgetSuggestion: 'Oublier {name}',
     forgotSuggestion: '{name} oublié',
     swipeToDeleteA11y: 'Retirer {name}',
-    sync: { connected: 'Connecté', offline: 'Hors ligne', syncing: 'Synchronisation…', trouble: 'Pas de synchronisation', hint: 'Synchronisation de la liste partagée. Touchez pour synchroniser.' },
+    sync: { connected: 'Connecté', offline: 'Hors ligne', syncing: 'Synchronisation…', trouble: 'Pas de synchronisation', hint: 'Synchronisation de la liste partagée. Touchez pour synchroniser.', partnerNever: "Rien de l'autre téléphone pour l'instant", partnerSeen: 'Autre téléphone vu {when}', justNow: "à l'instant", minutesAgo: 'il y a {n} min', hoursAgo: 'il y a {n} h', dayAgo: 'il y a 1 jour', daysAgo: 'il y a {n} jours' },
   },
   share: {
     shareThis: 'Partager cette liste',

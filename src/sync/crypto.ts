@@ -62,3 +62,13 @@ export function open(secret: string, sealed: string): string | null {
     return null;
   }
 }
+
+/** Seed for this device's relay signing key on one shared list: 32 bytes
+ *  derived from the secret plus a per-device salt (grocery-list uses the
+ *  device's own local list id — devices never share one). Stable across runs,
+ *  so this device's stored drop-box slot is replaced rather than piled up;
+ *  different per device, so no device can overwrite a partner's slot; a
+ *  different hash input than the key and the channel, so it reveals neither. */
+export function authorSeed(secret: string, deviceSalt: string): Uint8Array {
+  return nacl.hash(decodeUTF8(`author\n${secret}\n${deviceSalt}`)).slice(0, 32);
+}

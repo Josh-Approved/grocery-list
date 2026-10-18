@@ -11,11 +11,18 @@
  * user ("pair once, synced forever"). Devices have different local list ids;
  * the shared secret — not the id — is the join key.
  *
- * COLD-START BACKFILL. Relays are ephemeral couriers — they don't store, so a
- * device that just opened (or just reconnected, or just joined a link) hears
- * nothing until the OTHER side happens to edit. That made shared lists look
- * empty/stale until someone touched them. Fixed with a tiny "hello" handshake:
- * on each (re)connect a device announces itself; any peer that hears a hello
+ * STORE-AND-FORWARD (defect grocery-list-20261018-1). State is DEPOSITED in
+ * the drop box as a replaceable event (transport.publishStored: one slot per
+ * device per channel, relays keep the latest copy), so a phone that opens
+ * hours or days later receives what its partner left without the partner
+ * being online. Before this, state rode an ephemeral event and a shared list
+ * only synced while BOTH apps were open at the same moment. The slots: `list`
+ * (this list's full state) and `kits` (the kit collection). Only the hello
+ * stays live-only — it means "I am here now" and must never occupy a slot.
+ *
+ * COLD-START, BOTH ONLINE. The deposit covers the partner-is-closed case; the
+ * "hello" handshake still covers the partner-is-open-right-now case: on each
+ * (re)connect a device announces itself; any peer that hears a hello
  * force-republishes its current full state, so the newcomer converges within
  * seconds instead of waiting for an edit. Hello carries no list data; old app
  * versions simply ignore it (no `shareIdentity`), so it is wire-compatible.
@@ -31,7 +38,7 @@ import { useListsStore } from '../store/lists';
 import { useKitsStore } from '../store/kits';
 import type { GroceryList } from '../data/list';
 import type { Kit } from '../data/kit';
-import { channelId, seal, open } from './crypto';
+import { authorSeed, channelId, seal, open } from './crypto';
 import { logEvent, logWarn } from '../feedback/log';
 import { DropBoxTransport } from './transport';
 import {
@@ -55,16 +62,21 @@ const HELLO_DEBOUNCE_MS = 3000;
  *  torn down entirely inside this module, so the wiring is otherwise unreachable. */
 export interface EngineTransport {
   start(): void;
+  /** Live only (forwarded to peers listening now, stored nowhere). */
   publish(ciphertext: string): void;
+  /** Deposited: the drop box keeps this device's latest copy of `slot` for
+   *  anyone who connects later — and fans it out live too. */
+  publishStored(ciphertext: string, slot: string): void;
   close(): void;
 }
 
 type TransportFactory = (
   channel: string,
-  onMessage: (ciphertext: string) => void,
+  onMessage: (ciphertext: string, at?: number) => void,
   onReconnect: () => void,
   onStatus: (openRelays: number) => void,
-  onPublishResult?: (delivered: boolean, reason: string) => void
+  onPublishResult?: (delivered: boolean, reason: string) => void,
+  seed?: Uint8Array
 ) => EngineTransport;
 
 let makeTransport: TransportFactory = (
@@ -72,9 +84,10 @@ let makeTransport: TransportFactory = (
   onMessage,
   onReconnect,
   onStatus,
-  onPublishResult
+  onPublishResult,
+  seed
 ) =>
-  new DropBoxTransport(channel, onMessage, onReconnect, onStatus, onPublishResult);
+  new DropBoxTransport(channel, onMessage, onReconnect, onStatus, onPublishResult, seed);
 
 /** TEST-ONLY seam: swap the transport factory (e.g. for a recording fake) and
  *  get back a restore fn. Production never calls this — the default factory
@@ -126,12 +139,15 @@ function chTag(secret: string): string {
   return channelId(secret).slice(0, 8);
 }
 
-function ensureChannel(secret: string): Channel {
+/** @param deviceSalt this device's own local id for the list — devices never
+ *  share one, so it makes the relay signing key (and so the stored slot) per
+ *  device without persisting anything new. */
+function ensureChannel(secret: string, deviceSalt: string): Channel {
   let ch = channels.get(secret);
   if (ch) return ch;
   const transport = makeTransport(
     channelId(secret),
-    (ct) => receive(secret, ct),
+    (ct, at) => receive(secret, ct, at),
     () => onReconnect(secret),
     (openRelays) => {
       logEvent('sync', openRelays > 0 ? 'connected' : 'offline', {
@@ -151,7 +167,8 @@ function ensureChannel(secret: string): Channel {
         logWarn('sync', 'publish was not delivered', { ch: chTag(secret), delivered: false });
       }
       markDelivered(secret, delivered);
-    }
+    },
+    authorSeed(secret, deviceSalt)
   );
   // Stryker disable next-line StringLiteral: equivalent mutant, lastSent exists only to be compared against a serialized list payload, which can never equal the sentinel
   ch = { transport, lastSent: '', timer: null, lastHelloAt: 0 };
@@ -161,8 +178,11 @@ function ensureChannel(secret: string): Channel {
 }
 
 /** Handle one decrypted peer message: a hello (→ re-publish our state) or a
- *  state copy (→ merge it). */
-function receive(secret: string, ct: string): void {
+ *  state copy (→ merge it). `at` is when the peer published it — for a slot
+ *  replayed from the drop box that can be days ago, and that is what "last
+ *  heard from the other phone" must say. */
+function receive(secret: string, ct: string, at?: number): void {
+  const heardAt = at ?? Date.now();
   const json = open(secret, ct);
   if (!json) {
     // Undecryptable on a channel we hold the key for: a partner on a different
@@ -192,7 +212,7 @@ function receive(secret: string, ct: string): void {
       const kits = (obj as { kits?: Kit[] }).kits;
       if (Array.isArray(kits)) {
         useKitsStore.getState().mergeRemoteKits(kits);
-        markReceived(secret, Date.now());
+        markReceived(secret, heardAt);
       }
       return;
     }
@@ -205,7 +225,7 @@ function receive(secret: string, ct: string): void {
       items: Array.isArray(remote.items) ? remote.items.length : 0,
     });
     useListsStore.getState().mergeRemoteList(remote);
-    markReceived(secret, Date.now());
+    markReceived(secret, heardAt);
   }
 }
 
@@ -230,9 +250,10 @@ function sendHello(secret: string): void {
   ch.transport.publish(seal(secret, HELLO));
 }
 
-/** Publish our current full state immediately, bypassing the change-dedupe —
+/** Deposit our current full state immediately, bypassing the change-dedupe —
  *  used to answer a peer's hello (its copy may be empty/stale even though ours
- *  hasn't changed since we last sent). */
+ *  hasn't changed since we last sent) and on every (re)connect, so the drop
+ *  box always holds this device's latest copy. */
 function forcePublish(secret: string): void {
   const ch = channels.get(secret);
   if (!ch) return;
@@ -250,7 +271,7 @@ function forcePublish(secret: string): void {
   }
   const payload = JSON.stringify(list);
   ch.lastSent = payload;
-  ch.transport.publish(seal(secret, payload));
+  ch.transport.publishStored(seal(secret, payload), 'list');
   markSent(secret, Date.now());
 }
 
@@ -259,7 +280,7 @@ function forcePublish(secret: string): void {
 function forcePublishKitsOn(secret: string): void {
   const ch = channels.get(secret);
   if (!ch) return;
-  ch.transport.publish(seal(secret, kitsPayload()));
+  ch.transport.publishStored(seal(secret, kitsPayload()), 'kits');
   markSent(secret, Date.now());
 }
 
@@ -268,7 +289,7 @@ function publishKitsNow(): void {
   const payload = kitsPayload();
   lastKitsPayload = payload;
   for (const [secret, ch] of channels) {
-    ch.transport.publish(seal(secret, payload));
+    ch.transport.publishStored(seal(secret, payload), 'kits');
     markSent(secret, Date.now());
   }
 }
@@ -292,7 +313,7 @@ function scheduleKitsPublish(): void {
 }
 
 function publish(secret: string, list: GroceryList): void {
-  const ch = ensureChannel(secret);
+  const ch = ensureChannel(secret, list.id);
   const payload = JSON.stringify(list);
   if (payload === ch.lastSent) return; // nothing changed since last send
   // Braced on purpose — see scheduleKitsPublish above.
@@ -302,7 +323,7 @@ function publish(secret: string, list: GroceryList): void {
   }
   ch.timer = setTimeout(() => {
     ch.lastSent = payload;
-    ch.transport.publish(seal(secret, payload));
+    ch.transport.publishStored(seal(secret, payload), 'list');
     markSent(secret, Date.now());
   }, 700);
 }

@@ -1,0 +1,29 @@
+# E2E two-device sync — ANDROID pass 7: relaunch ALONE after being killed (NO
+# clearState). iOS is dead too, so no hello can be answered: the "Papaya" it
+# added must arrive from the relay's stored deposit — store-and-forward
+# (defect grocery-list-20261018-1: "shared list only syncs while both phones
+# have the app open at the same time"). The count reaching 15 proves the add
+# landed (3 of 15 checked: Mango made 14), and the row is scrolled to rather
+# than asserted in place because virtualization keeps off-screen rows out of
+# the accessibility tree. "Papaya" is NOT a category keyword, so it files under
+# Other at the BOTTOM of the list — scroll DOWN (Mango, a Produce keyword, sat
+# at the top).
+appId: com.joshapproved.grocerylist
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      text: "Weekly shop.*"
+    timeout: 20000
+- tapOn:
+    text: "Weekly shop.*"
+- extendedWaitUntil:
+    visible:
+      text: ".*3 of 15 checked.*"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Papaya"
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: qa/captures/e2e-sync/13-android-stored-papaya

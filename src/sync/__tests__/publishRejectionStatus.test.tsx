@@ -234,7 +234,7 @@ describe('sync status honesty: rejection reads "Not syncing", never "Connected"'
     restore = __setTransportFactory((_channel, _onMessage, _onReconnect, st, pr) => {
       onStatus = st;
       onPublishResult = pr;
-      const fake: EngineTransport = { start() {}, publish() {}, close() {} };
+      const fake: EngineTransport = { start() {}, publish() {}, publishStored() {}, close() {} };
       return fake;
     });
     useListsStore.setState({ lists: [sharedList()], hydrated: true });
@@ -276,17 +276,17 @@ describe('sync status honesty: rejection reads "Not syncing", never "Connected"'
     await render(<SyncStatusBar secret={SECRET} />);
 
     // Healthy connection: honest "Connected".
-    expect(screen.getByText('Connected')).toBeTruthy();
+    expect(screen.getByText(/^Connected/)).toBeTruthy();
 
     // Every relay rejects our publishes → the label must stop claiming
     // "Connected" (the reported defect) and read "Not syncing".
     await act(async () => onPublishResult!(false, 'rate-limited: slow down'));
-    expect(screen.getByText('Not syncing')).toBeTruthy();
-    expect(screen.queryByText('Connected')).toBeNull();
+    expect(screen.getByText(/^Not syncing/)).toBeTruthy();
+    expect(screen.queryByText(/^Connected/)).toBeNull();
 
     // An accepted publish restores the honest "Connected".
     await act(async () => onPublishResult!(true, ''));
-    expect(screen.getByText('Connected')).toBeTruthy();
-    expect(screen.queryByText('Not syncing')).toBeNull();
+    expect(screen.getByText(/^Connected/)).toBeTruthy();
+    expect(screen.queryByText(/^Not syncing/)).toBeNull();
   });
 });

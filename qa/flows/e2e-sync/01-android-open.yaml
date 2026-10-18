@@ -20,6 +20,6 @@ appId: com.joshapproved.grocerylist
 - assertVisible:
     text: ".*2 of 12 checked.*"
 - assertVisible:
-    text: "Connected"
+    text: "Connected.*"
 - assertNotVisible:
     text: "Avocado"

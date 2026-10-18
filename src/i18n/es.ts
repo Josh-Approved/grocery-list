@@ -113,7 +113,7 @@ const es = {
     forgetSuggestion: 'Olvidar {name}',
     forgotSuggestion: 'Se olvidó {name}',
     swipeToDeleteA11y: 'Quitar {name}',
-    sync: { connected: 'Conectado', offline: 'Sin conexión', syncing: 'Sincronizando…', trouble: 'Sin sincronizar', hint: 'Sincronización de lista compartida. Toca para sincronizar ahora.' },
+    sync: { connected: 'Conectado', offline: 'Sin conexión', syncing: 'Sincronizando…', trouble: 'Sin sincronizar', hint: 'Sincronización de lista compartida. Toca para sincronizar ahora.', partnerNever: 'Nada del otro teléfono todavía', partnerSeen: 'Otro teléfono visto {when}', justNow: 'ahora mismo', minutesAgo: 'hace {n} min', hoursAgo: 'hace {n} h', dayAgo: 'hace 1 día', daysAgo: 'hace {n} días' },
   },
   share: {
     shareThis: 'Compartir esta lista',

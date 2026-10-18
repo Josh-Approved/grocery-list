@@ -45,6 +45,13 @@ h_reset_android() {
   h_assert_android_online
   adb -s "$ANDROID_SERIAL" uninstall "$APP_ID" >/dev/null 2>&1 || true
   adb -s "$ANDROID_SERIAL" install -r "$ANDROID_APK" >/dev/null
+  # The debug build loads its JS from localhost:8081 ON THE EMULATOR, which is
+  # only Metro if the port is reversed to the host. `expo run:android` sets
+  # this up as a side effect; a run that installs the apk itself (this one)
+  # must do it too, or the app boots to "Unable to load script" and phase 1
+  # fails on "Weekly shop" — which reads exactly like a sync defect. Cost a
+  # run on 2026-10-18.
+  adb -s "$ANDROID_SERIAL" reverse tcp:8081 tcp:8081 >/dev/null 2>&1 || true
   adb -s "$ANDROID_SERIAL" shell am start -n "$APP_ID/.MainActivity" >/dev/null
   sleep 20
   adb -s "$ANDROID_SERIAL" shell am force-stop "$APP_ID"
@@ -54,6 +61,10 @@ h_reset_android() {
 }
 
 h_ios_terminate() { xcrun simctl terminate "$IOS_UDID" "$APP_ID" 2>/dev/null || true; }
+# Kill the Android app (state kept — NOT pm clear). The store-and-forward phase
+# needs a partner that is genuinely closed, not backgrounded: a backgrounded RN
+# app keeps its relay sockets for a while and would answer a hello.
+h_android_terminate() { adb -s "$ANDROID_SERIAL" shell am force-stop "$APP_ID" >/dev/null 2>&1 || true; }
 
 h_android_offline() {
   adb -s "$ANDROID_SERIAL" shell svc wifi disable
@@ -113,6 +124,19 @@ h_start_relay() {
   echo "mini-relay pid=$_RELAY_PID on ws://127.0.0.1:$RELAY_PORT"
 }
 h_stop_relay() { [ -n "$_RELAY_PID" ] && kill "$_RELAY_PID" 2>/dev/null || true; }
+# A FRESH relay for this run: kill any mini-relay already on RELAY_PORT, then
+# start a new one. Mandatory since store-and-forward (2026-10-18): the relay
+# KEEPS each device's latest deposit, so a relay left running from the last
+# run hands a freshly reinstalled device the previous run's whole end state
+# within seconds of its first launch — "Bananas" is already checked, Mango and
+# Papaya are already there — and phase 1's "fresh baseline" fails in a way that
+# reads exactly like a sync defect. That is the feature working; the harness
+# just has to start from an empty drop box. (Cost a run on 2026-10-18.)
+h_fresh_relay() {
+  pkill -f "mini-relay.mjs --port $RELAY_PORT" 2>/dev/null || true
+  sleep 1
+  h_start_relay "$@"
+}
 
 # --- chaos lifecycle ---------------------------------------------------------
 # Boots toxiproxy + mini-relay behind CHAOS_PORT and runs a NAMED scenario's

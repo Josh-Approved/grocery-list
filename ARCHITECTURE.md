@@ -73,9 +73,16 @@ This is the heart of the app and where a change is most likely to bite. Three
 layers, bottom to top:
 
 1. **Transport: `sync/transport.ts`.** A small swarm of free public Nostr
-   relays. We publish *ephemeral* events (relays relay them, don't store them) to
-   several relays at once and need only one to deliver. A per-run throwaway key
-   signs events; it identifies nothing and is never saved. Studio cost: zero.
+   relays, to several at once; only one needs to deliver. Two kinds of event:
+   the "hello" handshake is *ephemeral* (kind 20001 — relays forward it, keep
+   nothing); the list state itself is a *deposit* (kind 30078, parameterized
+   replaceable — each relay keeps this device's latest sealed copy per list and
+   replays it to whoever connects later, so a phone that opens days later gets
+   its partner's edits without the partner being online — store-and-forward,
+   defect grocery-list-20261018-1). The signing key is derived from the list
+   secret plus this device's local list id: stable per device so its deposit is
+   replaced rather than piled up, different per device so nobody overwrites a
+   partner's slot, and it identifies nothing. Studio cost: zero.
 2. **Encryption: `sync/crypto.ts`.** Everything leaving the device is sealed
    with NaCl secretbox under a key derived from the list's shared secret. Relays
    see only ciphertext under a random-looking channel id derived from a

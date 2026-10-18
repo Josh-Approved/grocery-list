@@ -4,9 +4,14 @@
  *
  * Implements the NIP-01 subset the app's DropBoxTransport speaks: EVENT
  * publish → NIP-20 ["OK"] reply → broadcast to every OTHER subscriber whose
- * REQ filter (kinds + #t tag) matches. Ephemeral like the public relays the
- * app uses: nothing is stored, so the cold-start "hello" backfill path is
- * exercised exactly as in production.
+ * REQ filters (kinds + #t tag + since; several filters per REQ) match. Like
+ * the public relays the app uses it keeps NOTHING for ephemeral kinds
+ * (20000–29999: the "hello"), and keeps exactly the LATEST event per
+ * (pubkey, kind, `d` tag) for parameterized-replaceable kinds (30000–39999:
+ * the deposited list state), replaying those to a later REQ before EOSE. An
+ * older event for an occupied slot is refused with OK=false, as real relays
+ * do. So both production paths — the live hello backfill and the
+ * store-and-forward "partner was closed" path — run exactly as in production.
  *
  * --max-bytes <n> makes it reject oversized events with OK=false, mirroring
  * public relays' event-size limits — used to verify the app SURFACES a
@@ -43,22 +48,32 @@ const PORT = flag('port', 7447);
 const MAX_BYTES = flag('max-bytes', 0); // 0 = unlimited
 
 const wss = new WebSocketServer({ port: PORT });
-/** ws -> Map<subId, filter> */
+/** ws -> Map<subId, filter[]> */
 const subs = new Map();
+/** `${pubkey}:${kind}:${d}` -> latest replaceable event (NIP-33 slots). */
+const slots = new Map();
 let eventCount = 0;
+
+const isEphemeral = (kind) => kind >= 20000 && kind < 30000;
+const isReplaceable = (kind) => kind >= 30000 && kind < 40000;
+const dTag = (ev) => (ev.tags ?? []).find((t) => t[0] === 'd')?.[1] ?? '';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 function matches(filter, ev) {
   if (filter.kinds && !filter.kinds.includes(ev.kind)) return false;
-  const tags = filter['#t'];
-  if (tags) {
-    const evTags = (ev.tags ?? []).filter((t) => t[0] === 't').map((t) => t[1]);
-    if (!tags.some((t) => evTags.includes(t))) return false;
+  if (filter.authors && !filter.authors.includes(ev.pubkey)) return false;
+  for (const key of Object.keys(filter)) {
+    if (!key.startsWith('#')) continue;
+    const letter = key.slice(1);
+    const evTags = (ev.tags ?? []).filter((t) => t[0] === letter).map((t) => t[1]);
+    if (!filter[key].some((t) => evTags.includes(t))) return false;
   }
   if (filter.since && ev.created_at < filter.since) return false;
+  if (filter.until && ev.created_at > filter.until) return false;
   return true;
 }
+const matchesAny = (filters, ev) => filters.some((f) => matches(f, ev));
 
 wss.on('connection', (ws) => {
   subs.set(ws, new Map());
@@ -73,8 +88,17 @@ wss.on('connection', (ws) => {
     }
     if (!Array.isArray(msg)) return;
     if (msg[0] === 'REQ') {
-      const [, subId, filter] = msg;
-      subs.get(ws)?.set(subId, filter ?? {});
+      const [, subId, ...filters] = msg;
+      const fs = filters.length ? filters : [{}];
+      subs.get(ws)?.set(subId, fs);
+      // Replay the stored slots this subscription can see (newest first), then
+      // EOSE — the store-and-forward path a phone takes when it opens alone.
+      const stored = [...slots.values()]
+        .filter((ev) => matchesAny(fs, ev))
+        .sort((a, b) => b.created_at - a.created_at);
+      const limit = Math.min(...fs.map((f) => f.limit ?? Infinity));
+      for (const ev of stored.slice(0, limit)) ws.send(JSON.stringify(['EVENT', subId, ev]));
+      if (stored.length) log(`replayed ${Math.min(stored.length, limit)} stored event(s) to ${subId}`);
       ws.send(JSON.stringify(['EOSE', subId]));
       return;
     }
@@ -91,14 +115,27 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify(['OK', ev.id, false, `invalid: event too large (${size} bytes)`]));
         return;
       }
+      if (isReplaceable(ev.kind)) {
+        const key = `${ev.pubkey}:${ev.kind}:${dTag(ev)}`;
+        const have = slots.get(key);
+        if (have && have.created_at > ev.created_at) {
+          log(`REFUSE older event ${ev.id.slice(0, 8)} for slot ${key.slice(0, 8)}…`);
+          ws.send(JSON.stringify(['OK', ev.id, false, 'replaced: have newer event']));
+          return;
+        }
+        slots.set(key, ev);
+      }
       eventCount += 1;
-      log(`event #${eventCount} ${ev.id.slice(0, 8)} kind=${ev.kind} ${size}B`);
+      log(
+        `event #${eventCount} ${ev.id.slice(0, 8)} kind=${ev.kind} ${size}B` +
+          (isReplaceable(ev.kind) ? ' (stored)' : isEphemeral(ev.kind) ? ' (ephemeral)' : '')
+      );
       ws.send(JSON.stringify(['OK', ev.id, true, '']));
-      // Ephemeral broadcast to every other matching subscriber.
+      // Live broadcast to every other matching subscriber.
       for (const [client, clientSubs] of subs) {
         if (client === ws || client.readyState !== 1) continue;
-        for (const [subId, filter] of clientSubs) {
-          if (matches(filter, ev)) {
+        for (const [subId, filters] of clientSubs) {
+          if (matchesAny(filters, ev)) {
             client.send(JSON.stringify(['EVENT', subId, ev]));
             break;
           }

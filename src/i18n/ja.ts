@@ -114,7 +114,7 @@ const ja = {
     forgetSuggestion: '{name}を候補から外す',
     forgotSuggestion: '{name}を候補から外しました',
     swipeToDeleteA11y: '{name}を削除',
-    sync: { connected: '接続済み', offline: 'オフライン', syncing: '同期中…', trouble: '同期できません', hint: '共有リストの同期。タップして今すぐ同期。' },
+    sync: { connected: '接続済み', offline: 'オフライン', syncing: '同期中…', trouble: '同期できません', hint: '共有リストの同期。タップして今すぐ同期。', partnerNever: 'もう一方の電話からはまだ何もありません', partnerSeen: 'もう一方の電話: {when}', justNow: 'たった今', minutesAgo: '{n}分前', hoursAgo: '{n}時間前', dayAgo: '1日前', daysAgo: '{n}日前' },
   },
   share: {
     shareThis: 'このリストを共有',

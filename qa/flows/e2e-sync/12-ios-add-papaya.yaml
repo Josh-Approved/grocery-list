@@ -1,0 +1,35 @@
+# E2E two-device sync — iOS pass 6: Android has been KILLED by the runner.
+# iOS (still running from pass 5) adds "Papaya" with no partner anywhere —
+# the edit can only reach Android through the drop-box deposit (kind 30078
+# replaceable event the relay keeps). The runner kills iOS right after this,
+# so a live hello can never carry it.
+appId: com.joshapproved.grocerylist
+---
+- scrollUntilVisible:
+    element:
+      text: "Add an item"
+    direction: UP
+    timeout: 15000
+- tapOn:
+    text: "Add an item"
+- extendedWaitUntil:
+    visible:
+      text: "Search or add an item"
+    timeout: 8000
+- tapOn:
+    text: "Search or add an item"
+- inputText: "Papaya"
+- waitForAnimationToEnd:
+    timeout: 800
+- pressKey: Enter
+- tapOn:
+    id: "addSheetDone"
+- extendedWaitUntil:
+    visible:
+      text: "Papaya"
+    timeout: 8000
+# Let the debounced deposit (700ms) leave the device and be OK'd by the relay
+# before the runner kills this app.
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: qa/captures/e2e-sync/12-ios-added-papaya

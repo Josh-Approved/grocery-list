@@ -112,7 +112,7 @@ const it = {
     forgetSuggestion: 'Dimentica {name}',
     forgotSuggestion: '{name} dimenticato',
     swipeToDeleteA11y: 'Rimuovi {name}',
-    sync: { connected: 'Connesso', offline: 'Offline', syncing: 'Sincronizzazione…', trouble: 'Non sincronizza', hint: 'Sincronizzazione lista condivisa. Tocca per sincronizzare ora.' },
+    sync: { connected: 'Connesso', offline: 'Offline', syncing: 'Sincronizzazione…', trouble: 'Non sincronizza', hint: 'Sincronizzazione lista condivisa. Tocca per sincronizzare ora.', partnerNever: "Ancora niente dall'altro telefono", partnerSeen: 'Altro telefono visto {when}', justNow: 'proprio ora', minutesAgo: '{n} min fa', hoursAgo: '{n} h fa', dayAgo: '1 giorno fa', daysAgo: '{n} giorni fa' },
   },
   share: {
     shareThis: 'Condividi questa lista',

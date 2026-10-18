@@ -8,13 +8,18 @@
 #   - R2: a check-off survives a blind concurrent quantity edit made on the
 #     other device while it was OFFLINE (both edits win after reconnect)
 #   - cold-start hello backfill after the app is killed
+#   - STORE-AND-FORWARD (defect grocery-list-20261018-1): an edit made while the
+#     partner is KILLED reaches it when it relaunches ALONE — the editor is
+#     killed too, so no live hello can answer; only the drop-box deposit can
 #
 # The device-reset + per-device Maestro helpers now live in the factory-shared
 # scripts/e2e/harness-lib.sh (module: e2e-two-device); this script is the
-# app-owned ORCHESTRATION (grocery's own 11-flow sequence + offline windows).
+# app-owned ORCHESTRATION (grocery's own 13-flow sequence + offline windows).
 #
 # Prerequisites (the session that authored this ran them by hand):
-#   - mini-relay:  node scripts/e2e/mini-relay.mjs --port 7447
+#   - mini-relay:  started FRESH by this script (h_fresh_relay) — do not run one
+#                  by hand; a relay left over from a previous run still holds
+#                  that run's deposits and poisons the fresh baseline.
 #   - Metro:       EXPO_PUBLIC_SYNC_RELAYS="ws://127.0.0.1:7447,ws://10.0.2.2:7447" \
 #                  EXPO_PUBLIC_QA_MODE=1 EXPO_PUBLIC_QA_SHARE_SECRET=<base64-32B> \
 #                  npx expo start --port 8081 --clear
@@ -66,7 +71,12 @@ source "$E2E_DIR/e2e.config.sh"
 # shellcheck source=/dev/null
 source "$E2E_DIR/harness-lib.sh"
 
-h_step "0/8 Reset both devices"
+h_step "0/9 Fresh relay; reset both devices"
+# The run owns its relay: an EMPTY drop box, stopped on exit. A relay carried
+# over from an earlier run would hand the "fresh" devices that run's end state
+# (store-and-forward keeps every device's latest deposit — see h_fresh_relay).
+h_fresh_relay
+trap 'h_stop_relay; h_android_online_safe' EXIT
 # Kill the iOS app FIRST: a leftover instance from a prior run would answer
 # Android's hello and pollute the fresh baseline within seconds.
 h_ios_terminate
@@ -74,35 +84,45 @@ h_ios_terminate
 # expo-sqlite's first-launch directory creation so fixtures never seed).
 h_reset_android
 
-h_step "1/8 Android: fresh boot, open shared list (baseline)"
+h_step "1/9 Android: fresh boot, open shared list (baseline)"
 h_droid 01-android-open.yaml
 
-h_step "2/8 iOS: fresh boot, add Avocado"
+h_step "2/9 iOS: fresh boot, add Avocado"
 h_ios 02-ios-add.yaml
 
-h_step "3/8 Android: Avocado arrived live"
+h_step "3/9 Android: Avocado arrived live"
 h_droid 03-android-verify-add.yaml
 
-h_step "4/8 iOS: cross off + re-add → qty 1, unchecked (R1)"
+h_step "4/9 iOS: cross off + re-add → qty 1, unchecked (R1)"
 h_ios 04-ios-readd.yaml
 h_droid 05-android-verify-readd.yaml
 
-h_step "5/8 Android OFFLINE; iOS checks Bananas"
+h_step "5/9 Android OFFLINE; iOS checks Bananas"
 h_android_offline
 h_ios 06-ios-check-bananas.yaml
 
-h_step "6/8 Android (offline): blind quantity bump on Bananas"
+h_step "6/9 Android (offline): blind quantity bump on Bananas"
 h_droid 07-android-bump-bananas.yaml
 
-h_step "7/8 Reconnect → BOTH edits survive (R2)"
+h_step "7/9 Reconnect → BOTH edits survive (R2)"
 h_android_online
 h_droid 08-android-verify-merge.yaml
 h_ios 09-ios-verify-merge.yaml
 
-h_step "8/8 Kill iOS; Android adds Mango; relaunch iOS → backfill"
+h_step "8/9 Kill iOS; Android adds Mango; relaunch iOS → backfill"
 h_ios_terminate
 h_droid 10-android-add-mango.yaml
 h_ios 11-ios-verify-backfill.yaml
+
+# The reported defect (grocery-list-20261018-1): before store-and-forward this
+# phase could only pass if both apps were open together. Android is KILLED
+# before iOS edits, iOS is KILLED before Android relaunches, so nothing live
+# can carry the edit — only the deposit the relay kept.
+h_step "9/9 Kill Android; iOS adds Papaya; kill iOS; relaunch Android ALONE → has Papaya"
+h_android_terminate
+h_ios 12-ios-add-papaya.yaml
+h_ios_terminate
+h_droid 13-android-verify-stored.yaml
 
 h_write_report baseline true two-device-baseline
 h_step "PASS — all two-device sync scenarios green"

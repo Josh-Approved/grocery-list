@@ -136,6 +136,13 @@ export const APP_STRINGS = {
       syncing: 'Syncing…',
       trouble: 'Not syncing',
       hint: 'Shared list sync. Tap to sync now.',
+      partnerNever: 'Nothing from the other phone yet',
+      partnerSeen: 'Other phone seen {when}',
+      justNow: 'just now',
+      minutesAgo: '{n} min ago',
+      hoursAgo: '{n} h ago',
+      dayAgo: '1 day ago',
+      daysAgo: '{n} days ago',
     },
   },
   share: {

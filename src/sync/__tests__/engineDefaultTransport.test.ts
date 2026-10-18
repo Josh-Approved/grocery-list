@@ -65,6 +65,9 @@ jest.mock('../transport', () => {
       publish(ct: unknown) {
         t.published.push(ct);
       },
+      publishStored(ct: unknown) {
+        t.published.push(ct);
+      },
       close() {
         t.closed = true;
       },

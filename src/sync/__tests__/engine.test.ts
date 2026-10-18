@@ -76,6 +76,11 @@ class FakeTransport implements EngineTransport {
   publish(ct: string) {
     this.published.push(ct);
   }
+  /** Deposits land in the same recording: these tests pin WHAT the engine
+   *  sends and when; storeAndForward.test.tsx pins the live/stored split. */
+  publishStored(ct: string) {
+    this.published.push(ct);
+  }
   close() {
     this.closed = true;
   }

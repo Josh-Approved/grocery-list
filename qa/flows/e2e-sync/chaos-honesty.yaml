@@ -15,5 +15,5 @@ appId: com.joshapproved.grocerylist
 - waitForAnimationToEnd:
     timeout: 3000
 - assertNotVisible:
-    text: "Connected"
+    text: "Connected.*"
 - takeScreenshot: qa/captures/e2e-sync/chaos-honesty

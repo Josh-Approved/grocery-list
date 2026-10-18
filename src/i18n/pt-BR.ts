@@ -114,7 +114,7 @@ const pt_BR = {
     forgetSuggestion: 'Esquecer {name}',
     forgotSuggestion: '{name} esquecido',
     swipeToDeleteA11y: 'Remover {name}',
-    sync: { connected: 'Conectado', offline: 'Sem conexão', syncing: 'Sincronizando…', trouble: 'Sem sincronizar', hint: 'Sincronização da lista compartilhada. Toque para sincronizar agora.' },
+    sync: { connected: 'Conectado', offline: 'Sem conexão', syncing: 'Sincronizando…', trouble: 'Sem sincronizar', hint: 'Sincronização da lista compartilhada. Toque para sincronizar agora.', partnerNever: 'Nada do outro telefone ainda', partnerSeen: 'Outro telefone visto {when}', justNow: 'agora mesmo', minutesAgo: 'há {n} min', hoursAgo: 'há {n} h', dayAgo: 'há 1 dia', daysAgo: 'há {n} dias' },
   },
   share: {
     shareThis: 'Compartilhar esta lista',

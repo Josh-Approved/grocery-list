@@ -16,7 +16,9 @@ import { create } from 'zustand';
 export interface ChannelStatus {
   /** At least one relay socket is currently open for this list's channel. */
   connected: boolean;
-  /** ms of the last list copy received from a peer (null = none this run). */
+  /** ms the other phone last PUBLISHED something we received — a deposit
+   *  replayed from the drop box carries its own time, so this can be days ago
+   *  on a fresh run (null = nothing from any peer yet this run). */
   lastReceivedAt: number | null;
   /** ms of the last copy we published. */
   lastSentAt: number | null;
@@ -62,8 +64,12 @@ export const useSyncStatusStore = create<SyncStatusState>((set) => ({
 export function markConnected(secret: string, connected: boolean): void {
   useSyncStatusStore.getState().patch(secret, { connected });
 }
+/** "Last heard from the other phone." Keeps the LATEST time: a cold start
+ *  replays several deposited slots (list, kits) in relay order, and an older
+ *  one must not roll the clock back. */
 export function markReceived(secret: string, at: number): void {
-  useSyncStatusStore.getState().patch(secret, { lastReceivedAt: at });
+  const prev = useSyncStatusStore.getState().bySecret[secret]?.lastReceivedAt ?? 0;
+  useSyncStatusStore.getState().patch(secret, { lastReceivedAt: Math.max(prev, at) });
 }
 export function markSent(secret: string, at: number): void {
   useSyncStatusStore.getState().patch(secret, { lastSentAt: at });
