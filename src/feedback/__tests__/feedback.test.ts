@@ -9,16 +9,15 @@
 
 import { Linking } from 'react-native';
 
-// expo-mail-composer is an optional native dep (virtual so this runs in an app
-// that hasn't installed it yet); compose.ts require()s it at call time.
-jest.mock(
-  'expo-mail-composer',
-  () => ({
-    isAvailableAsync: jest.fn(async () => true),
-    composeAsync: jest.fn(async () => ({ status: 'sent' })),
-  }),
-  { virtual: true }
-);
+// compose.ts imports expo-mail-composer statically, so every app has it
+// installed. Not a `virtual` mock: a virtual mock of an installed module loses
+// to the real one once an earlier test file in the same jest process has
+// resolved it (a single-worker CI run), and these tests then drive the real
+// composer and fall through to mailto.
+jest.mock('expo-mail-composer', () => ({
+  isAvailableAsync: jest.fn(async () => true),
+  composeAsync: jest.fn(async () => ({ status: 'sent' })),
+}));
 
 // The file layer is the thing that failed silently in production (SDK 54 made
 // the write throw, the failure was swallowed, the attachment vanished and
