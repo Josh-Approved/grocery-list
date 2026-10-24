@@ -94,6 +94,13 @@
       "why": "no *.test/*.spec under src + testing/enforce — must FAIL (the trust core must be covered)."
     },
     {
+      "gate": "test/edge-inset-screens",
+      "kind": "canonical-rule",
+      "fixture": "canonical",
+      "rule": "test/edge-inset-screens",
+      "why": "no src/qa/edgeInset.ts and no audit test rendering a screen + testing/enforce — must FAIL (text flush against a card edge ships unseen otherwise; the not-synced and no-screens branches share the verdict, the no-screens parser is covered by qa-canonical --self-test)."
+    },
+    {
       "gate": "flows/has-outcome-assertions",
       "kind": "canonical-rule",
       "fixture": "canonical",

@@ -16,7 +16,14 @@
     --green-600: #1F8A4C;
     /* Defaults overridden by the script from query params (accent/style/theme). */
     --ac: #6E4A63;
-    --device-shadow: none;
+    --device-shadow: 0 0 0 0 transparent;
+    /* Device chrome geometry — set in px by fitDevice() from the rendered device
+       width (see GEOM in the script). These are only pre-load fallbacks. */
+    --band-w: 6px; --bezel-w: 16px; --band-edge-w: 2px;
+    --r-outer: 120px; --r-bezel: 114px; --r-screen: 98px;
+    --island-w: 0; --island-h: 0; --island-top: 0;
+    --punch-d: 0; --punch-top: 0;
+    --btn-w: 0; --btn-r: 0;
     --motif: none;
     --kl-w: 0; --kl-h: 0; --kl-mt: 0;
   }
@@ -35,8 +42,20 @@
   /* Theme = light|dark. In `flat` style --bg is a solid; richer styles overwrite
      --bg with a gradient (+ motif) from the script. --fg/--bezel always follow
      the theme so captions + device chrome stay legible on whatever ground. */
-  body[data-theme="light"] { --bg: var(--paper);    --fg: var(--ink-1000); --bezel: var(--ink-1000); }
-  body[data-theme="dark"]  { --bg: var(--ink-1000); --fg: var(--paper);    --bezel: var(--paper);    }
+  body[data-theme="light"] {
+    --bg: var(--paper); --fg: var(--ink-1000);
+    --bezel: #050506;
+    --band: linear-gradient(180deg, #3d3d42, #1f1f23);
+    --band-solid: #2c2c30;
+    --band-edge: rgba(255, 255, 255, 0.22);
+  }
+  body[data-theme="dark"] {
+    --bg: var(--ink-1000); --fg: var(--paper);
+    --bezel: #050506;
+    --band: linear-gradient(180deg, #edece7, #cdccc6);
+    --band-solid: #dad9d3;
+    --band-edge: rgba(255, 255, 255, 0.78);
+  }
 
   .stage {
     width: 100vw;
@@ -76,33 +95,73 @@
     place-items: center;
   }
 
+  /* The device reads as a REAL current phone/tablet at thumbnail size (Josh,
+     2026-10-17: the old uniform ink slab "did not look like an iPhone"). Three
+     concentric layers, all radii concentric and scaled from the rendered width:
+       .device  the metal band (theme-tinted: dark titanium on a light ground,
+                white titanium on a dark ground) with a hairline edge highlight
+       .bezel   the display bezel — always near-black, like the real thing
+       .screen  the capture, with the Dynamic Island (iPhone) or punch-hole
+                camera (Android) drawn over the status-bar gap the OS already
+                leaves for it, so the capture's own status bar sits correctly
+     Side buttons hang off the band (iPhone: action, volume up/down on the left,
+     side button + camera control on the right; Android: power + volume on the
+     right). Flat, front-on, no 3D — canon § Screenshot principles. */
   .device {
-    background: var(--bezel);
-    border-radius: var(--bezel-radius);
-    padding: var(--bezel-thickness);
-    display: grid;
-    place-items: center;
+    position: relative;
+    background: var(--band);
+    border-radius: var(--r-outer);
+    padding: var(--band-w);
     /* Shrink-to-fit BOTH axes (mirrors .window): width:100% + height:auto sizes
        height from the aspect ratio; when that would exceed the cell, max-height
-       clamps and aspect-ratio pulls width back in. */
+       clamps and aspect-ratio pulls width back in. fitDevice() then replaces
+       this with exact px so the screen aperture matches the capture's pixels. */
     width: 100%;
     height: auto;
     aspect-ratio: var(--device-aspect);
     max-height: 100%;
     max-width: 100%;
+    /* Band edge highlight + the floating drop shadow (transparent in flat). */
+    box-shadow: inset 0 0 0 var(--band-edge-w) var(--band-edge), var(--device-shadow);
   }
-  /* Float the device on every style except flat (flat = the original look). */
-  body:not([data-style="flat"]) .device { box-shadow: var(--device-shadow); }
-
-  .screen {
+  .bezel {
     width: 100%;
     height: 100%;
-    border-radius: var(--screen-radius);
+    background: var(--bezel);
+    border-radius: var(--r-bezel);
+    padding: var(--bezel-w);
+  }
+  .screen {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: var(--r-screen);
     overflow: hidden;
-    background: var(--paper);
+    background-color: var(--bezel);
     display: block;
     background-repeat: no-repeat;
   }
+  .island {
+    position: absolute; left: 50%; top: var(--island-top);
+    width: var(--island-w); height: var(--island-h);
+    transform: translateX(-50%);
+    border-radius: 999px; background: #000;
+  }
+  .punch {
+    position: absolute; left: 50%; top: var(--punch-top);
+    width: var(--punch-d); height: var(--punch-d);
+    transform: translateX(-50%);
+    border-radius: 50%; background: #000;
+    box-shadow: inset 0 0 0 calc(var(--punch-d) * 0.16) #17171a;
+  }
+  .btn {
+    position: absolute;
+    width: var(--btn-w);
+    background: var(--band-solid);
+    box-shadow: inset 0 0 0 var(--band-edge-w) var(--band-edge);
+  }
+  .btn.l { right: 100%; border-radius: var(--btn-r) 0 0 var(--btn-r); }
+  .btn.r { left: 100%;  border-radius: 0 var(--btn-r) var(--btn-r) 0; }
   .screen img {
     width: 100%;
     height: 100%;
@@ -135,9 +194,6 @@
 
   body[data-surface="iphone"] {
     --pad-x: 96px; --pad-y: 96px; --gap: 56px;
-    --bezel-thickness: 14px;
-    --bezel-radius: 96px;
-    --screen-radius: 84px;
     --device-aspect: 1320 / 2868;
   }
   body[data-surface="iphone"] .caption { font-size: 88px; }
@@ -145,9 +201,6 @@
 
   body[data-surface="ipad"] {
     --pad-x: 144px; --pad-y: 144px; --gap: 72px;
-    --bezel-thickness: 18px;
-    --bezel-radius: 56px;
-    --screen-radius: 40px;
     --device-aspect: 2064 / 2752;
   }
   body[data-surface="ipad"] .caption { font-size: 96px; }
@@ -155,9 +208,6 @@
 
   body[data-surface="android"] {
     --pad-x: 72px; --pad-y: 72px; --gap: 44px;
-    --bezel-thickness: 12px;
-    --bezel-radius: 64px;
-    --screen-radius: 52px;
     --device-aspect: 1080 / 2400;
   }
   body[data-surface="android"] .caption { font-size: 72px; }
@@ -165,9 +215,6 @@
 
   body[data-surface="android-tablet"] {
     --pad-x: 120px; --pad-y: 120px; --gap: 56px;
-    --bezel-thickness: 16px;
-    --bezel-radius: 48px;
-    --screen-radius: 32px;
     --device-aspect: 1600 / 2560;
   }
   body[data-surface="android-tablet"] .caption { font-size: 84px; }
@@ -246,6 +293,34 @@
   const accent  = params.get('accent') || '';
   const crop    = (params.get('crop') || '').split(',').map(Number).filter((n) => !Number.isNaN(n));
   const vmode   = params.get('vmode') || '';   // '' | 'back' | 'front' — video-frame plates
+
+  // Device chrome proportions, as fractions of the rendered OUTER device width
+  // (band/bezel/rOuter/edge/btn) or of the screen width (island/punch), or of
+  // the device height (button top/height). Measured off current hardware:
+  //   iPhone 17 Pro Max — display corner radius ≈ 62pt of a 440pt-wide screen,
+  //     Dynamic Island ≈ 125×37pt sitting 11pt below the top edge, bezel ≈ 1.2mm
+  //     of a 78mm body, titanium band ≈ 0.5mm; action + volume left, side button
+  //     + camera control right.
+  //   Pixel-class Android — corner radius ≈ 11% of width, centred punch-hole
+  //     camera, power above the volume rocker on the right.
+  //   iPad Pro 13" / Android tablet — slim uniform bezel, small corner radius.
+  // Everything is a ratio, so the same table renders a 1080-wide Play phone and
+  // a 1320-wide App Store phone identically at their own scale.
+  const GEOM = {
+    iphone: {
+      band: 0.0055, bezel: 0.0165, rOuter: 0.157, edge: 0.0018,
+      island: { w: 0.283, h: 0.084, top: 0.0245 },
+      buttons: [['l', 0.168, 0.028], ['l', 0.226, 0.064], ['l', 0.305, 0.064], ['r', 0.247, 0.102], ['r', 0.560, 0.048]],
+    },
+    android: {
+      band: 0.0055, bezel: 0.016, rOuter: 0.118, edge: 0.0018,
+      punch: { d: 0.044, top: 0.021 },
+      buttons: [['r', 0.175, 0.052], ['r', 0.248, 0.098]],
+    },
+    ipad: { band: 0.004, bezel: 0.030, rOuter: 0.052, edge: 0.0012 },
+    'android-tablet': { band: 0.004, bezel: 0.030, rOuter: 0.048, edge: 0.0012 },
+  };
+
 
   if (vmode) document.body.dataset.vmode = vmode;
   document.body.dataset.surface = surface;
@@ -487,9 +562,15 @@
         </div>
       </div>`;
   } else {
+    const g = GEOM[surface] || GEOM.iphone;
+    const btns = (g.buttons || [])
+      .map(([side, top, h]) => `<span class="btn ${side}" style="top:${(top * 100).toFixed(2)}%;height:${(h * 100).toFixed(2)}%"></span>`)
+      .join('');
+    // A detail crop isn't the top of the screen, so no island/punch over it.
+    const sensor = layout === 'detail' ? '' : g.island ? '<span class="island"></span>' : g.punch ? '<span class="punch"></span>' : '';
     frame.innerHTML = `
-      <div class="device">
-        <div class="screen"><img src="${screen}" alt=""></div>
+      <div class="device">${btns}
+        <div class="bezel"><div class="screen"><img src="${screen}" alt="">${sensor}</div></div>
       </div>`;
   }
 
@@ -502,6 +583,7 @@
     const frameEl = document.getElementById('frame');
     if (!device || !frameEl) return;
     const r = aspectRatioPx;
+    const g = GEOM[surface] || GEOM.iphone;
     let availW = frameEl.clientWidth;
     let availH = frameEl.clientHeight;
     // layout=bleed: let the device run to the bottom edge (implied "there's more").
@@ -510,14 +592,40 @@
     if (layout === 'bleed') {
       availH = availH * 1.16;
     }
-    let w, h;
-    if (availW / availH > r) { h = availH; w = h * r; }
-    else { w = availW; h = w / r; }
-    device.style.aspectRatio = `${r}`;
-    device.style.width = `${w}px`;
-    device.style.height = `${h}px`;
-    device.style.maxWidth = 'none';
-    device.style.maxHeight = 'none';
+    // Size the OUTER box so the screen aperture (outer minus band minus bezel on
+    // each side) has exactly the capture's aspect — no letterbox sliver of bezel
+    // colour above/below a dark screen. pf = one side's chrome as a fraction of
+    // the outer width; k = outer height per unit of outer width.
+    const pf = g.band + g.bezel;
+    const k = (1 - 2 * pf) / r + 2 * pf;
+    let w = availW;
+    let h = w * k;
+    if (h > availH) { h = availH; w = h / k; }
+    const px = (f) => `${(f * w).toFixed(2)}px`;
+    const s = device.style;
+    s.aspectRatio = 'auto';
+    s.width = `${w.toFixed(2)}px`;
+    s.height = `${h.toFixed(2)}px`;
+    s.maxWidth = 'none';
+    s.maxHeight = 'none';
+    s.setProperty('--band-w', px(g.band));
+    s.setProperty('--bezel-w', px(g.bezel));
+    s.setProperty('--r-outer', px(g.rOuter));
+    s.setProperty('--r-bezel', px(g.rOuter - g.band));
+    s.setProperty('--r-screen', px(g.rOuter - g.band - g.bezel));
+    s.setProperty('--band-edge-w', `${Math.max(1, Math.round(g.edge * w))}px`);
+    const sw = w * (1 - 2 * pf);   // screen width
+    if (g.island) {
+      s.setProperty('--island-w', `${(g.island.w * sw).toFixed(2)}px`);
+      s.setProperty('--island-h', `${(g.island.h * sw).toFixed(2)}px`);
+      s.setProperty('--island-top', `${(g.island.top * sw).toFixed(2)}px`);
+    }
+    if (g.punch) {
+      s.setProperty('--punch-d', `${(g.punch.d * sw).toFixed(2)}px`);
+      s.setProperty('--punch-top', `${(g.punch.top * sw).toFixed(2)}px`);
+    }
+    s.setProperty('--btn-w', px(0.009));
+    s.setProperty('--btn-r', px(0.004));
     if (layout === 'bleed') { document.querySelector('.stage').style.overflow = 'hidden'; device.style.alignSelf = 'end'; }
   }
 
