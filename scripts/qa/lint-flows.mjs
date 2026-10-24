@@ -113,6 +113,9 @@ export function lintFlows(appDir) {
   // one anchor the harness exists to check — surfaced on workout-timer.
   collectAnchors(journey.upgrade && journey.upgrade.write && journey.upgrade.write.steps);
   collectAnchors(journey.upgrade && journey.upgrade.assert && journey.upgrade.assert.steps);
+  // The store-preview journey (demo-capture.mjs --preview compiles it to
+  // qa/flows/preview.yaml) anchors the same way; its anchors are used, not stray.
+  collectAnchors(journey.preview && journey.preview.steps);
   try {
     yaml = compileJourney(journey, selectors, appDir);
     add('pass', 'flows/journey', `journey compiles (${(journey.steps || []).length} steps, ${referenced.size} anchors used)`);

@@ -762,6 +762,41 @@ const ruleOneNativeHandler = () => {
   return pass('gesture/one-native-handler', 'No scrolling list carries two native gesture handlers');
 };
 
+// A short sound cue (a beep, a tick, a bell) must keep its player. expo-audio
+// reports `didJustFinish` the moment the decoder reaches the end of the file,
+// and on Android that is while the tone is still sitting in the deep-buffer
+// output (largest on Samsung phones): releasing the player there throws the
+// sound away before the speaker ever gets it. The voice path (expo-speech) is
+// separate and keeps working, which is exactly what makes the bug read like
+// "only the voice prompts work" from the outside.
+//
+// Cost of learning this the hard way: defect workout-timer-20261018-1 — every
+// non-voice cue silent on a Galaxy S24 for a release, with nothing in the
+// diagnostic log. The fix is one player per cue, rewound and replayed, plus a
+// tail of silence in the generated tone (reference: workout-timer AudioEngine).
+const ruleKeepCuePlayers = () => {
+  if (surface !== 'rn') return skip('audio/keep-cue-players', 'Not an RN app');
+  const files = srcSourceFiles();
+  if (!files.length) return skip('audio/keep-cue-players', 'No src/ source files');
+  const hits = [];
+  for (const f of files) {
+    const raw = readText(f);
+    if (!raw || !/\bcreateAudioPlayer\b/.test(raw)) continue;
+    const code = stripComments(raw);
+    const where = relative(appDir, f);
+    // A status listener that releases the player on its own finished report.
+    const m = code.match(/didJustFinish[\s\S]{0,400}?\.remove\(\)/);
+    if (m) {
+      hits.push(`${where}: a playbackStatusUpdate listener calls .remove() on didJustFinish — the Android output buffer is still draining the tone`);
+    }
+  }
+  if (hits.length) {
+    return fail('audio/keep-cue-players',
+      'A sound player is released the moment it reports finished; on Android the tone is still in the output buffer and is cut off or silent. Keep one player per cue and replay it with seekTo(0) + play() (reference: workout-timer src/audio/AudioEngine.ts)', hits);
+  }
+  return pass('audio/keep-cue-players', 'No sound player is released on its own finished report');
+};
+
 // Voice Control users speak what they SEE: "tap Save". iOS matches the spoken
 // phrase against the accessibility label, so a label that does not begin with
 // the control's visible text makes that control unspeakable — the user reads
@@ -1913,6 +1948,43 @@ const ruleTrustCoreCovered = () => {
   return pass('test/trust-core-covered', `${files.length} test file(s) under src/`);
 };
 
+// Tier 1 — the edge-inset audit runs over this app's own screens. The audit
+// (src/qa/edgeInset.ts, synced by `sync.mjs qa`) fails text or an icon within
+// 8pt of a card, sheet, row or button edge, but only on the screens a test
+// renders: workout-timer's Settings "Sounds" card shipped with "Warm up start"
+// flush against the border (2026-10) because nothing rendered it. The proof
+// test is canonical; the screen list is app-owned, so this checks that the
+// app's audit tests import at least one screen or component to render.
+const EDGE_INSET_HELPER = 'src/qa/edgeInset.ts';
+const EDGE_INSET_SCREENS_TEST = 'src/qa/__tests__/edgeInset.screens.test.tsx';
+const EDGE_INSET_PROOF_RE = /edgeInset\.proof\.test\.tsx$/;
+
+// Pure core (self-tested): the app screens/components an audit test renders —
+// its live (uncommented) imports that resolve into src/screens/ or
+// src/components/. Empty when the file is not an edge-inset audit test.
+export const edgeInsetAuditedModules = (source) => {
+  const code = String(source ?? '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const specs = [...code.matchAll(/^\s*import\s[^;]*?from\s+['"]([^'"]+)['"]/gm)].map((m) => m[1]);
+  if (!specs.some((s) => /(?:^|\/)edgeInset(?:Audit)?$/.test(s))) return [];
+  return specs.filter((s) => /^\.\.?\/(?:\.\.\/)*(?:screens|components)\//.test(s));
+};
+
+const ruleEdgeInsetScreens = () => {
+  const id = 'test/edge-inset-screens';
+  if (surface !== 'rn') return skip(id, 'Not an RN app');
+  if (!exists(join(appDir, EDGE_INSET_HELPER))) {
+    return testWarn(id, `The edge-inset audit (${EDGE_INSET_HELPER}) is not synced — re-run \`node scripts/sync.mjs qa <app>\`, then list this app's screens in ${EDGE_INSET_SCREENS_TEST}`);
+  }
+  const tests = srcSourceFiles({ includeTests: true }).filter((f) => TEST_FILE_RE.test(f) && !EDGE_INSET_PROOF_RE.test(f));
+  const rendered = new Set();
+  for (const f of tests) for (const m of edgeInsetAuditedModules(readText(f))) rendered.add(m);
+  if (!rendered.size) {
+    return testWarn(id,
+      `The edge-inset audit renders none of this app's screens — list Settings and every screen, sheet or pane with cards in ${EDGE_INSET_SCREENS_TEST} (text touching a card edge ships otherwise)`);
+  }
+  return pass(id, `edge-inset audit renders ${rendered.size} screen/component module(s)`);
+};
+
 // ---------- rules: repo-copying tools must not leak into the test run ----------
 //
 // A tool that COPIES the repo to work on it (Stryker's sandbox today; any future
@@ -2775,9 +2847,10 @@ const ruleReducedMotionGuarded = () => {
 
 // The cost claim belongs in the description, never the image (canon
 // § Screenshot principles, § Long description structure). We scan every per-slot
-// `caption` across all stores in qa/screenshots.config.json. The slot-2 Josh
-// Approved card (kind: "card") has no caption and is the deliberate brand
-// exception (it carries the wedge by design), so it never trips this rule.
+// `caption` across all stores in qa/screenshots.config.json. The Josh Approved
+// card (kind: "card", slot 4 since 2026-10-17) has no caption and is the
+// deliberate brand exception (it carries the wedge by design), so it never
+// trips this rule.
 const CAPTION_PRICE_RE = /\bfree\b|\bpaywall\b|\bno ads\b|\bfor free\b|\bon sale\b|\bdiscount(?:ed)?\b|\b\d+%\s*off\b|\$\s*\d/i;
 
 const ruleScreenshotCaptionNoPrice = () => {
@@ -2803,6 +2876,73 @@ const ruleScreenshotCaptionNoPrice = () => {
       hits);
   }
   return pass('store/caption-no-price', 'No price/promo words in any screenshot caption');
+};
+
+// ---------- rule: screenshot slot order + caption length (canon § Screenshot principles, 2026-10-17) ----------
+//
+// Josh's 2026-10-17 store-media reset: slot 1 is the hero and is ALWAYS light
+// mode; slots 2 and 3 are the top ASO-driving features; slot 4 is the Josh
+// Approved card (it lived at slot 2 before this date); a dark-mode shot comes
+// no earlier than slot 5; 3 to 5 shots per store is the FLOOR (target 6 to 8,
+// Apple max 10, Play max 8); captions are benefits of at most 8 words. The
+// pure `slotOrderFindings` is what --self-test proves. Severity split: a dark
+// shot in slots 1 to 4, a set below the floor and a set over the store maximum
+// FAIL (wrong on any day, and no active app has one); the card not at slot 4,
+// a set below the target and a caption over 8 words WARN, because every app
+// shipped with the card at slot 2 and two active apps carry a 10-word caption,
+// and the re-capture is a per-app rollout (Workout Timer first). A warn keeps
+// the old sets visible without turning the fleet red the day the standard
+// changed; promote the three to FAIL once the rollout has reached every app.
+const CAPTION_MAX_WORDS = 8;
+const CARD_SLOT = 4;
+const SHOTS_FLOOR = 3;
+const SHOTS_TARGET = 6;
+const SHOTS_MAX = { ios: 10, ipad: 10, android: 8, androidTablet: 8, chrome: 5 };
+
+const slotOrderFindings = (stores) => {
+  const fails = [];
+  const warns = [];
+  for (const [store, slots] of Object.entries(stores || {})) {
+    if (!Array.isArray(slots) || !slots.length) continue;
+    const n = slots.length;
+    const max = SHOTS_MAX[store];
+    if (n < SHOTS_FLOOR) fails.push(`${store}: ${n} slot(s), below the floor of ${SHOTS_FLOOR}`);
+    else if (max && n > max) fails.push(`${store}: ${n} slots, over the store maximum of ${max}`);
+    else if (n < SHOTS_TARGET && store !== 'chrome') warns.push(`${store}: ${n} slots, target is ${SHOTS_TARGET} to 8 (use the room: every top feature gets a shot)`);
+    const cardIdx = slots.findIndex((x) => x && x.kind === 'card');
+    const expected = Math.min(CARD_SLOT, n);
+    if (cardIdx >= 0 && cardIdx + 1 !== expected) {
+      warns.push(`${store}: Josh Approved card at slot ${cardIdx + 1}, canon puts it at slot ${CARD_SLOT} (last when the set is shorter than 4)`);
+    }
+    slots.forEach((slot, i) => {
+      if (!slot) return;
+      const dark = slot.theme === 'dark';
+      if (dark && i === 0) fails.push(`${store}: slot 1 is dark; the hero is always light mode`);
+      else if (dark && i + 1 < 5) fails.push(`${store}/${slot.id || '?'}: dark shot at slot ${i + 1}, no earlier than slot 5`);
+      const cap = typeof slot.caption === 'string' ? slot.caption.trim() : '';
+      if (cap) {
+        const words = cap.split(/\s+/).filter(Boolean).length;
+        if (words > CAPTION_MAX_WORDS) warns.push(`${store}/${slot.id || '?'}: caption is ${words} words, max ${CAPTION_MAX_WORDS}, and a benefit not a label ("${cap}")`);
+      }
+    });
+  }
+  return { fails, warns };
+};
+
+const ruleScreenshotSlotOrder = () => {
+  const id = 'store/slot-order';
+  const cfgPath = join(appDir, 'qa', 'screenshots.config.json');
+  if (!exists(cfgPath)) return skip(id, 'No qa/screenshots.config.json');
+  const cfg = readJson(cfgPath);
+  if (!cfg || !cfg.stores || typeof cfg.stores !== 'object') return skip(id, 'screenshots.config.json has no stores map');
+  const { fails, warns } = slotOrderFindings(cfg.stores);
+  if (fails.length) {
+    return fail(id, 'Screenshot set breaks the slot pattern (canon § Screenshot principles, 2026-10-17): slot 1 light, dark no earlier than slot 5, floor 3 and the store maximum.', [...fails, ...warns]);
+  }
+  if (warns.length) {
+    return warn(id, 'Screenshot set is behind the 2026-10-17 standard: Josh Approved card at slot 4, target 6 to 8 shots, captions at most 8 words. Re-capture on the app\'s turn in the rollout (Workout Timer, then grocery-list and packing-list).', warns);
+  }
+  return pass(id, 'Screenshot slots follow the canon pattern (hero light, card at slot 4, dark at 5+, captions within 8 words)');
 };
 
 // ---------- runner ----------
@@ -3638,6 +3778,7 @@ const CANONICAL_RULES = [
   ruleNoAlertPrompt,
   rulePaneFocus,
   ruleOneNativeHandler,
+  ruleKeepCuePlayers,
   ruleVoiceControlNameMatch,
   ruleDistinctAccessibleName,
   ruleNoPlatformEarlyReturn,
@@ -3674,6 +3815,7 @@ const CANONICAL_RULES = [
   ruleManifestPermissionsTight,
   ruleTestScriptPresent,
   ruleTrustCoreCovered,
+  ruleEdgeInsetScreens,
   ruleSandboxJestIgnored,
   ruleSandboxGitignored,
   ruleOverrideEsmVsJest,
@@ -3682,6 +3824,7 @@ const CANONICAL_RULES = [
   ruleActionsMapped,
   ruleNoHardcodedStrings,
   ruleScreenshotCaptionNoPrice,
+  ruleScreenshotSlotOrder,
   ruleDemoFramesValid,
   ruleFileSizeCeiling,
   ruleDepBudget,
@@ -3723,6 +3866,62 @@ const sym = {
 function runSelfTest() {
   let failed = 0;
   const assert = (cond, msg) => { if (!cond) { failed++; console.error(`  ✗ ${msg}`); } else console.log(`  ✓ ${msg}`); };
+
+  // test/edge-inset-screens (the 2026-10 workout-timer Sounds card)
+  {
+    // Built from parts: module-closure.mjs reads literal import lines in this
+    // file as real imports.
+    const imp = (what, spec) => ['import', what, 'from', `'${spec}';`].join(' ');
+    const seeded = [
+      `// ${imp('{ auditScreen }', '../edgeInsetAudit')}`,
+      `// ${imp('SettingsScreen', '../../screens/SettingsScreen')}`,
+      "describe('x', () => { it.todo('Settings'); });",
+    ].join('\n');
+    assert(edgeInsetAuditedModules(seeded).length === 0, 'edge-inset-screens: the seeded template (imports commented out) renders nothing');
+    const authored = [
+      imp('React', 'react'),
+      imp('{ auditScreen }', '../edgeInsetAudit'),
+      imp('SettingsScreen', '../../screens/SettingsScreen'),
+      imp('{\n  ReminderSheet,\n}', '../../components/ReminderSheet'),
+      imp('{ space }', '../../theme'),
+    ].join('\n');
+    assert(edgeInsetAuditedModules(authored).join(',') === '../../screens/SettingsScreen,../../components/ReminderSheet',
+      'edge-inset-screens: an authored list counts its screen + multi-line component imports, not theme');
+    assert(edgeInsetAuditedModules([imp('{ findEdgeInsetViolations }', '../edgeInset'), imp('S', '../../screens/S')].join('\n')).length === 1,
+      'edge-inset-screens: a test calling the helper directly (workout-timer shape) counts');
+    assert(edgeInsetAuditedModules([imp('S', '../../screens/S'), imp('{ render }', '@testing-library/react-native')].join('\n')).length === 0,
+      'edge-inset-screens: an ordinary component test that never runs the audit does not count');
+    assert(edgeInsetAuditedModules(`/* ${imp('{ auditScreen }', '../edgeInsetAudit')}\n${imp('S', '../../screens/S')} */`).length === 0,
+      'edge-inset-screens: imports inside a block comment do not count');
+  }
+
+  // store/slot-order (the 2026-10-17 store-media standard)
+  {
+    const shot = (id, extra = {}) => ({ id, source: `ios/${id}.png`, caption: 'Short benefit caption', ...extra });
+    const card = { id: 'josh-approved', kind: 'card' };
+    const good = { ios: [shot('core'), shot('f1'), shot('f2'), card, shot('ax'), shot('dark', { theme: 'dark' })] };
+    let r = slotOrderFindings(good);
+    assert(r.fails.length === 0 && r.warns.length === 0, 'slot-order: a 6-shot set with the card at slot 4 and dark at slot 6 is clean');
+    r = slotOrderFindings({ ios: [shot('core'), card, shot('f1'), shot('f2'), shot('ax')] });
+    assert(r.fails.length === 0 && r.warns.length === 2 && /card at slot 2/.test(r.warns.join(' ')),
+      'slot-order: the pre-2026-10-17 shape (card at slot 2, 5 shots) warns, never fails');
+    r = slotOrderFindings({ ios: [shot('core', { theme: 'dark' }), shot('f1'), shot('f2'), card, shot('ax'), shot('f3')] });
+    assert(r.fails.length === 1 && /slot 1 is dark/.test(r.fails[0]), 'slot-order: a dark hero fails');
+    r = slotOrderFindings({ ios: [shot('core'), shot('f1'), shot('f2', { theme: 'dark' }), card, shot('ax'), shot('f3')] });
+    assert(r.fails.length === 1 && /dark shot at slot 3/.test(r.fails[0]), 'slot-order: a dark shot before slot 5 fails');
+    r = slotOrderFindings({ ios: [shot('core', { caption: 'one two three four five six seven eight nine' }), shot('f1'), shot('f2'), card, shot('ax'), shot('f3')] });
+    assert(r.fails.length === 0 && r.warns.length === 1 && /9 words/.test(r.warns[0]), 'slot-order: a 9-word caption warns during the rollout (two live apps carry one)');
+    r = slotOrderFindings({ ios: Array.from({ length: 11 }, (_, i) => (i === 3 ? card : shot(`s${i}`))) });
+    assert(r.fails.length === 1 && /over the store maximum of 10/.test(r.fails[0]), 'slot-order: 11 iOS shots fail (Apple max 10)');
+    r = slotOrderFindings({ android: Array.from({ length: 9 }, (_, i) => (i === 3 ? card : shot(`s${i}`))) });
+    assert(r.fails.length === 1 && /over the store maximum of 8/.test(r.fails[0]), 'slot-order: 9 Android shots fail (Play max 8)');
+    r = slotOrderFindings({ ios: [shot('core'), shot('f1'), card] });
+    assert(r.fails.length === 0 && r.warns.length === 1 && /target/.test(r.warns[0]), 'slot-order: a 3-shot set with the card last is at the floor (warn on target only)');
+    r = slotOrderFindings({ ios: [shot('core'), card] });
+    assert(r.fails.length === 1 && /below the floor/.test(r.fails[0]), 'slot-order: 2 shots fail the floor');
+    r = slotOrderFindings({ ios: Array.from({ length: 8 }, (_, i) => (i === 3 ? card : shot(`s${i}`))) });
+    assert(r.fails.length === 0 && r.warns.length === 0, 'slot-order: an 8-shot set with the card at slot 4 is clean');
+  }
 
   // repo/leak-files
   assert(detectLeakFiles(['CLAUDE.md', 'src/App.tsx']).length === 1,

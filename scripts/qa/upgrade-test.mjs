@@ -154,9 +154,13 @@ export function freshInstallSteps({ platform, device, pkg, appOrApk }) {
  *  "pin this one" and "refuse to guess" (capture.mjs L23 — a stray Pixel_Tablet
  *  silently captured the wrong form factor). */
 export function parseAttachedAndroidSerials(stdout) {
+  // Accept BOTH `adb devices` (serial<TAB>device) and `adb devices -l`
+  // (serial<spaces>device product:… model:…). capture.mjs lists with -l, and the
+  // tab-only match read every booted emulator as "not attached" (2026-10-17,
+  // workout-timer screenshot run: three captures refused with a live emulator).
   return String(stdout || '').split('\n').slice(1)
-    .filter((l) => /\tdevice(\s|$)/.test(l))
-    .map((l) => l.split('\t')[0]);
+    .filter((l) => /^\S+\s+device(\s|$)/.test(l))
+    .map((l) => l.split(/\s+/)[0]);
 }
 
 /** First fully-booted Android serial from `adb devices` output, or null. */

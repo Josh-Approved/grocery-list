@@ -12,7 +12,7 @@ the cells, and the screens). Make **one** pass. Do not ask for more images, do
 not request full-resolution crops, do not loop. Write findings to
 `qa/qa-triage.json` under `reviewerPass` (append; don't clobber other keys).
 
-Judge each panel against these checks. The first six are layout; the rest are the
+Judge each panel against these checks. The first seven are layout; the rest are the
 **UX interaction baseline** (canon studio-20260702-1) — the recurring on-device
 basics, judged here from the affordances a still actually shows.
 
@@ -28,26 +28,34 @@ basics, judged here from the affordances a still actually shows.
    against the background; hairlines that vanish; an element stuck in light theme.
 6. **Large-font layout** — in `*-f1.3-*` cells, broken wrapping, overlapping rows,
    a button whose label overflows its box.
-7. **Commit affordance on create/edit** — a create/edit screen must show a visible
+7. **Edge crowding** — text or an icon touching, or nearly touching, the inner
+   edge of its card, sheet, row or button: a label flush against a card's left
+   border, a chevron against its right one, a button label with no side room.
+   Content needs visible room inside every edge (8pt at the very least; the
+   studio gutter is 16pt). The jest edge-inset audit (`src/qa/edgeInset.ts`)
+   catches this on the screens each app lists for it; flag it here on any panel,
+   because a screen the audit never rendered can still ship it (the workout-timer
+   Sounds card did, 2026-10).
+8. **Commit affordance on create/edit** — a create/edit screen must show a visible
    Save/Done control; the back arrow is never the only way off it (users read back
    as destructive). Flag a create/edit panel where the only exit is back.
-8. **Action / info separation** — on a detail screen, interactive actions sit in a
+9. **Action / info separation** — on a detail screen, interactive actions sit in a
    visually distinct region, separate from read-only information; one control reads
    as one predictable action. Flag a screen that overloads a state-changing action
    onto what looks like a reveal/expand, or scatters tap targets through read-only text.
-9. **Existing before new** — where a flow references an entity the app already
-   stores (a person, an account, a list), it offers "choose from existing" and does
-   not force a duplicate. Flag a picker/entry panel that only offers "create new"
-   for something the app clearly already has.
-10. **Direct value entry + clean modals** — wherever a slider or stepper sets a
+10. **Existing before new** — where a flow references an entity the app already
+    stores (a person, an account, a list), it offers "choose from existing" and does
+    not force a duplicate. Flag a picker/entry panel that only offers "create new"
+    for something the app clearly already has.
+11. **Direct value entry + clean modals** — wherever a slider or stepper sets a
     value, the value itself reads as tappable for direct numeric entry. A modal has
     exactly one confirm affordance and no dead/greyed buttons that look tappable.
-11. **Platform-metaphor controls** — navigation and transport controls match the
+12. **Platform-metaphor controls** — navigation and transport controls match the
     platform's established metaphors (a media-player back = previous item /
     restart-then-previous, not "exit"). Flag a control whose icon promises one thing
     and is captioned/placed as another.
 
-*Checks 7–11 also have non-visual dimensions a still can't show — whether an import
+*Checks 8–12 also have non-visual dimensions a still can't show — whether an import
 actually ends in a visible outcome, whether back discards a draft rather than saving
 a blank, whether a value entry round-trips. Those ride the pre-ship review and the
 on-device pass (canon § UX interaction baseline); here, flag only what the panel

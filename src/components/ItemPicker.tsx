@@ -592,8 +592,9 @@ function makeStyles(c: Colors) {
       flexShrink: 1,
     },
     itemNameOnList: { color: c.fgMuted },
+    // Same side room as the list's ×N quantity badge.
     pill: {
-      paddingHorizontal: space.s2,
+      paddingHorizontal: space.s3,
       paddingVertical: 2,
       borderRadius: radius.sm,
       backgroundColor: c.accentBg,
