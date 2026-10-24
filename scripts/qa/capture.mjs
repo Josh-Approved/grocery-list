@@ -53,6 +53,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { withHeavyLock, concurrency } from '../lib/heavy.mjs';
 import { checkPrebuildPosture } from '../lib/cng-prebuild-preflight.mjs';
+import { checkInstalledPackages } from '../lib/npm-drift-preflight.mjs';
 // The build cache key lives in one place so anything else that asks "is this
 // cached build current?" (the ship path's upgrade-harness slot drop) agrees
 // with us instead of guessing — scripts/qa/source-hash.mjs.
@@ -151,6 +152,15 @@ async function buildArtifact() {
     const posture = checkPrebuildPosture(appDir);
     if (!posture.ok) {
       console.error(`\n  ✗ ${posture.message}`);
+      process.exit(1);
+    }
+    // Installed-packages preflight (2026-10-24, workout-timer). The Expo config
+    // is read with this folder's own node_modules, so an install that no longer
+    // matches package-lock.json dies on a config-plugin error that never says
+    // "run npm ci" — refuse here with that instruction instead.
+    const install = checkInstalledPackages(appDir);
+    if (!install.ok) {
+      console.error(`\n  ✗ ${install.message}`);
       process.exit(1);
     }
   }
