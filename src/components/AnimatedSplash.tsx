@@ -115,6 +115,14 @@ export default function AnimatedSplash({ ready, onFinish }: Props) {
   const [introDone, setIntroDone] = useState(false);
   const [laidOut, setLaidOut] = useState(false);
   const [fontTimedOut, setFontTimedOut] = useState(false);
+  // The wordmark text mounts only once its font is settled (loaded, or the
+  // fallback fired). Android lays a Text out once, with whatever font is
+  // registered at that moment, and does not re-measure when IBM Plex lands a
+  // beat later: the wider Plex glyphs then paint past a box sized for the
+  // fallback font and the "d" of "approved" is cut, on every cold start. The
+  // mark is invisible (opacity 0) until this point anyway, so nothing shows
+  // earlier either way.
+  const markReady = markFontLoaded || fontTimedOut;
   const began = useRef(false);
   const hid = useRef(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -196,9 +204,11 @@ export default function AnimatedSplash({ ready, onFinish }: Props) {
           accessibilityLabel="josh approved"
         >
           <Check size={CHECK_SIZE} color={GREEN} strokeWidth={3} />
-          <Text style={styles.text} importantForAccessibility="no">
-            josh approved
-          </Text>
+          {markReady && (
+            <Text style={styles.text} importantForAccessibility="no">
+              josh approved
+            </Text>
+          )}
         </Animated.View>
       </View>
     </Animated.View>
