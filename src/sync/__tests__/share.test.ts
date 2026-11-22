@@ -6,14 +6,37 @@
  */
 
 import { buildShareLink, parseShareLink } from '../share';
-import { SHARE_SCHEME } from '../shareConfig';
+import { SHARE_SCHEME, SHARE_WEB_URL } from '../shareConfig';
 
 const SECRET = 'abcdefghijklmnopqrstuvwxyz012345'; // 32 chars, plausibly a real secret
 
 describe('buildShareLink', () => {
-  it('builds the app-scheme join URL with the secret URI-encoded', () => {
+  it('builds a web link (tappable in WhatsApp) with the secret in the fragment', () => {
+    expect(SHARE_WEB_URL).toBe('https://joshapproved.com/join/grocery-list/');
     const link = buildShareLink('a+b/c=');
-    expect(link).toBe(`${SHARE_SCHEME}://join?s=${encodeURIComponent('a+b/c=')}`);
+    expect(link).toBe(`${SHARE_WEB_URL}#?s=${encodeURIComponent('a+b/c=')}`);
+    // The secret must never be in the part a browser sends to the server.
+    const url = new URL(link);
+    expect(url.search).toBe('');
+    expect(`${url.origin}${url.pathname}`).not.toContain(encodeURIComponent('a+b/c='));
+  });
+
+  it('falls back to the app-scheme link when the app sets no web base', () => {
+    jest.isolateModules(() => {
+      jest.doMock('../shareConfig', () => ({ SHARE_SCHEME: 'testapp' }));
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { buildShareLink: build } = require('../share') as typeof import('../share');
+      expect(build('a+b/c=')).toBe(`testapp://join?s=${encodeURIComponent('a+b/c=')}`);
+    });
+    jest.dontMock('../shareConfig');
+  });
+
+  it('still parses on builds that predate web links (their parser read ?s= / &s= only)', () => {
+    const oldParser = (url: string) => {
+      const m = url.match(/[?&]s=([^&]+)/);
+      return m ? decodeURIComponent(m[1]) : null;
+    };
+    expect(oldParser(buildShareLink(SECRET))).toBe(SECRET);
   });
 
   it('round-trips: what one phone builds, the other parses back verbatim', () => {
@@ -39,6 +62,15 @@ describe('parseShareLink', () => {
   it('accepts the secret from any URL carrying s=, first or later param', () => {
     expect(parseShareLink(`https://example.com/join?s=${SECRET}`)).toBe(SECRET);
     expect(parseShareLink(`https://example.com/join?utm=x&s=${SECRET}`)).toBe(SECRET);
+  });
+
+  it('accepts the secret from the fragment, with or without the ?', () => {
+    expect(parseShareLink(`https://example.com/join/#?s=${SECRET}`)).toBe(SECRET);
+    expect(parseShareLink(`https://example.com/join/#s=${SECRET}`)).toBe(SECRET);
+  });
+
+  it('keeps accepting old app-scheme links (invites already sent)', () => {
+    expect(parseShareLink(`${SHARE_SCHEME}://join?s=${SECRET}`)).toBe(SECRET);
   });
 
   it('rejects an implausibly short secret (a truncated link must not pair)', () => {

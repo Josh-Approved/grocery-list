@@ -12,7 +12,7 @@
  */
 
 import React, { useEffect } from 'react';
-import { useColorScheme, Linking, AppState } from 'react-native';
+import { useColorScheme, AppState } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -39,7 +39,7 @@ import ShareScreen from './src/screens/ShareScreen';
 import Credits from './src/components/Credits';
 import { startSyncEngine, stopSyncEngine, flushSyncEngine } from './src/sync';
 import { drainPendingSiriItems, startSiriListSync } from './src/siri';
-import { parseShareLink } from './src/sync/share';
+import { useShareLinkIntake } from './src/sync/shareIntake';
 import { t } from './src/i18n';
 import { IOS_APP_STORE_ID, ANDROID_PACKAGE } from './src/lib/links';
 import { QA_MODE } from './src/qa/qaMode';
@@ -177,31 +177,23 @@ export default function App() {
     return () => sub.remove();
   }, [hydrated]);
 
-  // Pairing via a tapped share link: join the shared list, open it.
-  useEffect(() => {
-    const handle = (url: string | null) => {
-      const secret = url ? parseShareLink(url) : null;
-      if (!secret) return;
-      const id = useListsStore.getState().joinShared(secret);
-      const go = () => {
-        if (navigationRef.isReady()) {
-          navigationRef.navigate('ListDetail', { listId: id });
-          return true;
-        }
-        return false;
-      };
-      if (!go()) setTimeout(go, 500);
-    };
-    Linking.getInitialURL()
-      .then(handle)
-      .catch(() => {});
-    const sub = Linking.addEventListener('url', (e) => handle(e.url));
-    return () => sub.remove();
-  }, []);
-
   // Content is ready once fonts AND every store has hydrated (so a populated
   // database doesn't flash an empty "no lists yet" state on launch).
   const ready = fontsLoaded && hydrated && accountHydrated && kitsHydrated;
+
+  // Pairing via a tapped / scanned share link: join the shared list, open it.
+  // The intake holds a link that launched the app until the stores have read
+  // the disk; joining earlier lost the list on a cold start (customer report
+  // 2026-10-24: "the QR code opens the app but doesn't give the shared list").
+  useShareLinkIntake({
+    ready,
+    join: (secret) => useListsStore.getState().joinShared(secret),
+    open: (listId) => {
+      if (!navigationRef.isReady()) return false;
+      navigationRef.navigate('ListDetail', { listId });
+      return true;
+    },
+  });
 
   return (
     <AppShell ready={ready} navigationRef={navigationRef} review={REVIEW}>

@@ -22,7 +22,10 @@
           "pt-BR",
           "ja"
         ]
-      }
+      },
+      "associatedDomains": [
+        "applinks:joshapproved.com"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -33,6 +36,23 @@
       "package": "com.joshapproved.grocerylist",
       "permissions": [
         "android.permission.CAMERA"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "joshapproved.com",
+              "pathPrefix": "/join/grocery-list"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "web": {
