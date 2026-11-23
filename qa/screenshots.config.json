@@ -1,4 +1,8 @@
 {
+  "style": "signature",
+  "motif": "dots",
+  "ground": "#B0654B",
+  "_note": "Slot spine v2 (canon 2026-10-17, rolled out here 2026-11-22): 1 hero in light mode, 2-3 the top ASO features (sharing a list, which the name and subtitle sell; your usuals and recent items in the Add sheet, seeded by qaAccount()), 4 the Josh Approved card, then Kits, an accessibility showcase (large text: capture.mjs --font-scale 1.3 --cell store-<store>-large-text) and the dark-mode shot last (--appearance dark --cell store-<store>-dark). Captions are benefits, not labels, 8 words max. The home screen shot was dropped: with one seeded list it sold nothing. Android tablet (7\"/10\") screenshots intentionally omitted: the app is portrait-locked (app.json orientation), so tablet shots could only upscale the phone layout and Play shows the phone set to tablet users.",
   "stores": {
     "ios": [
       {
@@ -7,23 +11,34 @@
         "caption": "A grocery list, sorted into aisles for you."
       },
       {
+        "id": "share",
+        "source": "ios/share.png",
+        "caption": "Share a list. Both phones stay in sync."
+      },
+      {
+        "id": "usuals",
+        "source": "ios/picker.png",
+        "caption": "It remembers the items you buy."
+      },
+      {
         "id": "josh-approved",
         "kind": "card"
       },
       {
-        "id": "share",
-        "source": "ios/share.png",
-        "caption": "Share a list. You both check off as you shop."
+        "id": "kits",
+        "source": "ios/kits.png",
+        "caption": "Add a whole meal's groceries in one tap."
       },
       {
-        "id": "autocomplete",
-        "source": "ios/autocomplete.png",
-        "caption": "It remembers the items you buy."
+        "id": "large-text",
+        "source": "matrix/store-ios-large-text/list.png",
+        "caption": "Readable at any text size."
       },
       {
-        "id": "home",
-        "source": "ios/home.png",
-        "caption": "All your lists in one place."
+        "id": "dark",
+        "source": "matrix/store-ios-dark/share.png",
+        "theme": "dark",
+        "caption": "Easy on the eyes after dark."
       }
     ],
     "android": [
@@ -33,23 +48,34 @@
         "caption": "A grocery list, sorted into aisles for you."
       },
       {
+        "id": "share",
+        "source": "android/share.png",
+        "caption": "Share a list. Both phones stay in sync."
+      },
+      {
+        "id": "usuals",
+        "source": "android/picker.png",
+        "caption": "It remembers the items you buy."
+      },
+      {
         "id": "josh-approved",
         "kind": "card"
       },
       {
-        "id": "share",
-        "source": "android/share.png",
-        "caption": "Share a list. You both check off as you shop."
+        "id": "kits",
+        "source": "android/kits.png",
+        "caption": "Add a whole meal's groceries in one tap."
       },
       {
-        "id": "autocomplete",
-        "source": "android/autocomplete.png",
-        "caption": "It remembers the items you buy."
+        "id": "large-text",
+        "source": "matrix/store-android-large-text/list.png",
+        "caption": "Readable at any text size."
       },
       {
-        "id": "home",
-        "source": "android/home.png",
-        "caption": "All your lists in one place."
+        "id": "dark",
+        "source": "matrix/store-android-dark/share.png",
+        "theme": "dark",
+        "caption": "Easy on the eyes after dark."
       }
     ],
     "ipad": [
@@ -59,48 +85,35 @@
         "caption": "A grocery list, sorted into aisles for you."
       },
       {
-        "id": "josh-approved",
-        "kind": "card"
-      },
-      {
-        "id": "autocomplete",
-        "source": "ipad/autocomplete.png",
-        "caption": "It remembers the items you buy."
-      },
-      {
-        "id": "home",
-        "source": "ipad/home.png",
-        "caption": "All your lists in one place."
-      }
-    ],
-    "androidTablet": [
-      {
-        "id": "core",
-        "source": "androidTablet/list.png",
-        "caption": "A grocery list, sorted into aisles for you."
-      },
-      {
-        "id": "josh-approved",
-        "kind": "card"
-      },
-      {
         "id": "share",
-        "source": "androidTablet/share.png",
-        "caption": "Share a list. You both check off as you shop."
+        "source": "ipad/share.png",
+        "caption": "Share a list. Both phones stay in sync."
       },
       {
-        "id": "autocomplete",
-        "source": "androidTablet/autocomplete.png",
+        "id": "usuals",
+        "source": "ipad/picker.png",
         "caption": "It remembers the items you buy."
       },
       {
-        "id": "home",
-        "source": "androidTablet/home.png",
-        "caption": "All your lists in one place."
+        "id": "josh-approved",
+        "kind": "card"
+      },
+      {
+        "id": "kits",
+        "source": "ipad/kits.png",
+        "caption": "Add a whole meal's groceries in one tap."
+      },
+      {
+        "id": "large-text",
+        "source": "matrix/store-ipad-large-text/list.png",
+        "caption": "Readable at any text size."
+      },
+      {
+        "id": "dark",
+        "source": "matrix/store-ipad-dark/share.png",
+        "theme": "dark",
+        "caption": "Easy on the eyes after dark."
       }
     ]
-  },
-  "style": "signature",
-  "motif": "dots",
-  "ground": "#B0654B"
+  }
 }

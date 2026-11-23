@@ -3,6 +3,13 @@
 // Usage:
 //   node scripts/render-screenshots.mjs <app-name> [--store ios|android|chrome|ipad] [--shot <id>]
 //   node scripts/render-screenshots.mjs <app-name> --contact-sheet [--store ios]
+//   node scripts/render-screenshots.mjs <app-name> --store ios --skip-matrix
+//
+// --skip-matrix: leave out slots sourced from the device matrix (`matrix/...`,
+// e.g. the large-text and dark-mode cells `capture.mjs --cell` writes). A
+// single-store run (the per-PR CI job) never captures those cells, so without
+// this flag it would always report them missing and exit 2. Store pushes run
+// without it, so a real submission still refuses an incomplete set.
 //
 // Reads <app>/qa/screenshots.config.json. For each shot, drives the user's
 // installed Chrome in headless mode against templates/screenshots/frame.html
@@ -59,6 +66,24 @@ const SURFACES = {
 // Read a PNG's intrinsic pixel size straight from the IHDR chunk — zero deps.
 // PNG layout: 8-byte signature, then a length(4)+"IHDR"(4) chunk header, then
 // width(4) + height(4), big-endian, starting at byte 16.
+// One headless-Chrome capture, retried: on the macOS CI runner Chrome
+// intermittently exits 2 before writing the PNG (3 of 6 shots in one run on
+// 2026-10-24) and succeeds on the next try. A shot only fails after
+// CHROME_ATTEMPTS straight misses, so a real rendering error still surfaces.
+const CHROME_ATTEMPTS = 3;
+function captureWithChrome(chromePath, chromeArgs, outPath) {
+  let result;
+  for (let attempt = 1; attempt <= CHROME_ATTEMPTS; attempt++) {
+    fs.rmSync(outPath, { force: true });
+    result = spawnSync(chromePath, chromeArgs, { stdio: 'pipe' });
+    if (result.status === 0 && fs.existsSync(outPath)) return { ok: true, result };
+    if (attempt < CHROME_ATTEMPTS) {
+      console.warn(`  [retry] ${path.basename(outPath)}: chrome exited ${result.status} (attempt ${attempt}/${CHROME_ATTEMPTS})`);
+    }
+  }
+  return { ok: false, result };
+}
+
 function pngSize(file) {
   const fd = fs.openSync(file, 'r');
   try {
@@ -161,7 +186,7 @@ function buildContactSheets(appDir, only, screensRootOverride) {
     fs.writeFileSync(htmlPath, html);
     const outPath = path.join(path.dirname(screensRoot), `contact-sheet-${dir}.png`);
 
-    const result = spawnSync(chromePath, [
+    const { ok, result } = captureWithChrome(chromePath, [
       '--headless=new',
       '--disable-gpu',
       '--hide-scrollbars',
@@ -171,10 +196,10 @@ function buildContactSheets(appDir, only, screensRootOverride) {
       `--screenshot=${outPath}`,
       '--virtual-time-budget=4000',
       pathToFileURL(htmlPath).href,
-    ], { stdio: 'pipe' });
+    ], outPath);
     fs.rmSync(htmlPath, { force: true });
 
-    if (result.status !== 0 || !fs.existsSync(outPath)) {
+    if (!ok) {
       console.warn(`  [fail] ${dir}: chrome exited ${result.status}`);
       if (result.stderr) console.warn(result.stderr.toString().split('\n').slice(0, 5).join('\n'));
       continue;
@@ -203,6 +228,7 @@ const onlyStore = storeFlagIdx >= 0 ? args[storeFlagIdx + 1] : null;
 const shotFlagIdx = args.indexOf('--shot');
 const onlyShot = shotFlagIdx >= 0 ? args[shotFlagIdx + 1] : null;
 const contactSheet = args.includes('--contact-sheet');
+const skipMatrix = args.includes('--skip-matrix');
 // --out <dir>     write framed PNGs under <dir>/<surface.dir>/ instead of
 //                 <app>/store-assets/screenshots/ (preview renders that must NOT
 //                 mutate an app's committed store assets).
@@ -337,6 +363,10 @@ for (const storeKey of stores) {
 
     shots.forEach((shot, i) => {
       if (onlyShot && shot.id !== onlyShot) return;
+      if (skipMatrix && typeof shot.source === 'string' && shot.source.startsWith('matrix/')) {
+        console.log(`  [skip] ${shot.id}: device-matrix slot — not captured by a single-store run`);
+        return;
+      }
       total++;
 
       // Two shot kinds: an app screen framed in device chrome (default), or a
@@ -381,7 +411,7 @@ for (const storeKey of stores) {
       const fileName = `${seq}-${surface.label}-${shot.id}.png`;
       const outPath = path.join(outDir, fileName);
 
-      const result = spawnSync(chromePath, [
+      const { ok, result } = captureWithChrome(chromePath, [
         '--headless=new',
         '--disable-gpu',
         '--hide-scrollbars',
@@ -392,9 +422,9 @@ for (const storeKey of stores) {
         // Wait long enough for fonts + image to load, then capture.
         '--virtual-time-budget=4000',
         url,
-      ], { stdio: 'pipe' });
+      ], outPath);
 
-      if (result.status !== 0 || !fs.existsSync(outPath)) {
+      if (!ok) {
         console.warn(`  [fail] ${shot.id}: chrome exited ${result.status}`);
         if (result.stderr) console.warn(result.stderr.toString().split('\n').slice(0, 5).join('\n'));
         return;

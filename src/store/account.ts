@@ -9,6 +9,8 @@
  */
 
 import { create } from 'zustand';
+import { QA_MODE } from '../qa/qaMode';
+import { qaAccount } from '../qa/fixtures';
 import {
   loadHistory,
   recordHistory,
@@ -77,6 +79,14 @@ export const useAccountStore = create<AccountState>()((set, get) => ({
         } catch {
           /* corrupt setting → empty */
         }
+      }
+      // QA seed (capture pipeline only): a lived-in history so the Add-items
+      // sheet's usuals/recent screenshot reads as a real shopper's. In-memory,
+      // never persisted. false in production (EXPO_PUBLIC_QA_MODE unset).
+      if (QA_MODE && history.length === 0 && staples.length === 0) {
+        const seed = qaAccount();
+        set({ history: seed.history, staples: seed.staples, hydrated: true });
+        return;
       }
       set({ history, staples, hydrated: true });
     } catch (err) {

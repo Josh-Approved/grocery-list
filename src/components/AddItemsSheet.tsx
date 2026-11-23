@@ -87,6 +87,7 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
     return (
       <Pressable
         onPress={() => setTab(which)}
+        testID={`addSheetTab-${which}`}
         accessibilityRole="tab"
         accessibilityState={{ selected: active }}
         accessibilityLabel={label}
