@@ -35,12 +35,26 @@ appId: com.joshapproved.grocerylist
 - extendedWaitUntil:
     visible: { text: "Search or add an item" }
     timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 1000
+- takeScreenshot: qa/captures/${STORE}/picker
 - tapOn:
     text: "Search or add an item"
     retryTapIfNoChange: true
 - inputText: "Avocado"
 - takeScreenshot: qa/captures/${STORE}/autocomplete
 - pressKey: Enter
+- tapOn:
+    id: "addSheetTab-kits"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: { text: ".*Pancake breakfast.*" }
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 1500
+- takeScreenshot: qa/captures/${STORE}/kits
+- waitForAnimationToEnd:
+    timeout: 1500
 - tapOn:
     id: "addSheetDone"
     retryTapIfNoChange: true

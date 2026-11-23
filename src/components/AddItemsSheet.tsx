@@ -82,11 +82,19 @@ export default function AddItemsSheet({ visible, listId, onClose }: Props) {
     [addItem, listId, activeLocale]
   );
 
+  // Written as literal `testID: '…'` entries so qa-canonical's flow linter can
+  // ground the screenshot route's @sheet-tab-kits anchor statically.
+  const TAB_TEST_IDS: Record<Tab, { testID: string }> = {
+    items: { testID: 'addSheetTab-items' },
+    kits: { testID: 'addSheetTab-kits' },
+  };
+
   const renderTab = (which: Tab, label: string) => {
     const active = tab === which;
     return (
       <Pressable
         onPress={() => setTab(which)}
+        testID={TAB_TEST_IDS[which].testID}
         accessibilityRole="tab"
         accessibilityState={{ selected: active }}
         accessibilityLabel={label}

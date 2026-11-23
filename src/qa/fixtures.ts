@@ -71,5 +71,52 @@ export function qaKits(): Kit[] {
     makeKitItem('Salsa'),
     makeKitItem('Sour cream'),
   ];
-  return [chickenSalad, tacoNight];
+  // Four kits so the Add-items sheet's Kits tab (a store screenshot) reads as
+  // a lived-in collection rather than two rows on an empty screen.
+  const pancakes = makeKit('Pancake breakfast');
+  pancakes.items = [
+    makeKitItem('Flour'),
+    makeKitItem('Buttermilk'),
+    makeKitItem('Blueberries'),
+    makeKitItem('Maple syrup'),
+    makeKitItem('Butter'),
+  ];
+  const pizzaNight = makeKit('Pizza night');
+  pizzaNight.items = [
+    makeKitItem('Pizza dough'),
+    makeKitItem('Mozzarella'),
+    makeKitItem('Passata'),
+    makeKitItem('Basil'),
+    makeKitItem('Pepperoni'),
+  ];
+  return [chickenSalad, tacoNight, pancakes, pizzaNight];
 }
+
+// Item history + usuals so the Add-items sheet (a store screenshot: "It
+// remembers the items you buy") shows real Your usuals and Recent sections
+// instead of the empty-history hint. Deliberately none of these are on the
+// seeded Weekly shop list (the picker hides on-list rows) and none is Avocado
+// (the journey types it as an item NOT in history). Usuals are stored
+// lowercase, the same as useAccountStore.addStaple writes them.
+export function qaAccount(): {
+  history: { name: string; count: number; lastUsed: number }[];
+  staples: string[];
+} {
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  const history = [
+    { name: 'Oat milk', count: 14, lastUsed: now - 2 * day },
+    { name: 'Apples', count: 11, lastUsed: now - 2 * day },
+    { name: 'Butter', count: 9, lastUsed: now - 6 * day },
+    { name: 'Peanut butter', count: 7, lastUsed: now - 9 * day },
+    { name: 'Orange juice', count: 6, lastUsed: now - 4 * day },
+    { name: 'Frozen peas', count: 4, lastUsed: now - 3 * day },
+    { name: 'Lemons', count: 3, lastUsed: now - 1 * day },
+    { name: 'Paper towels', count: 3, lastUsed: now - 8 * day },
+    { name: 'Hummus', count: 2, lastUsed: now - 5 * day },
+    { name: 'Dish soap', count: 2, lastUsed: now - 12 * day },
+  ];
+  const staples = ['oat milk', 'apples', 'butter', 'peanut butter', 'orange juice'];
+  return { history, staples };
+}
+

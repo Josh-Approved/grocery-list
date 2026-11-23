@@ -295,7 +295,9 @@ jobs:
           # can't find the captures. Flatten them back to qa/captures/ios/ first.
           # Harmless if a Maestro version writes the flat path directly.
           find maestro-debug-ios -path '*/qa/captures/ios/*.png' -exec cp -f {} qa/captures/ios/ \; 2>/dev/null || true
-          node scripts/render-screenshots.mjs --store ios
+          # The large-text / dark slots come from the device matrix, which this
+          # single-device job doesn't run — frame what this run captured.
+          node scripts/render-screenshots.mjs --store ios --skip-matrix
       - name: Upload iOS artifacts
         if: always()
         uses: actions/upload-artifact@v7
@@ -463,7 +465,9 @@ jobs:
         run: |
           # Flatten Maestro's nested takeScreenshot output (see iOS note above).
           find maestro-debug-android -path '*/qa/captures/android/*.png' -exec cp -f {} qa/captures/android/ \; 2>/dev/null || true
-          node scripts/render-screenshots.mjs --store android
+          # The large-text / dark slots come from the device matrix, which this
+          # single-device job doesn't run — frame what this run captured.
+          node scripts/render-screenshots.mjs --store android --skip-matrix
       - name: Upload Android artifacts
         if: always()
         uses: actions/upload-artifact@v7
